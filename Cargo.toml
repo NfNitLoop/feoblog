@@ -1,0 +1,18 @@
+[package]
+name = "blog"
+version = "0.1.0"
+authors = ["Cody Casterline <cody.casterline@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+actix-web = "*"
+sqlite = "*"
+structopt = "*"
+webbrowser = "*"
+failure = "*"
+
+[dependencies.askama]
+version = "*"
+# See: https://github.com/djc/askama/issues/246
+# features = ["with-actix-web"]
+
