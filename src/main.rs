@@ -12,7 +12,9 @@ use responder_util::ToResponder;
 
 
 fn index() -> impl Responder {
-    IndexPage{}.responder()
+    IndexPage{
+        name: "World".into()
+    }.responder()
 }
 
 fn main() -> io::Result<()> {
@@ -35,5 +37,12 @@ fn main() -> io::Result<()> {
 #[template(path = "index.html")]
 struct IndexPage
 {
-    
+    name: String
+}
+
+#[derive(Template, Default)]
+#[template(path = "post.html")]
+struct PostPage
+{
+    body: String
 }
