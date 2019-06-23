@@ -5,11 +5,13 @@ authors = ["Cody Casterline <cody.casterline@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-actix-web = "*"
+actix-web = "1"
+actix-web-codegen = "*"
 sqlite = "*"
 structopt = "*"
 webbrowser = "*"
 failure = "*"
+serde = "*"
 
 [dependencies.askama]
 version = "*"

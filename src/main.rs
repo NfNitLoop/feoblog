@@ -1,7 +1,10 @@
 use std::io;
 
 use actix_web::{App, Responder, HttpServer};
-use actix_web::web::{self, Path, resource, HttpResponse as Response};
+use actix_web::web::{self, Path, Form, resource, HttpResponse as Response};
+use actix_web_codegen::{get, post};
+
+use serde::Deserialize;
 
 use askama::Template;
 
@@ -11,15 +14,12 @@ mod responder_util;
 use responder_util::ToResponder;
 
 
-fn index() -> impl Responder {
-    IndexPage{
-        name: "World".into()
-    }.responder()
-}
 
 fn main() -> io::Result<()> {
-    let server = HttpServer::new(|| App::new().service(
-        resource("/").to(index))
+    let server = HttpServer::new(|| App::new()
+        .service(index)
+        .service(view_post)
+        .service(post)
     ).bind("127.0.0.1:8080")?;
 
     let url = "http://127.0.0.1:8080/";
@@ -30,6 +30,25 @@ fn main() -> io::Result<()> {
     println!("Started at: {}", url);
 
     server.run()
+}
+
+#[get("/")]
+fn index() -> impl Responder {
+    IndexPage{
+        name: "World".into()
+    }.responder()
+}
+
+#[get("/post")]
+fn view_post() -> impl Responder {
+    PostPage::default().responder()
+}
+
+#[post("/post")]
+fn post(form: Form<PostForm>) -> impl Responder {
+    IndexPage{
+        name: form.into_inner().body
+    }.responder()
 }
 
 
@@ -44,5 +63,10 @@ struct IndexPage
 #[template(path = "post.html")]
 struct PostPage
 {
+    form: PostForm
+}
+
+#[derive(Deserialize, Default)]
+struct PostForm {
     body: String
 }

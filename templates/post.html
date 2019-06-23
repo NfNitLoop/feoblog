@@ -4,5 +4,10 @@
 
 
 {% block content %}
-Wat.
+<form method="POST" action="/post">
+<textarea name="body">
+    Your post here.
+</textarea>
+<br><input type="submit">
+</form>
 {% endblock %}
