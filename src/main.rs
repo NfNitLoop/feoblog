@@ -4,7 +4,7 @@
 use std::io;
 
 use actix_web::{App, Responder, HttpServer};
-use actix_web::web::{self, Path, Form, Data, resource, HttpResponse as Response};
+use actix_web::web::{self, Path, Form, Data, resource, HttpResponse};
 use actix_web_codegen::{get, post};
 
 use serde::Deserialize;
@@ -31,6 +31,7 @@ fn main() -> Result<(), failure::Error> {
             .data(db)
             .service(index)
             .service(view_post)
+            .service(view_blob)
             .service(post)
     };
     
@@ -57,21 +58,31 @@ struct FeoBlog
 }
 
 #[get("/")]
-fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, failure::Error> {
+fn index(
+        backend: Data<Box<dyn Backend>>
+) -> Result<impl Responder, failure::Error> {
+    let response = IndexPage{
+        name: "World".into(),
+        hashes: backend.get_hashes()?,
+    }.responder();
 
-    let result = backend.get("homepage".as_bytes())?;
-    
-    let response = Response::Ok()
+    Ok(response)
+}
+
+#[get("/blob/{base58hash}")]
+fn view_blob(
+    backend: Data<Box<dyn Backend>>,
+    path: Path<(String,)>
+) -> Result<impl Responder, failure::Error> 
+{
+    let (base58hash,) = path.into_inner();
+    let hash = Hash::from_base58(base58hash.as_ref())?;
+    let result = backend.get(&hash)?;
+    let response = HttpResponse::Ok()
         .content_type("text/plain; charset=utf-8")
         .body(result.unwrap_or("No result.".into()))
     ;
     Ok(response)
-
-    // Ok(
-    //     IndexPage{
-    //         name: "World".into()
-    //     }.responder()
-    // )
 }
 
 #[get("/post")]
@@ -80,10 +91,22 @@ fn view_post() -> impl Responder {
 }
 
 #[post("/post")]
-fn post(form: Form<PostForm>) -> impl Responder {
-    IndexPage{
-        name: form.into_inner().body
-    }.responder()
+fn post(
+    form: Form<PostForm>,
+    backend: Data<Box<dyn Backend>>
+) -> Result<impl Responder, failure::Error>
+{
+    let form = form.into_inner();
+    let hash = backend.save_blob(form.body.as_bytes())?;
+
+    let url = format!("/blob/{}", hash.to_base58());
+
+    let response = HttpResponse::SeeOther()
+        .header("location", url)
+        .finish()
+    ;
+    
+    Ok(response)
 }
 
 
@@ -91,7 +114,8 @@ fn post(form: Form<PostForm>) -> impl Responder {
 #[template(path = "index.html")]
 struct IndexPage
 {
-    name: String
+    name: String,
+    hashes: Vec<Hash>
 }
 
 #[derive(Template, Default)]

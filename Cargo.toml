@@ -20,6 +20,9 @@ failure = "*"
 structopt = "*"
 webbrowser = "*"
 
+multihash = "*"
+rust-base58 = "*"
+
 
 
 [dependencies.askama]

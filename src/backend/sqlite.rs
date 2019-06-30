@@ -1,4 +1,4 @@
-use crate::backend as traits;
+use crate::backend;
 
 use failure::{Error, bail};
 
@@ -15,9 +15,9 @@ impl Factory {
     }
 }
 
-impl traits::Factory for Factory
+impl backend::Factory for Factory
 {
-    fn open(&self) -> Result<Box<dyn traits::Backend>, Error>
+    fn open(&self) -> Result<Box<dyn backend::Backend>, Error>
     {
         let conn = Connection{
             conn: sqlite::open(&self.file_path)?
@@ -87,7 +87,7 @@ impl Connection
 
 const CURRENT_VERSION: u32 = 1;
 
-impl traits::Backend for Connection
+impl backend::Backend for Connection
 {
     fn setup(&self) -> Result<(), Error>
     {
@@ -114,15 +114,49 @@ impl traits::Backend for Connection
         Ok(())
     }
 
-    fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Error>
+    fn get(&self, hash: &backend::Hash) -> Result<Option<Vec<u8>>, Error>
     {
         let mut stmt = self.conn.prepare("
             SELECT value FROM blobs WHERE hash = ?
         ")?;
-        stmt.bind(1, key);
+        stmt.bind(1, hash.as_bytes());
         if let sqlite::State::Row = stmt.next()? {
             return Ok(Some(stmt.read(0)?));
         }
         Ok(None)
     }
+
+    fn save_blob(&self, data: &[u8]) -> Result<backend::Hash, Error>
+    {
+        let hash = backend::Hash::calculate(data);
+        let mut stmt = self.conn.prepare("
+            INSERT OR IGNORE INTO blobs(hash, value)
+            VALUES(?, ?)
+        ")?;
+        stmt.bind(1, hash.as_bytes());
+        stmt.bind(2, data);
+        let result = stmt.next()?;
+        if result != sqlite::State::Done {
+            bail!("Unexpected state: {:?}", result);
+        }
+        Ok(hash)
+    }
+
+    fn get_hashes(&self) -> Result<Vec<backend::Hash>, Error>
+    {
+        let mut stmt = self.conn.prepare("
+            SELECT hash
+            FROM blobs
+            ORDER BY hash
+            LIMIT 10000
+        ")?;
+        let mut hashes = Vec::new();
+        while sqlite::State::Row == stmt.next()? {
+            hashes.push(
+                backend::Hash{multihash: stmt.read(0)?}
+            );
+        }
+        Ok(hashes)
+    }
+
 }
