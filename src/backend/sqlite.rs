@@ -35,14 +35,27 @@ impl Connection
 {
     fn setup_new(&self) -> Result<(), Error>
     {
-        self.conn.execute("CREATE TABLE version (version INTEGER)")?;
-        self.conn.execute("INSERT INTO version VALUES(1)")?;
-        self.conn.execute(
-            "CREATE TABLE blobs (hash BLOB, value BLOB)"
-        )?;
-        self.conn.execute("CREATE UNIQUE INDEX blobs_hash_idx ON blobs (hash)")?;
+        self.run("CREATE TABLE version (version INTEGER)")?;
+        self.run("INSERT INTO version VALUES(1)")?;
+        self.run("CREATE TABLE blobs (hash BLOB, value BLOB)")?;
+        self.run("CREATE UNIQUE INDEX blobs_hash_idx ON blobs (hash)")?;
+
+        self.run("
+            CREATE TABLE identity(
+                pub_key BLOB -- ed25519 signing key
+                received_utc TEXT
+            )
+        ")?;
+        self.run("CREATE UNIQUE INDEX identity_key_idx ON identity(pub_key)")?;
+
+        // TODO: Cache tables.
 
         Ok(())
+    }
+
+    fn run(&self, sql: &str) -> Result<(), sqlite::Error>
+    {
+        self.conn.execute(sql)
     }
 
     fn get_version(&self) -> Result<Option<u32>, Error>

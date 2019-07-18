@@ -23,7 +23,21 @@ webbrowser = "*"
 multihash = "*"
 rust-base58 = "*"
 
+# crypto:
+rust_sodium = "*"
 
+# Markdown:
+pulldown-cmark = "*"
+
+# [dependencies.in-memory-session]
+# path = "crates/in-memory-session"
+
+
+[workspace]
+members = [
+    ".",
+    "crates/in-memory-session",
+]
 
 [dependencies.askama]
 version = "*"

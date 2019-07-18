@@ -22,6 +22,23 @@ use backend::*;
 
 fn main() -> Result<(), failure::Error> {
 
+    use rust_sodium::crypto::box_;
+    use rust_base58::*;
+
+    let (ourpk, oursk) = box_::gen_keypair();
+    println!("pk: {}", ourpk[..].to_base58());
+    println!("sk: {}", oursk[..].to_base58());
+
+    use rust_sodium::crypto::scalarmult::curve25519::Scalar;
+    use rust_sodium::crypto::scalarmult::curve25519::scalarmult_base;
+    let s = Scalar::from_slice(&oursk[..]).expect("scalar");
+    let group_element = scalarmult_base(&s);
+    println!("derived pk: {}", group_element[..].to_base58());
+    return Ok(());
+
+
+
+
     let factory = backend::sqlite::Factory::new("feoblog.sqlite3".into());
     factory.open()?.setup()?;
 
@@ -32,6 +49,7 @@ fn main() -> Result<(), failure::Error> {
             .service(index)
             .service(view_post)
             .service(view_blob)
+            .service(view_md)
             .service(post)
     };
     
@@ -81,6 +99,37 @@ fn view_blob(
     let response = HttpResponse::Ok()
         .content_type("text/plain; charset=utf-8")
         .body(result.unwrap_or("No result.".into()))
+    ;
+    Ok(response)
+}
+
+#[get("/md/{base58hash}")]
+fn view_md(
+    backend: Data<Box<dyn Backend>>,
+    path: Path<(String,)>
+) -> Result<impl Responder, failure::Error> 
+{
+    let (base58hash,) = path.into_inner();
+    let hash = Hash::from_base58(base58hash.as_ref())?;
+    let result = backend.get(&hash)?
+        .unwrap_or("No result.".into())
+    ;
+    let result = String::from_utf8(result)?;
+
+    let parser = pulldown_cmark::Parser::new(&result);
+    use pulldown_cmark::Event::*;
+    let parser = parser.map(|event| match event {
+        Html(value) => Code(value),
+        InlineHtml(value) => Text(value),
+        x => x,
+    });
+
+    let mut html = String::new();
+    pulldown_cmark::html::push_html(&mut html, parser);
+
+    let response = HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html)
     ;
     Ok(response)
 }
