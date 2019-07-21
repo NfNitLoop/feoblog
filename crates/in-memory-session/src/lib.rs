@@ -25,6 +25,8 @@ use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
 use std::default::Default;
+use std::str::FromStr;
+use std::string::ToString;
 use std::time::Duration;
 use std::ops::{Deref, DerefMut};
 
@@ -133,14 +135,14 @@ pub struct Session
 // Public/User interface:
 impl Session
 {
-    pub fn read(&self) -> SessionReadGuard
+    pub fn read(&self) -> impl SessionReader + '_
     {
         SessionReadGuard{ 
             inner: self.inner.read().expect("poisoned"),
         }
     }
 
-    pub fn write(&self) -> SessionWriteGuard
+    pub fn write(&self) -> impl SessionWriter + '_
     {
         SessionWriteGuard{
             inner: self.inner.write().expect("poisoned")
@@ -148,8 +150,49 @@ impl Session
     }
 }
 
-/// You have a read lock on the session while this exists.
-pub struct SessionReadGuard<'a>
+/// 1) Acts as a read lock on the session. (Free it when you're done!)
+/// 2) Provides access to the underlying HashMap<String,String>
+/// 3) Provides helper functions for (de)serializing to/from the map.
+pub trait SessionReader: Deref<Target=HashMap<String,String>>
+{
+    /// Get a value from the session, parsing it to the destination type.
+    /// Errors parsing will return None. If you need to distinguish between
+    /// empty/unparseable, use the underlying HashMap methods.
+    fn get<T>(&self, key: &str) -> Option<T>
+    where T: FromStr
+    {
+        let value = match self.deref().get(key) {
+            None => return None,
+            Some(v) => v
+        };
+        FromStr::from_str(value.as_str()).ok()
+    }
+}
+
+impl<T> SessionReader for T
+where T: Deref<Target=HashMap<String,String>>
+{
+
+}
+
+pub trait SessionWriter: SessionReader + DerefMut
+{
+    /// Set a value to the session, converting it to a string automatically.
+    /// also may allocate a new String key. Because HashMap.
+    fn set<T>(&mut self, key: &str, value: T)
+    where T: ToString
+    {
+        self.deref_mut().insert(key.to_string(), value.to_string());
+    }
+}
+
+impl SessionWriter for SessionWriteGuard<'_>
+{
+
+}
+
+// TODO: Could use parking_lot instead of writing my own:
+struct SessionReadGuard<'a>
 {
     inner: std::sync::RwLockReadGuard<'a, SessionInner>,
 }
@@ -163,7 +206,7 @@ impl<'a> Deref for SessionReadGuard<'a>
     }
 }
 
-pub struct SessionWriteGuard<'a>
+struct SessionWriteGuard<'a>
 {
     inner: std::sync::RwLockWriteGuard<'a, SessionInner>,
 }

@@ -10,7 +10,7 @@ use serde::Deserialize;
 use askama::Template;
 use failure::Error;
 
-use in_memory_session::Session;
+use in_memory_session::{Session, SessionReader, SessionWriter};
 
 mod responder_util;
 use responder_util::ToResponder;
@@ -164,16 +164,9 @@ fn post(
 fn session_test(session: Session) -> Result<impl Responder, failure::Error>
 {
     let mut writer = session.write();
-    let mut count = writer.get("counter")
-        .map(|s| s.as_str())
-        .unwrap_or("0")
-        .parse::<u32>()
-        .unwrap_or(0)
-    ;
+    let mut count = writer.get("counter").unwrap_or(0 as u32);
     count = count + 1;
-    writer.insert("counter".to_string(), count.to_string());
-    println!("Got here.");
-    println!("count: {}", count);
+    writer.set("counter", count);
 
     return Ok(count.to_string());
 }
