@@ -29,8 +29,8 @@ rust_sodium = "*"
 # Markdown:
 pulldown-cmark = "*"
 
-# [dependencies.in-memory-session]
-# path = "crates/in-memory-session"
+[dependencies.in-memory-session]
+path = "crates/in-memory-session"
 
 
 [workspace]

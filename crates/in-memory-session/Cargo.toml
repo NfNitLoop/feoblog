@@ -1,0 +1,18 @@
+[package]
+name = "in-memory-session"
+version = "0.1.0"
+authors = ["Cody Casterline <cody.casterline@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+actix-web = "1"
+actix-service = "*"
+futures = "*"
+failure = "*"
+
+# Used for generating random bytes.
+# A strange choice to do so, except we're already using it in the parent crate.
+rust_sodium = "*"
+
+# encoding random cookie IDs:
+rust-base58 = "*"

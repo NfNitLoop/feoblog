@@ -6,12 +6,11 @@ use std::io;
 use actix_web::{App, Responder, HttpServer};
 use actix_web::web::{self, Path, Form, Data, resource, HttpResponse};
 use actix_web_codegen::{get, post};
-
 use serde::Deserialize;
-
 use askama::Template;
+use failure::Error;
 
-use webbrowser;
+use in_memory_session::Session;
 
 mod responder_util;
 use responder_util::ToResponder;
@@ -19,38 +18,24 @@ use responder_util::ToResponder;
 mod backend;
 use backend::*;
 
-
 fn main() -> Result<(), failure::Error> {
-
-    use rust_sodium::crypto::box_;
-    use rust_base58::*;
-
-    let (ourpk, oursk) = box_::gen_keypair();
-    println!("pk: {}", ourpk[..].to_base58());
-    println!("sk: {}", oursk[..].to_base58());
-
-    use rust_sodium::crypto::scalarmult::curve25519::Scalar;
-    use rust_sodium::crypto::scalarmult::curve25519::scalarmult_base;
-    let s = Scalar::from_slice(&oursk[..]).expect("scalar");
-    let group_element = scalarmult_base(&s);
-    println!("derived pk: {}", group_element[..].to_base58());
-    return Ok(());
-
-
-
+    rust_sodium::init();
 
     let factory = backend::sqlite::Factory::new("feoblog.sqlite3".into());
     factory.open()?.setup()?;
+    let middleware = in_memory_session::Middleware::new();
 
     let app_factory = move || {
         let db = factory.open().expect("Couldn't open DB connection.");
         App::new()
+            .wrap(middleware.clone())
             .data(db)
             .service(index)
             .service(view_post)
             .service(view_blob)
             .service(view_md)
             .service(post)
+            .service(session_test)
     };
     
     let server = HttpServer::new(app_factory)
@@ -67,6 +52,23 @@ fn main() -> Result<(), failure::Error> {
     server.run()?; // Actually blocks & runs forever.
 
     Ok(())
+}
+
+fn test_crypto() -> Result<(), failure::Error>
+{
+    use rust_sodium::crypto::box_;
+    use rust_base58::*;
+
+    let (ourpk, oursk) = box_::gen_keypair();
+    println!("pk: {}", ourpk[..].to_base58());
+    println!("sk: {}", oursk[..].to_base58());
+
+    use rust_sodium::crypto::scalarmult::curve25519::Scalar;
+    use rust_sodium::crypto::scalarmult::curve25519::scalarmult_base;
+    let s = Scalar::from_slice(&oursk[..]).expect("scalar");
+    let group_element = scalarmult_base(&s);
+    println!("derived pk: {}", group_element[..].to_base58());
+    return Ok(());
 }
 
 
@@ -156,6 +158,24 @@ fn post(
     ;
     
     Ok(response)
+}
+
+#[get("/sessionTest")]
+fn session_test(session: Session) -> Result<impl Responder, failure::Error>
+{
+    let mut writer = session.write();
+    let mut count = writer.get("counter")
+        .map(|s| s.as_str())
+        .unwrap_or("0")
+        .parse::<u32>()
+        .unwrap_or(0)
+    ;
+    count = count + 1;
+    writer.insert("counter".to_string(), count.to_string());
+    println!("Got here.");
+    println!("count: {}", count);
+
+    return Ok(count.to_string());
 }
 
 
