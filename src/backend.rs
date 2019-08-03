@@ -17,17 +17,34 @@ pub trait Backend
     // Set up the initial DB state, maybe running migrations.
     fn setup(&self) -> Result<(), Error>;
 
-    fn get(&self, key: &Hash) -> Result<Option<Vec<u8>>, Error>;
+    fn get_blob(&self, key: &Hash) -> Result<Option<Vec<u8>>, Error>;
+
+    fn get_signature(&self, key: &[u8]) -> Result<Option<Signature>, Error>;
 
     fn save_blob(&self, data: &[u8]) -> Result<Hash, Error>;
 
     fn get_hashes(&self) -> Result<Vec<Hash>, Error>;
 }
 
+/// The signature is the top-level data structure for the backend.
+/// Everything posted must have an associated signature.
+/// These are stored in the "signatures" table.
+pub struct Signature
+{
+    /// An ed25519 signature bytes.
+    pub signature: Vec<u8>,
+
+    /// An ed25519 public key.
+    pub user_id: Vec<u8>,
+
+    /// The multihash of the metadata for this item.
+    pub metadata_hash: Hash,
+}
+
 // A multihash
 pub struct Hash
 {
-    pub(crate) multihash: Vec<u8>
+    pub multihash: Vec<u8>
 }
 
 /// Mutliash!

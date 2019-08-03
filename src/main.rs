@@ -1,6 +1,9 @@
 // Disable warnings in dev mode.
 #![cfg_attr(debug_assertions, allow(dead_code, unused))]
 
+#[cfg(test)]
+mod tests;
+
 use std::io;
 
 use actix_web::{App, Responder, HttpServer};
@@ -9,6 +12,7 @@ use actix_web_codegen::{get, post};
 use serde::Deserialize;
 use askama::Template;
 use failure::Error;
+use structopt::StructOpt;
 
 use in_memory_session::{Session, SessionReader, SessionWriter};
 
@@ -18,7 +22,21 @@ use responder_util::ToResponder;
 mod backend;
 use backend::*;
 
-fn main() -> Result<(), failure::Error> {
+fn main() -> Result<(), Error> {
+    let command = Command::from_args();
+    use Command::*;
+
+    match command {
+        Open{..} => return cmd_open(),
+        Crypto{..} => return test_crypto(),
+        other => { 
+            println!("Unimplemented: {:?}", other);
+            return Ok(());
+        }
+    };
+}
+
+fn cmd_open() -> Result<(), Error> {
     rust_sodium::init();
 
     let factory = backend::sqlite::Factory::new("feoblog.sqlite3".into());
@@ -54,20 +72,56 @@ fn main() -> Result<(), failure::Error> {
     Ok(())
 }
 
+#[derive(StructOpt, Debug)]
+#[structopt(
+    name="feoblog",
+    about="A distributed P2P (micro|macro)blog system.",
+    author="",
+)]
+enum Command
+{
+    #[structopt(name="open")]
+    /// Open a browser window to locally view/add content.
+    Open { },
+
+    #[structopt(name="serve")]
+    /// Serve local content as a web site.
+    /// The write UI is disabled. Content must be signed and pushed from
+    /// other instances.
+    Serve { },
+
+    #[structopt(
+        name="crypto",
+        raw(setting = "structopt::clap::AppSettings::Hidden"),
+    )]
+    /// Test some crypto primitives.
+    Crypto { },
+}
+
 fn test_crypto() -> Result<(), failure::Error>
 {
     use rust_sodium::crypto::box_;
     use rust_base58::*;
 
     let (ourpk, oursk) = box_::gen_keypair();
-    println!("pk: {}", ourpk[..].to_base58());
-    println!("sk: {}", oursk[..].to_base58());
+    let vecpk: Vec<u8> = ourpk[..].into();
+    let vecsk: Vec<u8> = oursk[..].into();
+    println!("pk: {}, bytes: {}", ourpk[..].to_base58(), vecpk.len());
+    println!("sk: {}, bytes: {}", oursk[..].to_base58(), vecsk.len());
 
     use rust_sodium::crypto::scalarmult::curve25519::Scalar;
     use rust_sodium::crypto::scalarmult::curve25519::scalarmult_base;
+
     let s = Scalar::from_slice(&oursk[..]).expect("scalar");
     let group_element = scalarmult_base(&s);
     println!("derived pk: {}", group_element[..].to_base58());
+
+
+    use rust_sodium::crypto::sign::*;
+    println!("PUBLICKEYBYTES: {}", PUBLICKEYBYTES);
+    println!("SECRETKEYBYTES: {}", SECRETKEYBYTES);
+    println!("SIGNATUREBYTES: {}", SIGNATUREBYTES);
+
     return Ok(());
 }
 
@@ -97,7 +151,7 @@ fn view_blob(
 {
     let (base58hash,) = path.into_inner();
     let hash = Hash::from_base58(base58hash.as_ref())?;
-    let result = backend.get(&hash)?;
+    let result = backend.get_blob(&hash)?;
     let response = HttpResponse::Ok()
         .content_type("text/plain; charset=utf-8")
         .body(result.unwrap_or("No result.".into()))
@@ -113,7 +167,7 @@ fn view_md(
 {
     let (base58hash,) = path.into_inner();
     let hash = Hash::from_base58(base58hash.as_ref())?;
-    let result = backend.get(&hash)?
+    let result = backend.get_blob(&hash)?
         .unwrap_or("No result.".into())
     ;
     let result = String::from_utf8(result)?;

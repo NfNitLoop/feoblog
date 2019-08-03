@@ -1,4 +1,4 @@
-use crate::backend;
+use crate::backend::{self, Backend, Signature, Hash};
 
 use failure::{Error, bail};
 
@@ -41,12 +41,15 @@ impl Connection
         self.run("CREATE UNIQUE INDEX blobs_hash_idx ON blobs (hash)")?;
 
         self.run("
-            CREATE TABLE identity(
-                pub_key BLOB -- ed25519 signing key
-                received_utc TEXT
+            CREATE TABLE signatures(
+                user_id BLOB -- ed25519 public signing key
+                metadata_hash BLOB -- multihash reference to the data. 
+                signature BLOB -- signore on the data_multihash.
             )
         ")?;
-        self.run("CREATE UNIQUE INDEX identity_key_idx ON identity(pub_key)")?;
+        self.run("CREATE UNIQUE INDEX signatures_signature_idx ON signatures(signature)")?;
+        self.run("CREATE INDEX signatures_user_idx ON signatures(user_id)")?;
+        self.run("CREATE INDEX signatures_data_idx ON signatures(data_multihash)")?;
 
         // TODO: Cache tables.
 
@@ -127,7 +130,7 @@ impl backend::Backend for Connection
         Ok(())
     }
 
-    fn get(&self, hash: &backend::Hash) -> Result<Option<Vec<u8>>, Error>
+    fn get_blob(&self, hash: &backend::Hash) -> Result<Option<Vec<u8>>, Error>
     {
         let mut stmt = self.conn.prepare("
             SELECT value FROM blobs WHERE hash = ?
@@ -136,6 +139,11 @@ impl backend::Backend for Connection
         if let sqlite::State::Row = stmt.next()? {
             return Ok(Some(stmt.read(0)?));
         }
+        Ok(None)
+    }
+
+    fn get_signature(&self, key: &[u8]) -> Result<Option<Signature>, Error>
+    {
         Ok(None)
     }
 

@@ -8,7 +8,6 @@ edition = "2018"
 # Web:
 actix-web = "1"
 actix-web-codegen = "*"
-serde = "*"
 
 # DB:
 sqlite = "*"
@@ -28,6 +27,12 @@ rust_sodium = "*"
 
 # Markdown:
 pulldown-cmark = "*"
+
+# (De)serialization for signed blobs:
+serde = "*"
+serde_derive = "*"
+serde_cbor = "0.10"
+
 
 [dependencies.in-memory-session]
 path = "crates/in-memory-session"
