@@ -14,13 +14,6 @@
 // its own crate for you. Otherwise I reserve the right to change its API at
 // my whim. :p
 
-// Disable warnings in dev mode.
-#![cfg_attr(debug_assertions, allow(dead_code, unused))]
-
-#[cfg(test)]
-mod tests;
-
-use std::rc::Rc;
 // TODO: Consider using parking_lot locks.
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
@@ -30,7 +23,7 @@ use std::string::ToString;
 use std::time::Duration;
 use std::ops::{Deref, DerefMut};
 
-use actix_service::{Service, Transform};
+use actix_service::{Service, Transform, ServiceExt};
 use actix_web::{HttpMessage, FromRequest, HttpRequest};
 use actix_web::cookie::Cookie;
 use actix_web::dev::{ServiceRequest, ServiceResponse, Payload};
@@ -239,7 +232,7 @@ impl Session
         use SessionState::*;
         let cookie_name = middleware.inner.options.cookie_name.as_str();
         let mut res = res;
-        let mut hres = res.response_mut();
+        let hres = res.response_mut();
         let mut session_inner = self.inner.write().expect("poiosoned");
         let session_id = match &session_inner.state {
             Existing{session_id} => session_id.to_string(),
@@ -277,7 +270,7 @@ impl Session
                 hres.del_cookie(cookie_name);
                 middleware.del_session(session_id.as_str());
             },
-            Existing{session_id} => {
+            Existing{session_id:_} => {
                 // session is already tracked in middleware.
                 // always (re)write the cookie to extend its duration:
                 write_cookie();
@@ -318,7 +311,7 @@ impl Default for Session
         let inner = RwLock::new(inner);
         let inner = Arc::new(inner);
 
-        Session{inner: inner}
+        Session{inner}
     }
 }
 
@@ -376,7 +369,7 @@ where
     type Request = ServiceRequest;
     type Response = ServiceResponse<B>;
     type Error = S::Error;
-    type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
+    type Future = Box<dyn Future<Item = Self::Response, Error = Self::Error>>;
 
     fn poll_ready(&mut self) -> Poll<(), Self::Error> {
         self.service.poll_ready()

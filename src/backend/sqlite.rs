@@ -11,7 +11,7 @@ pub(crate) struct Factory
 impl Factory {
     pub fn new(file_path: String) -> Self
     {
-        Factory{file_path: file_path}
+        Factory{file_path}
     }
 }
 
@@ -37,19 +37,25 @@ impl Connection
     {
         self.run("CREATE TABLE version (version INTEGER)")?;
         self.run("INSERT INTO version VALUES(1)")?;
-        self.run("CREATE TABLE blobs (hash BLOB, value BLOB)")?;
-        self.run("CREATE UNIQUE INDEX blobs_hash_idx ON blobs (hash)")?;
 
         self.run("
             CREATE TABLE signatures(
                 user_id BLOB -- ed25519 public signing key
-                metadata_hash BLOB -- multihash reference to the data. 
-                signature BLOB -- signore on the data_multihash.
+                , metadata_hash BLOB -- multihash reference to the data. 
+                , signature BLOB -- signature on the metadata_hash.
             )
         ")?;
         self.run("CREATE UNIQUE INDEX signatures_signature_idx ON signatures(signature)")?;
         self.run("CREATE INDEX signatures_user_idx ON signatures(user_id)")?;
-        self.run("CREATE INDEX signatures_data_idx ON signatures(data_multihash)")?;
+        self.run("CREATE INDEX signatures_hash_idx ON signatures(metadata_hash)")?;
+
+        // content-addressable store
+        self.run("
+            CREATE TABLE blobs(
+                hash BLOB PRIMARY KEY, -- multihash of the data.
+                data BLOB
+            )
+        ")?; 
 
         // TODO: Cache tables.
 
@@ -109,8 +115,7 @@ impl backend::Backend for Connection
     {
         let version = match self.get_version()? {
             None => {
-                self.setup_new();
-                return Ok(());
+                return self.setup_new();
             },
             Some(version) => version
         };
@@ -133,9 +138,9 @@ impl backend::Backend for Connection
     fn get_blob(&self, hash: &backend::Hash) -> Result<Option<Vec<u8>>, Error>
     {
         let mut stmt = self.conn.prepare("
-            SELECT value FROM blobs WHERE hash = ?
+            SELECT data FROM blobs WHERE hash = ?
         ")?;
-        stmt.bind(1, hash.as_bytes());
+        stmt.bind(1, hash.as_bytes())?;
         if let sqlite::State::Row = stmt.next()? {
             return Ok(Some(stmt.read(0)?));
         }
@@ -151,11 +156,11 @@ impl backend::Backend for Connection
     {
         let hash = backend::Hash::calculate(data);
         let mut stmt = self.conn.prepare("
-            INSERT OR IGNORE INTO blobs(hash, value)
+            INSERT OR IGNORE INTO blobs(hash, data)
             VALUES(?, ?)
         ")?;
-        stmt.bind(1, hash.as_bytes());
-        stmt.bind(2, data);
+        stmt.bind(1, hash.as_bytes())?;
+        stmt.bind(2, data)?;
         let result = stmt.next()?;
         if result != sqlite::State::Done {
             bail!("Unexpected state: {:?}", result);
