@@ -8,8 +8,15 @@ use in_memory_session::{Session, SessionReader, SessionWriter};
 use crate::responder_util::ToResponder;
 use crate::backend::{self, *};
 
+// TODO: Hierarchy
+// / # Recent posts (by timestamp)
+// /login
+// /post (only if logged in.)
+// /u/{userID} -- Display a users's content. (By timestamp)
+// /u/{userID}/s/{sigID}/  -- Display a piece of content.
+// /u/{userID}/s/{sigID}/sig/ -- cbor of the signature.
 pub fn cmd_open() -> Result<(), Error> {
-    rust_sodium::init();
+    rust_sodium::init().expect("rust_sodium::init()");
 
     let factory = backend::sqlite::Factory::new("feoblog.sqlite3".into());
     factory.open()?.setup().context("Error setting up DB")?;
@@ -47,8 +54,6 @@ pub fn cmd_open() -> Result<(), Error> {
 
     Ok(())
 }
-
-
 
 fn index(
         backend: Data<Box<dyn Backend>>

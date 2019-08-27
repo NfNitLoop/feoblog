@@ -23,7 +23,8 @@ multihash = "*"
 rust-base58 = "*"
 
 # crypto:
-rust_sodium = "*"
+rust_sodium = "0.10.2"
+rust_sodium-sys = "*"
 
 # Markdown:
 pulldown-cmark = "*"
