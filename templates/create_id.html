@@ -1,0 +1,19 @@
+{% extends "page.html" %}
+
+{% block title %}Login{% endblock %}
+
+{% block content %}
+<p>Here is your new ID:</p>
+
+<table style="border: 0px">
+    <tr>
+        <td>public ID</td>
+        <td><pre>{{ public_key }}</pre></td>
+    </tr>
+    <tr style="color: red">
+        <td>secret key</td>
+        <td><pre>{{ secret_key }}</pre></td>
+    </tr>
+</table>
+
+{% endblock %}

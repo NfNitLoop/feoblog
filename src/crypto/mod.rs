@@ -21,7 +21,7 @@ pub(crate) struct SigKeyPair {
 
 impl SigKeyPair {
 
-    fn new() -> Self {
+    pub fn new() -> Self {
         let (pk, sk) = sign::gen_keypair();
         Self {
             combined: sk,
@@ -64,6 +64,12 @@ pub(crate) struct SigSecretKey<'a> {
     bytes: Cow<'a, [u8]>,
 }
 
+impl<'a> SigSecretKey<'a> {
+    pub fn bytes(&self) -> &[u8] {
+        self.bytes.as_ref()
+    }
+}
+
 /// rust_sodium secret keys contain the public one, but we trim it:
 const SEC_KEY_BYTES: usize = sign::SECRETKEYBYTES - sign::PUBLICKEYBYTES;
 const PUB_KEY_BYTES: usize = sign::PUBLICKEYBYTES;
@@ -76,6 +82,10 @@ pub(crate) struct SigPublicKey {
 impl SigPublicKey {
     pub fn validate(&self, data: &[u8], sig: &Signature) -> bool {
         sign::verify_detached(&sig.nacl_sig, data, &self.nacl_key)
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        &self.nacl_key[..]
     }
 }
 

@@ -7,6 +7,8 @@ use failure::{Error, bail, ResultExt};
 use in_memory_session::{Session, SessionReader, SessionWriter};
 use crate::responder_util::ToResponder;
 use crate::backend::{self, *};
+use actix_web::http::StatusCode;
+use rust_base58::ToBase58;
 
 // TODO: Hierarchy
 // / # Recent posts (by timestamp)
@@ -28,6 +30,8 @@ pub fn cmd_open() -> Result<(), Error> {
             .wrap(middleware.clone())
             .data(db)
             .route("/", get().to(index))
+            .route("/login", get().to(login))
+            .route("/create_id", get().to(create_id))
             .service(
                 resource("/post")
                 .route(get().to(view_post))
@@ -44,6 +48,7 @@ pub fn cmd_open() -> Result<(), Error> {
     ;
 
     let url = "http://127.0.0.1:8080/";
+    // TODO: This opens up a (AFAICT) blocking CLI browser on Linux. Boo. Don't do that.
     let opened = webbrowser::open(url);
     if !opened.is_ok() {
         println!("Warning: Couldn't open browser.");
@@ -145,6 +150,37 @@ fn session_test(session: Session) -> Result<impl Responder, Error>
 
 fn file_not_found() -> impl Responder {
     NotFoundPage{}.responder()
+        .with_status(StatusCode::NOT_FOUND)
+}
+
+fn login(session: Session) -> impl Responder {
+    let logged_in_pkey = session.read().get("logged_in_pkey").map(|s| Option::Some(s)).unwrap_or(None);
+
+    LoginPage{
+        logged_in_pkey
+    }.responder()
+}
+
+#[derive(Template, Default)]
+#[template(path = "login.html")]
+struct LoginPage
+{
+    logged_in_pkey: Option<String>
+}
+
+fn create_id() -> impl Responder {
+    let pair = crate::crypto::SigKeyPair::new();
+    CreateIDPage {
+        public_key: pair.public().bytes().to_base58(),
+        secret_key: pair.secret().bytes().to_base58(),
+    }.responder()
+}
+
+#[derive(Template, Default)]
+#[template(path = "create_id.html")]
+struct CreateIDPage {
+    public_key: String,
+    secret_key: String,
 }
 
 #[derive(Template)] 
