@@ -13,7 +13,23 @@ fn test_derive_pk() {
     // (which is easy to accidentally do because C uses pointers without lengths. Argh!)
     let vecsk: Vec<u8> = sk[..32].into();
 
-    let derived_key = derive_pk(vecsk.as_slice());
-    assert_eq!(vecpk, derived_key);
+    let (dsk, dpk) = derive_pk(vecsk.as_slice());
+    assert_eq!(pk, dpk);
 
+}
+
+#[test]
+fn test_high_level() {
+    use crate::crypto::*;
+
+    let pair = SigKeyPair::new();
+    let derived = SigKeyPair::from(pair.secret());
+    assert_eq!(pair, derived);
+
+    let data: Vec<u8> = "Hello, world!".into();
+
+    let sig = pair.sign(data.as_slice());
+    let valid = pair.public().validate(data.as_slice(), &sig);
+
+    assert_eq!(true, valid);
 }
