@@ -1,9 +1,6 @@
-<html>
-<head>
-<title>Page</title>
-</head>
-<body>
+{% extends "page.html" %}
 
+{% block content %}
 <p>Hello, {{ name }}!</p>
 
 <p><a href="/post">/post</a></p>
@@ -16,5 +13,4 @@
 {% endfor %}
 </ul>
 
-</body>
-</html>
+{% endblock %}

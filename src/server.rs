@@ -29,17 +29,7 @@ pub fn cmd_open() -> Result<(), Error> {
         App::new()
             .wrap(middleware.clone())
             .data(db)
-            .route("/", get().to(index))
-            .route("/login", get().to(login))
-            .route("/create_id", get().to(create_id))
-            .service(
-                resource("/post")
-                .route(get().to(view_post))
-                .route(post().to(post_post))
-            )
-            .route("/blob/{base58hash}", get().to(view_blob))
-            .route("/md/{base58hash}", get().to(view_md))
-            .route("/sessionTest", get().to(session_test))
+            .configure(routes)
             .default_service(route().to(file_not_found))
     };
     
@@ -59,6 +49,37 @@ pub fn cmd_open() -> Result<(), Error> {
 
     Ok(())
 }
+
+fn routes(cfg: &mut web::ServiceConfig) {
+    cfg
+        .service(
+            web::scope("/static").configure(statics)
+        )
+        .route("/", get().to(index))
+        .route("/login", get().to(login))
+        .route("/create_id", get().to(create_id))
+        .service(
+            resource("/post")
+                .route(get().to(view_post))
+                .route(post().to(post_post))
+        )
+        .route("/blob/{base58hash}", get().to(view_blob))
+        .route("/md/{base58hash}", get().to(view_md))
+        .route("/sessionTest", get().to(session_test))
+    ;
+}
+
+fn statics(cfg: &mut web::ServiceConfig) {
+    cfg
+        .route("/style.css", get().to(|| {
+            HttpResponse::Ok()
+                .body(include_str!("../static/style.css"))
+                .with_header("content-type", "text/css")
+        }))
+    ;
+}
+
+
 
 fn index(
         backend: Data<Box<dyn Backend>>

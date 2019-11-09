@@ -1,12 +1,15 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>{% block title %}FeoBlog{% endblock %}</title>
-{% block head %}{% endblock %}
+    <title>{% block title %}FeoBlog{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    {% block head %}{% endblock %}
 </head>
 <body>
+<div id="contentArea">
 <div id="content">
 {% block content %}{% endblock %}
+</div>
 </div>
 </body>
 </html>
