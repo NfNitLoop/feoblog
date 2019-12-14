@@ -1,5 +1,7 @@
 use rust_sodium::crypto::sign;
 use std::borrow::Cow;
+use failure::{self, bail};
+use rust_base58::ToBase58;
 
 
 #[cfg(test)]
@@ -20,13 +22,27 @@ pub(crate) struct SigKeyPair {
 
 
 impl SigKeyPair {
-
     pub fn new() -> Self {
         let (pk, sk) = sign::gen_keypair();
-        Self {
+        Self{
             combined: sk,
             public: SigPublicKey{ nacl_key: pk },
         }
+    }
+
+    /// From just the public half of the key, (re)calculate the public part
+    /// and keep the full keypair.
+    pub fn from_secret(bytes: &[u8]) -> Result<Self, failure::Error> {
+        if bytes.len() != SEC_KEY_BYTES {
+            bail!("Wrong number of bytes. Found {}, expected {}", bytes.len(), SEC_KEY_BYTES);
+        }
+
+        let (combined, public) = derive_pk(bytes);
+        Ok(Self{
+            combined: combined,
+            public: SigPublicKey{ nacl_key: public }
+        })
+
     }
 
     pub fn public(&self) -> &SigPublicKey {
@@ -70,11 +86,17 @@ impl<'a> SigSecretKey<'a> {
     }
 }
 
+impl<'a> ToString for SigSecretKey<'a> {
+    fn to_string(&self) -> String {
+        self.bytes().to_base58()
+    }
+}
+
 /// rust_sodium secret keys contain the public one, but we trim it:
 const SEC_KEY_BYTES: usize = sign::SECRETKEYBYTES - sign::PUBLICKEYBYTES;
 const PUB_KEY_BYTES: usize = sign::PUBLICKEYBYTES;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub(crate) struct SigPublicKey {
     nacl_key: sign::PublicKey
 }
@@ -95,6 +117,7 @@ pub struct Signature {
 
 impl Signature {
     // TODO:  fn from_bytes(bytes: &[u8])
+    // TODO: is_valid(&SigPublicKe
 }
 
 /// Given the private half of a signing key, recalculate the public key:

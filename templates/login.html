@@ -9,7 +9,7 @@
         Would you like to <a href="/logout">log out?</a>
     </p>
 {% when None %}
-    <form method="POST" action="/login" accept-charset="utf-8">
+    <form method="POST" action="/loginPost" accept-charset="utf-8">
         Secret key: <input type="text" name="secret_key"/>
         <br><input type="submit" value="Log in"/>
     </form>

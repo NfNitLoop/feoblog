@@ -9,8 +9,7 @@ edition = "2018"
 actix-web = "1"
 actix-web-codegen = "*"
 
-# DB:
-sqlite = "*"
+
 
 # Error handling:
 failure = "*"
@@ -34,6 +33,12 @@ serde = "*"
 serde_derive = "*"
 serde_cbor = "0.10"
 
+[dependencies.rusqlite]
+version = "*"
+features = [
+    # Use a bundled, statically-linked version of sqlite. (Simplifies building on Windows)
+    "bundled"
+]
 
 [dependencies.in-memory-session]
 path = "crates/in-memory-session"

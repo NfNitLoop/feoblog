@@ -1,5 +1,6 @@
 use actix_web::{App, Responder, HttpServer};
 use actix_web::web::{self, Path, Form, Data, resource, route, HttpResponse, get, post};
+use actix_web::http::header;
 use askama::Template;
 use serde::Deserialize;
 use failure::{Error, bail, ResultExt};
@@ -8,15 +9,11 @@ use in_memory_session::{Session, SessionReader, SessionWriter};
 use crate::responder_util::ToResponder;
 use crate::backend::{self, *};
 use actix_web::http::StatusCode;
-use rust_base58::ToBase58;
+use rust_base58::{ToBase58, FromBase58};
 
-// TODO: Hierarchy
-// / # Recent posts (by timestamp)
-// /login
-// /post (only if logged in.)
-// /u/{userID} -- Display a users's content. (By timestamp)
-// /u/{userID}/s/{sigID}/  -- Display a piece of content.
-// /u/{userID}/s/{sigID}/sig/ -- cbor of the signature.
+use crate::user_session::UserSession;
+
+
 pub fn cmd_open() -> Result<(), Error> {
     rust_sodium::init().expect("rust_sodium::init()");
 
@@ -57,6 +54,7 @@ fn routes(cfg: &mut web::ServiceConfig) {
         )
         .route("/", get().to(index))
         .route("/login", get().to(login))
+        .route("/loginPost", post().to(login_post))
         .route("/create_id", get().to(create_id))
         .service(
             resource("/post")
@@ -65,7 +63,6 @@ fn routes(cfg: &mut web::ServiceConfig) {
         )
         .route("/blob/{base58hash}", get().to(view_blob))
         .route("/md/{base58hash}", get().to(view_md))
-        .route("/sessionTest", get().to(session_test))
     ;
 }
 
@@ -159,15 +156,7 @@ fn post_post(
     Ok(response)
 }
 
-fn session_test(session: Session) -> Result<impl Responder, Error>
-{
-    let mut writer = session.write();
-    let mut count = writer.get("counter").unwrap_or(0 as u32);
-    count = count + 1;
-    writer.set("counter", count);
 
-    return Ok(count.to_string());
-}
 
 fn file_not_found() -> impl Responder {
     NotFoundPage{}.responder()
@@ -175,11 +164,29 @@ fn file_not_found() -> impl Responder {
 }
 
 fn login(session: Session) -> impl Responder {
-    let logged_in_pkey = session.read().get("logged_in_pkey").map(|s| Option::Some(s)).unwrap_or(None);
+    let logged_in_pkey = session.pub_key().map(|k| k.bytes().to_base58());
 
     LoginPage{
         logged_in_pkey
     }.responder()
+}
+
+fn login_post(session: Session, form: Form<LoginForm>) -> Result<impl Responder, failure::Error> {
+    session.log_out();
+
+    let LoginForm{secret_key}= form.into_inner();
+    let bytes: Vec<u8> = match secret_key.from_base58() {
+        Err(err) => bail!("{}", err),
+        Ok(bytes) => bytes,
+    };
+    session.log_in(bytes.as_ref())?;
+
+
+    Ok(
+        HttpResponse::TemporaryRedirect()
+        .header(header::LOCATION, "/login")
+        .finish()
+    )
 }
 
 #[derive(Template, Default)]
@@ -187,6 +194,11 @@ fn login(session: Session) -> impl Responder {
 struct LoginPage
 {
     logged_in_pkey: Option<String>
+}
+
+#[derive(Deserialize, Default)]
+struct LoginForm {
+    secret_key: String
 }
 
 fn create_id() -> impl Responder {
@@ -229,3 +241,5 @@ struct PostPage
 struct PostForm {
     body: String
 }
+
+
