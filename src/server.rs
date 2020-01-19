@@ -16,9 +16,10 @@ use crate::user_session::UserSession;
 pub(crate) fn serve(options: crate::SharedOptions) -> Result<(), Error> {
     rust_sodium::init().expect("rust_sodium::init()");
 
-    // TODO: Error if the file doesn't exist, and make an 'init' command.
-    // For now, this creates one if it doesn't exist already:
+    // TODO: Error if the file doesn't exist, and make a separate 'init' command.
     let factory = backend::sqlite::Factory::new(options.sqlite_file.clone());
+    // For now, this creates one if it doesn't exist already:
+    factory.open()?.setup().context("Error setting up DB")?;
     
     let middleware = in_memory_session::Middleware::new();
 
