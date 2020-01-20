@@ -4,14 +4,14 @@ use actix_web::{App, HttpServer, Responder};
 use askama::Template;
 use failure::{bail, Error, ResultExt};
 use serde::Deserialize;
+use rust_embed::RustEmbed;
 
 use crate::backend::{self, *};
 use crate::responder_util::ToResponder;
 use actix_web::http::StatusCode;
-use in_memory_session::{Session, SessionReader, SessionWriter};
 use rust_base58::{FromBase58, ToBase58};
 
-use crate::user_session::UserSession;
+
 
 pub(crate) fn serve(options: crate::SharedOptions) -> Result<(), Error> {
     rust_sodium::init().expect("rust_sodium::init()");
@@ -21,12 +21,10 @@ pub(crate) fn serve(options: crate::SharedOptions) -> Result<(), Error> {
     // For now, this creates one if it doesn't exist already:
     factory.open()?.setup().context("Error setting up DB")?;
     
-    let middleware = in_memory_session::Middleware::new();
 
     let app_factory = move || {
         let db = factory.open().expect("Couldn't open DB connection.");
         let mut app = App::new()
-            .wrap(middleware.clone())
             .data(db)
             .configure(routes)
         ;
@@ -56,19 +54,68 @@ pub(crate) fn serve(options: crate::SharedOptions) -> Result<(), Error> {
 
 /// Routes appropriate for servers and local use.
 fn routes(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::scope("/static").configure(statics))
+    cfg
         .route("/", get().to(index))
         .route("/blob/{base58hash}", get().to(view_blob))
         .route("/md/{base58hash}", get().to(view_md))
     ;
+    statics(cfg);
 }
+
+
+
+trait StaticFilesResponder {
+    type Response: Responder;
+    fn response(path: Path<(String,)>) -> Result<Self::Response, Error>;
+}
+
+impl <T: RustEmbed> StaticFilesResponder for T {
+    type Response = HttpResponse;
+
+    fn response(path: Path<(String,)>) -> Result<Self::Response, Error> {
+        let (path,) = path.into_inner();
+        
+            
+        let bytes = match T::get(path.as_str()) {
+            Some(value) => value,
+            _ => return Ok(
+                    HttpResponse::NotFound()
+                    .body("File not found.")
+                )
+        };
+
+        // Set some response headers.
+        // In particular, a mime type is required for things like JS to work.
+        let mime_type = format!("{}", mime_guess::from_path(path).first_or_octet_stream());
+        let response = HttpResponse::Ok()
+            .content_type(mime_type)
+            // TODO: This likely will result in lots of byte copying in
+            // production mode. Should implement our own MessageBody
+            // for Cow<'static, [u8]>
+            .body(bytes.into_owned());
+        Ok(   
+            response
+        )
+    }
+} 
+
+
+#[derive(RustEmbed, Debug)]
+#[folder = "static/"]
+struct StaticFiles;
+
+#[derive(RustEmbed, Debug)]
+#[folder = "web-client/src"]
+struct WebClientFiles;
+
+#[derive(RustEmbed, Debug)]
+#[folder = "web-client/web_modules"]
+struct WebClientDeps;
+
 
 /// Routes that require a server with options.allow_login:
 fn logged_in_routes(cfg: &mut web::ServiceConfig) {
-    cfg.route("/login", get().to(login))
-        .route("/login", post().to(login_post))
-        .route("/logout", get().to(logout))
-        .route("/create_id", get().to(create_id))
+    cfg
         .service(
             resource("/post")
                 .route(get().to(view_post))
@@ -79,14 +126,19 @@ fn logged_in_routes(cfg: &mut web::ServiceConfig) {
 
 
 fn statics(cfg: &mut web::ServiceConfig) {
-    cfg.route(
-        "/style.css",
-        get().to(|| {
-            HttpResponse::Ok()
-                .body(include_str!("../static/style.css"))
-                .with_header("content-type", "text/css")
-        }),
-    );
+    cfg
+        // .route(
+        //     "/style.css",
+        //     get().to(|| {
+        //         HttpResponse::Ok()
+        //             .body(include_str!("../static/style.css"))
+        //            s.with_header("content-type", "text/css")
+        //     })
+        // )
+        .route("/static/{path:.*}", get().to(StaticFiles::response))
+        .route("/web-cli/modules/{path:.*}", get().to(WebClientDeps::response))
+        .route("/web-cli/{path:.*}", get().to(WebClientFiles::response))
+    ;
 }
 
 fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error> {
@@ -161,28 +213,7 @@ fn file_not_found() -> impl Responder {
         .with_status(StatusCode::NOT_FOUND)
 }
 
-fn login(session: Session) -> impl Responder {
-    let logged_in_pkey = session.pub_key().map(|k| k.bytes().to_base58());
 
-    LoginPage { logged_in_pkey }.responder()
-}
-
-fn login_post(session: Session, form: Form<LoginForm>) -> Result<impl Responder, failure::Error> {
-    let LoginForm { secret_key } = form.into_inner();
-    let bytes: Vec<u8> = match secret_key.from_base58() {
-        Err(err) => bail!("{}", err),
-        Ok(bytes) => bytes,
-    };
-    // TODO: Should make log_in handle this iff login is valid.
-    session.log_out();
-    session.log_in(bytes.as_ref())?;
-
-    // TODO: Mark the user as "homed" on this server.
-
-    Ok(HttpResponse::SeeOther()
-        .header(header::LOCATION, "/login")
-        .finish())
-}
 
 #[derive(Template, Default)]
 #[template(path = "login.html")]
@@ -195,11 +226,6 @@ struct LoginForm {
     secret_key: String,
 }
 
-fn logout(session: Session) -> Result<impl Responder, failure::Error> {
-    session.log_out();
-
-    Ok(LoggedOutPage {}.responder())
-}
 
 #[derive(Template, Default)]
 #[template(path = "logged_out.html")]

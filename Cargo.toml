@@ -9,8 +9,6 @@ edition = "2018"
 actix-web = "1"
 actix-web-codegen = "*"
 
-
-
 # Error handling:
 failure = "*"
 
@@ -28,6 +26,11 @@ rust_sodium-sys = "*"
 # Markdown:
 pulldown-cmark = "*"
 
+# Allow embedding local files. 
+rust-embed = "*"
+# ... and serving those files w/ the right mime types.
+mime_guess = "2"
+
 # (De)serialization for signed blobs:
 serde = "*"
 serde_derive = "*"
@@ -40,15 +43,6 @@ features = [
     "bundled"
 ]
 
-[dependencies.in-memory-session]
-path = "crates/in-memory-session"
-
-
-[workspace]
-members = [
-    ".",
-    "crates/in-memory-session",
-]
 
 [dependencies.askama]
 version = "*"
