@@ -54,6 +54,8 @@ enum Command
     /// Serve local content as a web site.
     /// The write UI is disabled. Content must be signed and pushed from
     /// other instances.
+    // TODO: Delete. There's no longer a distinction between serve and open,
+    // since we're removing login sessions from the server.
     Serve { 
         #[structopt(flatten)]
         shared_options: SharedOptions,

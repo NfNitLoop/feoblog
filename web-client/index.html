@@ -1,0 +1,70 @@
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Testing</title>
+
+<style type="text/css">
+#app {
+    display: grid;
+    width: 100%;
+    grid-template-columns: 1fr 1fr;
+    max-height: 80vh;
+}
+
+#app .input {
+    min-height: 20em;
+    padding: 1em;
+}
+#app .input textarea {
+    min-height: 20em;
+    height: 100%;
+    width: 100%;
+}
+
+#output {
+    border: 1px dashed grey;
+    border-radius: 1em;
+    padding-left: 1em;
+    padding-right: 1em;
+    overflow: auto;
+    min-height: 1em; /* fixes overflow? */
+    max-height: 100%;
+
+}
+
+#output .timestamp {
+    color: grey;
+    font-size: 0.8em;
+}
+
+.post-head .title {
+    margin-bottom: 0px;
+}
+</style>
+
+</head>
+<body>
+
+
+<div id="app">
+    <div class="input">
+        <input type="text" v-model="title">
+        <br><input type="text" v-model="timestamp">
+        <br><textarea v-model="post" ref="textbox"></textarea>
+    </div>
+
+    <div id="output">
+        <div class="post-head">
+            <h1 class="title" v-if="title">{{ title }}</h1>
+            <div class="timestamp" v-html="timestamp"></div>
+        </div>
+        
+        <div id="markdown-out" v-html="markdownOut"></div>
+    </div>
+
+</div>
+
+<script type="module" src="./index.js"></script>
+
+</body>
+</html>

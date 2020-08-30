@@ -4,16 +4,23 @@
   "description": "web client for the feoblog backend",
   "main": "index.js",
   "dependencies": {
-    "vue": "^2.6.11"
+    "base58": "*",
+    "bs58": "*",
+    "commonmark": "*",
+    "vue": "^2.6.12",
+    "webpack": "^4.44.1"
   },
   "devDependencies": {
-    "serve": "^11.3.0",
-    "snowpack": "^1.0.5",
-    "typescript": "^3.7.5"
+    "serve": "^11.3.2",
+    "snowpack": "*",
+    "typescript": "^3.9.7"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "snowpack": "snowpack",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "watch": "snowpack build --watch"
   },
+  "repository": null,
   "author": "",
   "license": "ISC"
 }

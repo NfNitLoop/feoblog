@@ -47,3 +47,11 @@ Implementation Details
 [URL Layout]: ./docs/url_layout.md
 [Data Format]: ./docs/data_format.md
 [Cryptography]: ./docs/crypto.md
+
+
+Development
+===========
+
+To develop the interactive web client, run `npm run watch` in the web-client
+subdirectory, then run `cargo run serve`.
+

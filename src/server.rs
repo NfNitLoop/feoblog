@@ -62,8 +62,6 @@ fn routes(cfg: &mut web::ServiceConfig) {
     statics(cfg);
 }
 
-
-
 trait StaticFilesResponder {
     type Response: Responder;
     fn response(path: Path<(String,)>) -> Result<Self::Response, Error>;
@@ -105,12 +103,9 @@ impl <T: RustEmbed> StaticFilesResponder for T {
 struct StaticFiles;
 
 #[derive(RustEmbed, Debug)]
-#[folder = "web-client/src"]
-struct WebClientFiles;
+#[folder = "web-client/build/"]
+struct WebClientBuild;
 
-#[derive(RustEmbed, Debug)]
-#[folder = "web-client/web_modules"]
-struct WebClientDeps;
 
 
 /// Routes that require a server with options.allow_login:
@@ -136,8 +131,9 @@ fn statics(cfg: &mut web::ServiceConfig) {
         //     })
         // )
         .route("/static/{path:.*}", get().to(StaticFiles::response))
-        .route("/web-cli/modules/{path:.*}", get().to(WebClientDeps::response))
-        .route("/web-cli/{path:.*}", get().to(WebClientFiles::response))
+        // .route("/web-cli/modules/{path:.*}", get().to(WebClientDeps::response))
+        // .route("/web-cli/dist/{path:.*}", get().to(WebClientDist::response))
+        .route("/client/{path:.*}", get().to(WebClientBuild::response))
     ;
 }
 
