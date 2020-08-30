@@ -40,6 +40,19 @@
 .post-head .title {
     margin-bottom: 0px;
 }
+
+.input table, .input input[type=text] {
+    width: 100%;
+}
+.input table th {
+    text-align: right;
+}
+
+div.error {
+    color: red;
+    font-weight: bold;
+}
+
 </style>
 
 </head>
@@ -48,15 +61,35 @@
 
 <div id="app">
     <div class="input">
-        <input type="text" v-model="title">
-        <br><input type="text" v-model="timestamp">
+        <table>
+            <tr>
+                <th><label for="title">Title</label>:</th>
+                <td><input type="text" name="title" v-model="title"></td>
+            </tr>
+            <tr>
+                <th><label for="time">Time</label>:</th>
+                <td>
+                    <input type="text" name="time" v-model="timeInput">
+                    <div class="error" v-if="timeInputError">{{timeInputError}}</div>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="timestamp">Timestamp (ms)</label>:</th>
+                <td><input type="text" name="timestamp" v-model="timestampUtcMs" disabled></td>
+            </tr>
+            <tr>
+                <th><label for="offset">UTC Offset (minutes)</label>:</th>
+                <td><input type="text" name="offset" v-model="offsetMinutes" disabled></td>
+            </tr>
+        </table>
+        
         <br><textarea v-model="post" ref="textbox"></textarea>
     </div>
 
     <div id="output">
         <div class="post-head">
             <h1 class="title" v-if="title">{{ title }}</h1>
-            <div class="timestamp" v-html="timestamp"></div>
+            <div class="timestamp">{{ formattedDate }}</div>
         </div>
         
         <div id="markdown-out" v-html="markdownOut"></div>
