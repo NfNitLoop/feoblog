@@ -3,6 +3,11 @@ import bs58 from "bs58"
 import commonmark from "commonmark"
 import moment from "moment"
 
+// I don't quite understand how Google's Closure-y "commonjs" exports work,
+// but it seems that doing this makes window.proto available.
+import * as protos from "./protos/feoblog.js"
+
+const proto = window.proto;
 
 // TODO:
 const reader = new commonmark.Parser()
@@ -11,11 +16,11 @@ const writer = new commonmark.HtmlRenderer({ safe: true})
 // Strictly parse one of these non-ambiguous timestamps. (MUST include time zone.)
 const DATE_FORMATS = [
     // Preferred:
-    "YYYY-MM-DD hh:mm:ss.SSS ZZ",
+    "YYYY-MM-DD HH:mm:ss.SSS ZZ",
     // May drop milliseconds:
-    "YYYY-MM-DD hh:mm:ss ZZ",
+    "YYYY-MM-DD HH:mm:ss ZZ",
     // ... and seconds:
-    "YYYY-MM-DD hh:mm ZZ",
+    "YYYY-MM-DD HH:mm ZZ",
 ]
 
 function parseDate(str) {
@@ -57,6 +62,7 @@ var app = new Vue({
         },
         
         // Used for display in the rendered post.
+        // TODO: Fix for time offset.
         formattedDate: function() {
             if (!this.timestampUtcMs) {
                 return "(invalid date)"
@@ -101,6 +107,21 @@ var app = new Vue({
 
             return 
         },
+
+        itemProto: function() {
+            let post = new proto.Post()
+            post.setBody(this.post)
+            post.setTitle(this.title)
+
+            let item = new proto.Item()
+            item.setTimestampMsUtc(this.timestampUtcMs)
+            item.setUtcOffsetMinutes(this.offsetMinutes)
+            item.setPost(post)
+
+            return item;
+        },
+
+        
     },
 
     methods: {

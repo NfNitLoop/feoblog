@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+// Each FeoBlog user's "blog" is really a collection of "Items" of different
+// types. It's important to keep in mind that different servers may cache
+// different subsets of items.
+//
+// Servers may (and probably should) impose a size limit for Item records.
+// Servers should accept items up to 32KiB (from users who have permission to
+// post to the server).
+//
+// Clients upload items to servers by POSTing to:
+// /u/{userID}/i/{itemID}/proto3
+// The body of the POST is the binary proto3 representation of the Item.
+// The userID is a base58-encoded NaCl public key.
+// The {itemID} is a bas58-encoded detached NaCl signature of the proto3 bytes.
+// The server must then verify the signature before storing and serving the
+// proto3 bytes and must reject invalid signatures.
+//
+message Item {
+
+    // REQUIRED
+    // The timestamp is used to give order to a user's collection of Items.
+    // This timestamp represents the number of milliseconds since
+    // 1970-01-01 00:00:00.000Z (ignoring leap seconds).
+    //
+    // This is somewhat useful for displaying blog posts in order. But it's
+    // especially important for ordering things like updates to a user's
+    // profile.
+    // 
+    // As a result, servers should not accept timestamps in the future (except
+    // for maybe a small allowance due to clock drift.)
+    int64 timestamp_ms_utc = 1;
+
+    // Optionally specify the user's timezone offset when they created this
+    // Item. This is useful when displaying more meaningful dates on things
+    // like Posts.
+    //
+    // For example, Pacific Daylight Time has an offset of "-0700", or -420
+    // minutes.
+    // Servers should reject offsets of more than +/- 24 hours. 
+    // 
+    // Defaults to 0 (UTC).
+    sint32 utc_offset_minutes = 2;
+
+    oneof item_type {
+        Post post = 3;
+        Profile profile = 4;
+    }
+}
+
+// Servers should render posts at at least two URLs:
+// 1. /u/{userID}/[?before={timestamp_ms_utc}]
+//    should render (some number of) the user's most recent posts before
+//    timestamp_ms_utc. These may be truncated.
+// 2. /u/{userID}/i/{itemID}/
+//    should render a single user post.
+//    
+message Post {
+    // An optional plaintext title for the post.
+    // Titles should be <= 256 bytes. Servers may reject longer ones.
+    string title = 1;
+
+    // The body of the post, formatted in CommonMark markdown.
+    // Servers should suppress unsafe raw HTML blocks in the body. They may do
+    // so by rejecting the Item at the time of upload, or by choosing to render
+    // the Item without the offending HTML parts.
+    //
+    // The allowed size of the body is effectively limited by the allowed
+    // size of the enclosing Item.
+    string body = 2;
+
+    // TODO: files
+    // TODO: replyTo
+}
+
+
+// A user profile, where a user can provide information about themselves.
+//
+// A server should render a human-readable version of the user profile at
+// /u/{userID}/profile.
+// This should always be the newest version of the Profile available on the
+// server.
+// If a server hosts a user profile, it must allow uploads of newer signed
+// Item entries to replace it.
+message Profile {
+    // TODO
+    // handle
+    // name
+    // aliases
+    // post
+    // servers
+    // follows
+    // read_only. // abandoned/finished blogs.
+    // irrevocably_purge_this_user
+
+}

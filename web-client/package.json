@@ -7,11 +7,14 @@
     "base58": "*",
     "bs58": "*",
     "commonmark": "*",
+    "google-protobuf": "^3.13.0",
     "moment": "^2.27.0",
     "vue": "^2.6.12",
     "webpack": "^4.44.1"
   },
   "devDependencies": {
+    "@snowpack/plugin-babel": "^2.1.0",
+    "browserify": "^16.5.2",
     "serve": "^11.3.2",
     "snowpack": "*",
     "typescript": "^3.9.7"

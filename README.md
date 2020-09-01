@@ -52,6 +52,12 @@ Implementation Details
 Development
 ===========
 
-To develop the interactive web client, run `npm run watch` in the web-client
+Dependencies:
+ * npm
+ * protoc
+
+You may need to run `npm install` inside the `web-client` subdirectory.
+
+To develop the interactive web client, run `npm run watch` in the `web-client`
 subdirectory, then run `cargo run serve`.
 
