@@ -53,6 +53,10 @@ div.error {
     font-weight: bold;
 }
 
+.protoPreview {
+    overflow: hidden;
+}
+
 </style>
 
 </head>
@@ -73,17 +77,9 @@ div.error {
                     <div class="error" v-if="timeInputError">{{timeInputError}}</div>
                 </td>
             </tr>
-            <tr>
-                <th><label for="timestamp">Timestamp (ms)</label>:</th>
-                <td><input type="text" name="timestamp" v-model="timestampUtcMs" disabled></td>
-            </tr>
-            <tr>
-                <th><label for="offset">UTC Offset (minutes)</label>:</th>
-                <td><input type="text" name="offset" v-model="offsetMinutes" disabled></td>
-            </tr>
         </table>
         
-        <br><textarea v-model="post" ref="textbox"></textarea>
+        <textarea v-model="post" ref="textbox"></textarea>
     </div>
 
     <div id="output">
@@ -95,7 +91,18 @@ div.error {
         <div id="markdown-out" v-html="markdownOut"></div>
     </div>
 
+    <div v-if="debug" class="protoPreview">
+        <pre>
+bytes: {{protoSize}}
+{{itemJson}}
+        </pre>
+
+        binary: <code>{{ protoHex }}</code>
+    </div>
+
 </div>
+
+
 
 <script type="module" src="./index.js"></script>
 

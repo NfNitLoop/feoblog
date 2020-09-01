@@ -3,11 +3,7 @@ import bs58 from "bs58"
 import commonmark from "commonmark"
 import moment from "moment"
 
-// I don't quite understand how Google's Closure-y "commonjs" exports work,
-// but it seems that doing this makes window.proto available.
-import * as protos from "./protos/feoblog.js"
-
-const proto = window.proto;
+import { Item, Post } from "./protos/feoblog"
 
 // TODO:
 const reader = new commonmark.Parser()
@@ -108,19 +104,39 @@ var app = new Vue({
             return 
         },
 
-        itemProto: function() {
-            let post = new proto.Post()
-            post.setBody(this.post)
-            post.setTitle(this.title)
+        itemProto: function(): Item {
+            let item = new Item({
+                timestamp_ms_utc: this.timestampUtcMs,
+                utc_offset_minutes: this.offsetMinutes,
+                post: new Post()
+            })
 
-            let item = new proto.Item()
-            item.setTimestampMsUtc(this.timestampUtcMs)
-            item.setUtcOffsetMinutes(this.offsetMinutes)
-            item.setPost(post)
+            // See: https://github.com/thesayyn/protoc-gen-ts/issues/16
+            let post = item.post;
+            if (this.title) { post.title = this.title }
+            if (this.post) { post.body = this.post }
+        
 
             return item;
         },
 
+        itemJson: function() {
+            return JSON.stringify(this.itemProto.toObject(), null, 1)
+        },
+
+        debug: function() {
+            // TODO: Better way to enable debug:
+            return true
+            return this.post.startsWith("!!!debug")
+        },
+
+        protoSize: function() { 
+            return (this.itemProto as Item).serialize().length
+        },
+
+        protoHex: function() {
+            return bufferToHex(this.itemProto.serialize())
+        },
         
     },
 
@@ -134,4 +150,8 @@ var app = new Vue({
     }
 });
 
-
+function bufferToHex (x) {
+    return [...new Uint8Array (x)]
+        .map (b => b.toString(16).padStart(2, "0"))
+        .join (" ");
+}
