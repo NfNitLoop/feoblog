@@ -9,6 +9,7 @@
     "commonmark": "*",
     "google-protobuf": "^3.13.0",
     "moment": "^2.27.0",
+    "tweetnacl-ts": "^1.0.3",
     "vue": "^2.6.12"
   },
   "devDependencies": {

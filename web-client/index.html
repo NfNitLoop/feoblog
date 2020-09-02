@@ -8,16 +8,16 @@
     display: grid;
     width: 100%;
     grid-template-columns: 1fr 1fr;
-    max-height: 80vh;
+    /* max-height: 80vh; */
 }
 
-#app .input {
-    min-height: 20em;
-    padding: 1em;
+#app > div {
+    margin-left: 0.5em;
+    margin-right: 0.5em;
 }
-#app .input textarea {
+
+#app .postBody textarea {
     min-height: 20em;
-    height: 100%;
     width: 100%;
 }
 
@@ -37,16 +37,26 @@
     font-size: 0.8em;
 }
 
-.post-head .title {
+.postPreviewHead .title {
     margin-bottom: 0px;
 }
 
-.input table, .input input[type=text] {
+table.form {
     width: 100%;
 }
-.input table th {
+table.form th {
     text-align: right;
+    width: 20%;
+    min-width: 12ch;
 }
+table.form td {
+    width: 80%;
+}
+
+table.form input[type=text], table.form input[type=password] {
+    width: 100%;
+}
+
 
 div.error {
     color: red;
@@ -64,8 +74,8 @@ div.error {
 
 
 <div id="app">
-    <div class="input">
-        <table>
+    <div class="postMetadata">
+        <table class="form">
             <tr>
                 <th><label for="title">Title</label>:</th>
                 <td><input type="text" name="title" v-model="title"></td>
@@ -78,12 +88,38 @@ div.error {
                 </td>
             </tr>
         </table>
-        
+    </div>
+
+    <div class="postPreviewHeader">
+        Markdown Preview
+    </div>
+
+    <div class="postBody">
         <textarea v-model="post" ref="textbox"></textarea>
+        <table class="form">
+            <tr>
+                <th><label for="userID">User ID</label>:</th>
+                <td><input type="text" name="userID" v-model="userID"></td>
+            </tr>
+            <tr>
+                <th><label for="privateKey">Private Key</label>:</th>
+                <td><input type="password" name="privateKey" v-model="privateKey"></td>
+            </tr>
+            <tr>
+                <th><label for="signature">Signature</label>:</th>
+                <td><input type="text" name="signature" v-model="signature" disabled></td>
+            </tr>
+            <tr>
+                <th></th>
+                <td>
+                    <button name="submit" :disabled="!valid">Submit</button>
+                </td>
+            </tr>
+        </table>
     </div>
 
     <div id="output">
-        <div class="post-head">
+        <div class="postPreviewHead">
             <h1 class="title" v-if="title">{{ title }}</h1>
             <div class="timestamp">{{ formattedDate }}</div>
         </div>
