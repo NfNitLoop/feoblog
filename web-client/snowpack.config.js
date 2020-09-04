@@ -23,7 +23,7 @@ module.exports = {
             {
                 cmd: (
                     "protoc"
-                    + " --plugin=./node_modules/.bin/protoc-gen-ts" + (isWindows() ? ".cmd" : "")
+                    + ` --plugin=./node_modules/.bin/${npmScript('protoc-gen-ts')}`
                     + " --ts_out=protos"
                     + " --proto_path=../protobufs/"
                     + " feoblog.proto"
@@ -31,10 +31,18 @@ module.exports = {
                 // TODO: watch?
             },
         ],
+        ["@snowpack/plugin-svelte"],
     ],
     buildOptions: {
         clean: true,
     }
+}
+
+function npmScript(name) {
+    if (isWindows()) {
+        return `${name}.cmd`
+    }
+    return name
 }
 
 function isWindows() {

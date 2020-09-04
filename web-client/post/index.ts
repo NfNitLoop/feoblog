@@ -3,7 +3,7 @@ import bs58 from "bs58"
 import commonmark from "commonmark"
 import moment from "moment"
 
-import { Item, Post } from "./protos/feoblog"
+import { Item, Post } from "../protos/feoblog"
 
 import * as nacl from "tweetnacl-ts"
 

@@ -71,28 +71,51 @@ impl <T: RustEmbed> StaticFilesResponder for T {
     type Response = HttpResponse;
 
     fn response(path: Path<(String,)>) -> Result<Self::Response, Error> {
-        let (path,) = path.into_inner();
+        let (mut path,) = path.into_inner();
         
             
-        let bytes = match T::get(path.as_str()) {
-            Some(value) => value,
-            _ => return Ok(
-                    HttpResponse::NotFound()
-                    .body("File not found.")
-                )
-        };
+        let mut maybe_bytes = T::get(path.as_str());
+        
+        // Check index.html:
+        if maybe_bytes.is_none() && (path.ends_with("/") || path.is_empty()) {
+            let inner = format!("{}index.html", path);
+            let mb = T::get(inner.as_str());
+            if mb.is_some() {
+                path = inner;
+                maybe_bytes = mb;
+            }
+        }
 
-        // Set some response headers.
-        // In particular, a mime type is required for things like JS to work.
-        let mime_type = format!("{}", mime_guess::from_path(path).first_or_octet_stream());
-        let response = HttpResponse::Ok()
-            .content_type(mime_type)
-            // TODO: This likely will result in lots of byte copying in
-            // production mode. Should implement our own MessageBody
-            // for Cow<'static, [u8]>
-            .body(bytes.into_owned());
-        Ok(   
-            response
+        if let Some(bytes) = maybe_bytes {
+            // Set some response headers.
+            // In particular, a mime type is required for things like JS to work.
+            let mime_type = format!("{}", mime_guess::from_path(path).first_or_octet_stream());
+            let response = HttpResponse::Ok()
+                .content_type(mime_type)
+
+                // TODO: This likely will result in lots of byte copying.
+                // Should implement our own MessageBody
+                // for Cow<'static, [u8]>
+                .body(bytes.into_owned());
+            return Ok(response)
+        }
+
+        // If adding the slash would get us an index.html, do so:
+        let with_index = format!("{}/index.html", path);
+        if T::get(with_index.as_str()).is_some() {
+            // Use a relative redirect from the inner-most path part:
+            let part = path.split("/").last().expect("at least one element");
+            let part = format!("{}/", part);
+            return Ok(
+                HttpResponse::SeeOther()
+                    .header("location", part)
+                    .finish()
+            );
+        }
+
+        Ok(
+            HttpResponse::NotFound()
+            .body("File not found.")
         )
     }
 } 
