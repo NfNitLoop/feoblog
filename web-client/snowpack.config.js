@@ -5,9 +5,6 @@ module.exports = {
         "snowpack.config.js",
         "**/.gitignore",
 
-        // This is an intermediate build file, later processed by browserify.
-        "protos/feoblog.proto3_pb.js",
-
         // But also sometimes I `cargo run` in the wrong dir:
         "**/*.@(sqlite|sqlite3)",
 
@@ -18,6 +15,7 @@ module.exports = {
         polyfillNode: true
     },
     plugins: [
+        // Use protoc-gen-ts to compile .proto files:
         [
             "@snowpack/plugin-run-script",
             {
@@ -32,6 +30,18 @@ module.exports = {
             },
         ],
         ["@snowpack/plugin-svelte"],
+        
+        // Run svelte-check for Typescript checking
+        // See: https://github.com/pikapkg/snowpack/blob/master/create-snowpack-app/app-template-svelte-typescript/snowpack.config.json
+        // When used with `snowpack build --wait`, only checks at startup.
+        [
+            "@snowpack/plugin-run-script",
+            {
+                "cmd": "svelte-check --output human",
+                "watch": "$1 --watch",
+                "output": "stream"
+            }
+        ]
     ],
     buildOptions: {
         clean: true,

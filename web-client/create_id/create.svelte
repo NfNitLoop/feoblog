@@ -26,7 +26,7 @@ function click() {
     privateKey = bs58.encode(seed)  
 }
 
-function equalBytes(array1, array2) {
+function equalBytes(array1: Uint8Array, array2: Uint8Array): boolean {
     return (array1.length == array2.length) && array1.every(
         (value, index) => value == array2[index]
     )

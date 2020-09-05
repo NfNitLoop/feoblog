@@ -1,4 +1,5 @@
 {
+    "extends": "@tsconfig/svelte/tsconfig.json",
     "compilerOptions": {
         "target": "ES2019",
         "esModuleInterop": true,
