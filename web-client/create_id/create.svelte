@@ -1,6 +1,10 @@
 <script lang="ts">
 import bs58 from "bs58"
+import bs58check from "bs58check"
 import * as nacl from "tweetnacl-ts"
+import buffer from "buffer"
+let Buffer = buffer.Buffer
+
 
 let userID = ""
 let privateKey = ""
@@ -12,7 +16,7 @@ const SEED_BYTES = 32;
 function click() {
     let pair = nacl.sign_keyPair()
     
-    let seed = pair.secretKey.slice(0, SEED_BYTES)
+    let seed: Uint8Array = pair.secretKey.slice(0, SEED_BYTES)
     // Validate that we can derive the pubkey from this half of the private key:
     let derived = nacl.sign_keyPair_fromSeed(seed)
 
@@ -23,7 +27,15 @@ function click() {
     }
     
     userID = bs58.encode(pair.publicKey)
-    privateKey = bs58.encode(seed)  
+
+    let buf = Buffer.from(seed)
+
+    // The password is base58check.
+    // Since we derive the public key from the seed, mistyping (or incorrectly
+    // pasting) the seed could silently result in signing with a wrong/invalid
+    // ID. This gives us a way to check that a password is "correct", as well
+    // as distinguish between a username and password.
+    privateKey = bs58check.encode(buf)  
 }
 
 function equalBytes(array1: Uint8Array, array2: Uint8Array): boolean {

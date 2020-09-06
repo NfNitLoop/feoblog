@@ -83,6 +83,7 @@ import commonmark from "commonmark"
 import moment from "moment"
 import { Item, Post } from "../protos/feoblog"
 import * as nacl from "tweetnacl-ts"
+import bs58check from 'bs58check';
 
 const reader = new commonmark.Parser()
 const writer = new commonmark.HtmlRenderer({ safe: true})
@@ -148,12 +149,20 @@ $: privateKeyError = function() {
         return "Not valid base58"
     }
 
-    if (buf.length != 32) {
-        return "Password too short"
+    // Secret is 32 bytes, + 4 for checked base58.
+    if (buf.length < 36) {
+        return "Password is too short."
+    }
+    if (buf.length > 36) {
+        return "Password is too long."
+    }
+
+    try {
+        buf = bs58check.decode(privateKey)
+    } catch (e) {
+        return "Invalid Password"
     }
     
-    // TODO: Consider using base58Check so that we can verify valid
-    // pkeys if someone tries to type one in.
 
     let keypair = nacl.sign_keyPair_fromSeed(buf);
     userID = bs58.encode(keypair.publicKey)

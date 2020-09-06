@@ -3,6 +3,8 @@ module.exports = {
         // Seems odd that these aren't excluded by default:
         "package*.json",
         "snowpack.config.js",
+        "svelte.config.js",
+        "tsconfig.json",
         "**/.gitignore",
 
         // But also sometimes I `cargo run` in the wrong dir:
