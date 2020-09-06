@@ -5,10 +5,10 @@
 //! Mostly, this makes data management trivial since it's all in one file.
 //! But if performance is an issue we can implement a different backend.
 
-use crate::backend::{self, Backend, Signature, Hash};
+use crate::backend::{self, UserID, ItemRow, Timestamp, ServerUser};
 
 use failure::{Error, bail};
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, OptionalExtension, Row};
 
 #[derive(Clone)]
 pub(crate) struct Factory
@@ -43,50 +43,100 @@ impl Connection
 {
     fn setup_new(&self) -> Result<(), Error>
     {
-        self.run("CREATE TABLE version (version INTEGER)")?;
-        self.run("INSERT INTO version VALUES(1)")?;
+        self.run("
+            CREATE TABLE version (
+                -- The current version of the database schema.
+                version INTEGER
+            )
+        ")?;
+        self.run("INSERT INTO version VALUES(2)")?;
 
         self.run("
-            CREATE TABLE signature(
-                -- A signature is the core data structure of FeoBlog.
-                -- It's a cryptographic signature of CBOR metadata about
-                -- a paritcular 'post'. Together, it proves that a user
-                -- made a post.
-                user_id BLOB -- ed25519 public signing key
-                , signature BLOB -- detached signature of the data
-                , unix_utc INTEGER -- UTC timestamp signed integer of when this was created
-                , received_utc INTEGER -- When this signature was received (vs. created)
-                , cbor_metadata BLOB -- metadata about this content
+            CREATE TABLE item(
+                -- An Item is the core data structure of FeoBlog.
+                -- It is a BLOB of protobuf v3 bytes defining an item in a
+                -- user's collection of items
+                bytes BLOB
+
+                -- An item must be accompanied by a nacl public key (user_id)
+                -- and (detached) signature so that its authenticity can be
+                -- verified.
+                , user_id BLOB
+                , signature BLOB
+
+                -- A copy of the signed timestamp from within `bytes`
+                -- this allows for sorting queries by timestamp.
+                , unix_utc_ms INTEGER
+
+                -- The date this item was received by this server. May differ
+                -- from above.
+                , received_utc_ms INTEGER
             )
         ")?;
         self.run("
-            CREATE UNIQUE INDEX signature_primary_idx
-            ON signature(user_id, signature)
+            CREATE UNIQUE INDEX item_primary_idx
+            ON item(user_id, signature)
         ")?;
         self.run("
-            CREATE INDEX signature_user_chrono_idx
-            ON signature(user_id, unix_utc)
+            CREATE INDEX item_user_chrono_idx
+            ON item(user_id, unix_utc_ms)
         ")?;
         self.run("
-            CREATE INDEX signature_user_chrono_received_idx
-            ON signature(user_id, received_utc)
+            CREATE INDEX item_user_chrono_received_idx
+            ON item(user_id, received_utc_ms)
         ")?;
         self.run("
-            CREATE INDEX signature_unix_utc_idx
-            ON signature(unix_utc)
+            CREATE INDEX item_unix_utc_idx
+            ON item(unix_utc_ms)
         ")?;
         self.run("
-            CREATE INDEX signature_received_utc_idx
-            ON signature(received_utc)
+            CREATE INDEX item_received_utc_idx
+            ON item(received_utc_ms)
         ")?;
 
         self.run("
-            CREATE TABLE blob(
-                -- A content-addressable store for many kinds of data.
-                hash BLOB PRIMARY KEY, -- multihash of the data.
-                data BLOB
+            CREATE TABLE server_user(
+                -- These users have been granted direct access to the server.
+                
+                user_id BLOB
+
+                -- Information about this user.
+                -- Not displayed on the web UI, just here to let the server
+                -- admin leave a human-readable note about who this user is.
+                , notes TEXT
+
+                -- bool 0/1 -- should this user's posts appear on the home page
+                -- of this server?
+                , on_homepage INTEGER
+
+                -- How many bytes will the server cache for this user?
+                -- 0 = unlimited.
+                , max_bytes INTEGER 
             )
-        ")?; 
+        ")?;
+
+        self.run("
+            CREATE UNIQUE INDEX server_user_primary_idx
+            ON server_user(user_id)
+        ")?;
+
+        self.run("
+            CREATE INDEX server_user_homepage_idx
+            ON server_user(on_homepage, user_id)
+        ")?;
+
+
+        // TODO: a "profile" table which tracks users' latest profile.
+        // TODO: a "follow" table which shows which users are followed by
+        // server_users
+
+        // self.run("
+        //     CREATE TABLE blob(
+        //         -- A content-addressable store for many kinds of data.
+        //         hash BLOB PRIMARY KEY, -- multihash of the data.
+        //         data BLOB
+        //     )
+        // ")?; 
 
 
         // TODO: Cache tables for quick lookups of things.
@@ -116,9 +166,11 @@ impl Connection
         if table_count == 0 {
             return Ok(None);
         }
-        if table_count > 1 {
-            bail!("Found {} versions in the version table.", table_count);
-        }
+
+        // TODO: Oops, meant to count rows here, not tables. 
+        // if table_count > 1 {
+        //     bail!("Found {} versions in the version table.", table_count);
+        // }
 
         let  version = self.conn.prepare(
             "SELECT MAX(version) from version"
@@ -131,7 +183,7 @@ impl Connection
     }
 }
 
-const CURRENT_VERSION: u32 = 1;
+const CURRENT_VERSION: u32 = 2;
 
 impl backend::Backend for Connection
 {
@@ -140,6 +192,8 @@ impl backend::Backend for Connection
     {
         let version = match self.get_version()? {
             None => {
+                // TODO: This shouldn't be automatic, should force user to
+                // explicitly create a new data store.
                 return self.setup_new();
             },
             Some(version) => version
@@ -159,7 +213,6 @@ impl backend::Backend for Connection
         bail!("DB version {} is unknown. Migration not implemented.", version);
     }
 
-    // Reads an entire blob into memory. TODO: Make a streaming version.
     fn get_blob(&self, hash: &backend::Hash) -> Result<Option<Vec<u8>>, Error>
     {
         let mut stmt = self.conn.prepare("
@@ -174,10 +227,6 @@ impl backend::Backend for Connection
         Ok(blob)
     }
 
-    fn get_signature(&self, _key: &[u8]) -> Result<Option<Signature>, Error>
-    {
-        Ok(None)
-    }
 
     // Make a streaming version.
     fn save_blob(&self, data: &[u8]) -> Result<backend::Hash, Error>
@@ -195,24 +244,70 @@ impl backend::Backend for Connection
         Ok(hash)
     }
 
-    fn get_hashes(&self) -> Result<Vec<backend::Hash>, Error>
+    // fn get_hashes(&self) -> Result<Vec<backend::Hash>, Error>
+    // {
+    //     let mut stmt = self.conn.prepare("
+    //         SELECT hash
+    //         FROM blob
+    //         ORDER BY hash
+    //         LIMIT 10000
+    //     ")?;
+
+    //     let hash_iter = stmt.query_map(
+    //         params![],
+    //         |row| Ok(
+    //             backend::Hash{multihash: row.get(0)?}
+    //         )
+    //     )?;
+
+    //     let hashes: Result<Vec<backend::Hash>, rusqlite::Error> = hash_iter.collect();
+    //     Ok(hashes?)
+    // }
+
+    fn save_user_item(&self, _:ItemRow)
+    -> Result<(), Error>
     {
-        let mut stmt = self.conn.prepare("
-            SELECT hash
-            FROM blob
-            ORDER BY hash
-            LIMIT 10000
-        ")?;
-
-        let hash_iter = stmt.query_map(
-            params![],
-            |row| Ok(
-                backend::Hash{multihash: row.get(0)?}
-            )
-        )?;
-
-        let hashes: Result<Vec<backend::Hash>, rusqlite::Error> = hash_iter.collect();
-        Ok(hashes?)
+        todo!() 
     }
 
+    fn homepage_items(&self, _:Timestamp)
+    -> Result<Vec<backend::ItemRow>, Error>
+    {
+        todo!() 
+    }
+
+    fn user_items(&self, _: &UserID, _:Timestamp)
+    -> Result<Vec<ItemRow>, Error>
+    {
+        todo!() 
+    }
+
+    fn server_user(&self, user: &UserID)
+    -> Result<Option<backend::ServerUser>, Error> 
+    { 
+        let mut stmt = self.conn.prepare("
+            SELECT notes, on_homepage
+            FROM server_user
+            WHERE user_id = ?
+        ")?;
+
+        let to_server_user = |row: &Row<'_>| {
+            let on_homepage: isize = row.get(1)?;
+             Ok(
+                 ServerUser {
+                    user: (*user).clone(),
+                    notes: row.get(0)?,
+                    on_homepage: on_homepage != 0,
+                }
+            )
+        };
+
+        let item = stmt.query_row(
+            params![user.bytes()],
+            to_server_user,
+        ).optional()?;
+
+        Ok(item)
+
+    }
 }

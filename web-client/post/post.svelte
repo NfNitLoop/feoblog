@@ -45,7 +45,7 @@
             <tr>
                 <th></th>
                 <td>
-                    <button name="submit" disabled={!valid}>Submit</button>
+                    <button name="submit" on:click={submit} disabled={!valid}>Submit</button>
                 </td>
             </tr>
         </table>
@@ -274,6 +274,26 @@ function bufferToHex (x) {
     return [...new Uint8Array (x)]
         .map (b => b.toString(16).padStart(2, "0"))
         .join (" ");
+}
+
+function submit() {
+    if (!valid) {
+        console.error("Submit clicked when not valid");
+        return;
+    }
+
+    let url = `/u/${userID}/i/${signature}/proto3`
+    let bytes = itemProtoBytes;
+    console.log("Making request")
+    fetch(url, {
+        method: "PUT",
+        body: bytes,
+    }).then((response) => {
+        console.log("response:")
+        console.log(response)
+    }).catch((e) => {
+        console.log("PUT exception:", e)
+    })
 }
 
 </script>

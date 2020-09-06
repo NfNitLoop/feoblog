@@ -8,6 +8,8 @@ edition = "2018"
 # Web:
 actix-web = "1"
 actix-web-codegen = "*"
+# required for reading Actix Payloads:
+futures = "*"
 
 # Error handling:
 failure = "*"

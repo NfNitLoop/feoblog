@@ -1,12 +1,26 @@
+use futures::Stream;
+
 use actix_web::http::header;
-use actix_web::web::{self, get, post, resource, route, Data, Form, HttpResponse, Path};
+use actix_web::web::{
+    self,
+    get,
+    put,
+    resource,
+    route,
+    Data,
+    Form,
+    HttpResponse,
+    Path,
+    HttpRequest,
+    Payload,
+};
 use actix_web::{App, HttpServer, Responder};
 use askama::Template;
 use failure::{bail, Error, ResultExt};
 use serde::Deserialize;
 use rust_embed::RustEmbed;
 
-use crate::backend::{self, *};
+use crate::backend::{self, Backend, Factory, UserID, Signature, Hash};
 use crate::responder_util::ToResponder;
 use actix_web::http::StatusCode;
 use rust_base58::{FromBase58, ToBase58};
@@ -29,10 +43,6 @@ pub(crate) fn serve(options: crate::SharedOptions) -> Result<(), Error> {
             .configure(routes)
         ;
 
-        if options.allow_login {
-            app = app.configure(logged_in_routes);
-        }
-
         app = app.default_service(route().to(file_not_found));
 
         return app;
@@ -41,6 +51,7 @@ pub(crate) fn serve(options: crate::SharedOptions) -> Result<(), Error> {
     let server = HttpServer::new(app_factory).bind("127.0.0.1:8080")?;
     let url = "http://127.0.0.1:8080/";
     // TODO: This opens up a (AFAICT) blocking CLI browser on Linux. Boo. Don't do that.
+    // TODO: Also move this outside of the server module.
     let opened = webbrowser::open(url);
     if !opened.is_ok() {
         println!("Warning: Couldn't open browser.");
@@ -56,8 +67,13 @@ pub(crate) fn serve(options: crate::SharedOptions) -> Result<(), Error> {
 fn routes(cfg: &mut web::ServiceConfig) {
     cfg
         .route("/", get().to(index))
-        .route("/blob/{base58hash}", get().to(view_blob))
-        .route("/md/{base58hash}", get().to(view_md))
+
+        // .route("/u/{userID}/i/{signature}/", get().to(TODO))
+        .route("/u/{user_id}/i/{signature}/proto3", put().to(put_item))
+        
+
+        // TODO: view raw markdown
+        // .route("/md/{base58hash}", get().to(view_md))
     ;
     statics(cfg);
 }
@@ -131,17 +147,6 @@ struct WebClientBuild;
 
 
 
-/// Routes that require a server with options.allow_login:
-fn logged_in_routes(cfg: &mut web::ServiceConfig) {
-    cfg
-        .service(
-            resource("/post")
-                .route(get().to(view_post))
-                .route(post().to(post_post)),
-        )
-    ;
-}
-
 
 fn statics(cfg: &mut web::ServiceConfig) {
     cfg
@@ -161,70 +166,137 @@ fn statics(cfg: &mut web::ServiceConfig) {
 }
 
 fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error> {
+    // TODO: Update this to show homepage posts.
+
     let response = IndexPage {
         name: "World".into(),
-        hashes: backend.get_hashes()?,
+        hashes: vec![],
     }
     .responder();
 
     Ok(response)
 }
 
-fn view_blob(
+const MAX_ITEM_SIZE: usize = 1024 * 32; 
+
+/// Accepts a proto3 Item
+/// Returns 200 if the PUT was successful.
+/// Returns ??? if the item already exists.
+/// Returns ??? if the user lacks permission to post.
+/// Returns ??? if the signature is not valid.
+/// Returns a text body message w/ OK/Error message.
+fn put_item(
     backend: Data<Box<dyn Backend>>,
-    path: Path<(String,)>,
-) -> Result<impl Responder, Error> {
-    let (base58hash,) = path.into_inner();
-    let hash = Hash::from_base58(base58hash.as_ref())?;
-    let result = backend.get_blob(&hash)?;
+    path: Path<(String, String,)>,
+    req: HttpRequest,
+    body: Payload,
+) -> Result<impl Responder, Error> 
+{
+    let (user_path, sig_path) = path.into_inner();
+    let user = UserID::from_base58(user_path.as_str()).context("decoding user ID")?;
+    let signature = Signature::from_base58(sig_path.as_str()).context("decoding signature")?;
+
+    let length = match req.headers().get("content-length") {
+        Some(length) => length,
+        None => {
+            return Ok(
+                HttpResponse::BadRequest()
+                .content_type("text/plain; charset=utf-8")
+                .body("Must include length header.".to_string())
+            );
+        }
+    };
+
+    let length: usize = match length.to_str()?.parse() {
+        Ok(length) => length,
+        Err(_) => {
+            return Ok(
+                HttpResponse::BadRequest()
+                .content_type("text/plain; charset=utf-8")
+                .body("Must include length header.".to_string())
+            );
+        },
+    };
+
+    if length > MAX_ITEM_SIZE {
+        return Ok(
+            HttpResponse::BadRequest()
+            .content_type("text/plain; charset=utf-8")
+            .body("Item too large".to_string())
+            
+        );
+    }
+
+    println!("Checkintg user");
+
+    // TODO: Eventually also check if this user is "followed". Their content
+    // can be posted here too.
+    let can_post = backend.server_user(&user)?.is_some();
+
+    if !can_post {
+        return Ok(
+            HttpResponse::Forbidden()
+            .content_type("text/plain; charset=utf-8")
+            .body("Not accepting Items for this user".to_string())
+        )
+    }
+
+    println!("user OK");
+
+    // Payloads can only be fetched async in Actix? 
+    // And async in Actix v1 is a PITA.
+
+    let mut bytes: Vec<u8> = Vec::with_capacity(length);
+    // while let Some(chunk) = body.next().await {
+    //     println!("Got chunk.");
+    //     let chunk = match chunk {
+    //         Ok(chunk) => chunk,
+    //         Err(err) => {
+    //             bail!("{}", err.to_string());
+    //         }
+    //     };
+    //     bytes.extend_from_slice(&chunk);
+    // }
+
+    // TODO: Check signature.
+    // TODO: Parse & validate Item.
+    // TODO: Save Item.
+    let message = format!("OK. Got {} bytes", bytes.len());
+       
     let response = HttpResponse::Ok()
         .content_type("text/plain; charset=utf-8")
-        .body(result.unwrap_or("No result.".into()));
+        .body(message);
+
     Ok(response)
 }
 
-fn view_md(
-    backend: Data<Box<dyn Backend>>,
-    path: Path<(String,)>,
-) -> Result<impl Responder, Error> {
-    let (base58hash,) = path.into_inner();
-    let hash = Hash::from_base58(base58hash.as_ref())?;
-    let result = backend.get_blob(&hash)?.unwrap_or("No result.".into());
-    let result = String::from_utf8(result)?;
 
-    let parser = pulldown_cmark::Parser::new(&result);
-    use pulldown_cmark::Event::*;
-    let parser = parser.map(|event| match event {
-        Html(value) => Code(value),
-        InlineHtml(value) => Text(value),
-        x => x,
-    });
+// fn view_md(
+//     backend: Data<Box<dyn Backend>>,
+//     path: Path<(String,)>,
+// ) -> Result<impl Responder, Error> {
+//     let (base58hash,) = path.into_inner();
+//     let hash = Hash::from_base58(base58hash.as_ref())?;
+//     let result = backend.get_blob(&hash)?.unwrap_or("No result.".into());
+//     let result = String::from_utf8(result)?;
 
-    let mut html = String::new();
-    pulldown_cmark::html::push_html(&mut html, parser);
+//     let parser = pulldown_cmark::Parser::new(&result);
+//     use pulldown_cmark::Event::*;
+//     let parser = parser.map(|event| match event {
+//         Html(value) => Code(value),
+//         InlineHtml(value) => Text(value),
+//         x => x,
+//     });
 
-    let response = HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(html);
-    Ok(response)
-}
+//     let mut html = String::new();
+//     pulldown_cmark::html::push_html(&mut html, parser);
 
-fn view_post() -> impl Responder {
-    PostPage::default().responder()
-}
+//     let response = HttpResponse::Ok()
+//         .content_type("text/html; charset=utf-8")
+//         .body(html);
+//     Ok(response)
+// }
 
-fn post_post(
-    form: Form<PostForm>,
-    backend: Data<Box<dyn Backend>>,
-) -> Result<impl Responder, Error> {
-    let form = form.into_inner();
-    let hash = backend.save_blob(form.body.as_bytes())?;
-
-    let url = format!("/blob/{}", hash.to_base58());
-
-    let response = HttpResponse::SeeOther().header("location", url).finish();
-    Ok(response)
-}
 
 fn file_not_found() -> impl Responder {
     NotFoundPage {}
@@ -234,37 +306,6 @@ fn file_not_found() -> impl Responder {
 
 
 
-#[derive(Template, Default)]
-#[template(path = "login.html")]
-struct LoginPage {
-    logged_in_pkey: Option<String>,
-}
-
-#[derive(Deserialize, Default)]
-struct LoginForm {
-    secret_key: String,
-}
-
-
-#[derive(Template, Default)]
-#[template(path = "logged_out.html")]
-struct LoggedOutPage {}
-
-fn create_id() -> impl Responder {
-    let pair = crate::crypto::SigKeyPair::new();
-    CreateIDPage {
-        public_key: pair.public().bytes().to_base58(),
-        secret_key: pair.secret().bytes().to_base58(),
-    }
-    .responder()
-}
-
-#[derive(Template, Default)]
-#[template(path = "create_id.html")]
-struct CreateIDPage {
-    public_key: String,
-    secret_key: String,
-}
 
 #[derive(Template)]
 #[template(path = "not_found.html")]
@@ -280,10 +321,5 @@ struct IndexPage {
 #[derive(Template, Default)]
 #[template(path = "post.html")]
 struct PostPage {
-    form: PostForm,
 }
 
-#[derive(Deserialize, Default)]
-struct PostForm {
-    body: String,
-}
