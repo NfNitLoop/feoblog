@@ -2,9 +2,10 @@
 
 pub(crate) mod sqlite;
 
-use failure::{Error, ResultExt, bail};
+use core::str::FromStr;
+use failure::{Error, ResultExt, bail, format_err};
 use bs58;
-use rust_sodium::crypto::sign;
+use sodiumoxide::crypto::sign;
 
 
 /// Knows how to open Backend "connections".
@@ -43,7 +44,7 @@ pub trait Backend
 /// A UserID is a nacl public key. (32 bytes)
 #[derive(Clone)]
 pub struct UserID {
-    bytes: Vec<u8>
+    pub_key: sign::PublicKey,
 }
 
 // Expect a 32-byte nacl public key:
@@ -51,7 +52,7 @@ const USER_ID_BYTES: usize = 32;
 
 impl UserID {
     pub fn to_base58(&self) -> String {
-        bs58::encode(&self.bytes).into_string()
+        bs58::encode(self.bytes()).into_string()
     }
 
     pub fn from_base58(value: &str) -> Result<Self, Error> {
@@ -64,20 +65,30 @@ impl UserID {
             bail!("Expected {} bytes but found {}", USER_ID_BYTES, bytes.len());
         }
 
-        Ok(
-            UserID{ bytes: bytes }
-        )
+        let pub_key = sign::PublicKey::from_slice(&bytes).ok_or_else(
+            || format_err!("Error creating nacl::PuublicKey")
+        )?;
+
+        Ok( UserID{ pub_key } )
     }
 
     pub fn bytes(&self) -> &[u8] {
-        self.bytes.as_slice()
+        self.pub_key.as_ref()
+    }
+}
+
+/// Allows easy destructuring from URLs.
+impl FromStr for UserID {
+    type Err = failure::Error;
+    fn from_str(value: &str) -> Result<Self, Self::Err> { 
+        UserID::from_base58(value)
     }
 }
 
 /// Bytes representing a detached NaCl signature. (64 bytes)
 #[derive(Clone)]
 pub struct Signature {
-    bytes: Vec<u8>
+    signature: sign::Signature,
 }
 
 const SIGNATURE_BYTES: usize = 64;
@@ -85,12 +96,14 @@ const SIGNATURE_BYTES: usize = 64;
 impl Signature {
     pub fn from_vec(bytes: Vec<u8>) -> Result<Self, Error> {
         if bytes.len() != SIGNATURE_BYTES {
-            bail!("Expected {} bytes but found {}", SIGNATURE_BYTES, bytes.len());
+            bail!("Signature expected {} bytes but found {}", SIGNATURE_BYTES, bytes.len());
         }
 
-        Ok(
-            Signature{ bytes: bytes }
-        )
+        let signature = sign::Signature::from_slice(&bytes).ok_or_else(
+            || format_err!("Failure creating nacl::Signature")
+        )?;
+        
+        Ok( Signature{ signature } )
     }
 
     pub fn from_base58(value: &str) -> Result<Self, Error> {
@@ -99,20 +112,27 @@ impl Signature {
     }
 
     pub fn to_base58(&self) -> String {
-        bs58::encode(&self.bytes).into_string()
+        bs58::encode(&self.signature).into_string()
     }
 
     pub fn bytes(&self) -> &[u8] {
-        self.bytes.as_slice()
+        self.signature.as_ref()
     }
 
     /// True if this signature is valid for the given user on the given bytes.
     pub fn is_valid(&self, user: &UserID, bytes: &[u8]) -> bool {
-        let signature = sign::Signature::from_slice(self.bytes()).expect("sig");
         let pubkey = sign::PublicKey::from_slice(user.bytes()).expect("pubkey");
-        sign::verify_detached(&signature, bytes, &pubkey)
+        sign::verify_detached(&self.signature, bytes, &pubkey)
     }
 
+}
+
+/// Allows easy destructuring from URLs.
+impl FromStr for Signature {
+    type Err = failure::Error;
+    fn from_str(value: &str) -> Result<Self, Self::Err> { 
+        Signature::from_base58(value)
+    }
 }
 
 /// Data that should be stored along with an Item

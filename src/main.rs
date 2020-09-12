@@ -10,10 +10,8 @@ use failure::{Error, bail, ResultExt};
 use structopt::StructOpt;
 
 mod backend;
-mod crypto;
 mod responder_util;
 mod server;
-mod user_session;
 
 
 fn main() -> Result<(), Error> {

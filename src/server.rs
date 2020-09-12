@@ -1,4 +1,5 @@
 use futures::Stream;
+use std::fmt;
 
 use actix_web::http::header;
 use actix_web::web::{
@@ -16,19 +17,17 @@ use actix_web::web::{
 };
 use actix_web::{App, HttpServer, Responder};
 use askama::Template;
-use failure::{bail, Error, ResultExt};
+use failure::{bail, ResultExt};
 use serde::Deserialize;
 use rust_embed::RustEmbed;
 
 use crate::backend::{self, Backend, Factory, UserID, Signature, Hash};
 use crate::responder_util::ToResponder;
 use actix_web::http::StatusCode;
-use rust_base58::{FromBase58, ToBase58};
+use async_trait::async_trait;
 
 
-
-pub(crate) fn serve(options: crate::SharedOptions) -> Result<(), Error> {
-    rust_sodium::init().expect("rust_sodium::init()");
+pub(crate) fn serve(options: crate::SharedOptions) -> Result<(), failure::Error> {
 
     // TODO: Error if the file doesn't exist, and make a separate 'init' command.
     let factory = backend::sqlite::Factory::new(options.sqlite_file.clone());
@@ -58,8 +57,10 @@ pub(crate) fn serve(options: crate::SharedOptions) -> Result<(), Error> {
     }
     println!("Started at: {}", url);
 
-    server.run()?; // Actually blocks & runs forever.
-
+    // TODO: Pass this to an async runner.
+    let mut system = actix_web::rt::System::new("web server");
+    system.block_on(server.run())?;
+   
     Ok(())
 }
 
@@ -78,15 +79,17 @@ fn routes(cfg: &mut web::ServiceConfig) {
     statics(cfg);
 }
 
+#[async_trait]
 trait StaticFilesResponder {
     type Response: Responder;
-    fn response(path: Path<(String,)>) -> Result<Self::Response, Error>;
+    async fn response(path: Path<(String,)>) -> Result<Self::Response, Error>;
 }
 
+#[async_trait]
 impl <T: RustEmbed> StaticFilesResponder for T {
     type Response = HttpResponse;
 
-    fn response(path: Path<(String,)>) -> Result<Self::Response, Error> {
+    async fn response(path: Path<(String,)>) -> Result<Self::Response, Error> {
         let (mut path,) = path.into_inner();
         
             
@@ -165,7 +168,7 @@ fn statics(cfg: &mut web::ServiceConfig) {
     ;
 }
 
-fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error> {
+async fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error> {
     // TODO: Update this to show homepage posts.
 
     let response = IndexPage {
@@ -185,7 +188,7 @@ const MAX_ITEM_SIZE: usize = 1024 * 32;
 /// Returns ??? if the user lacks permission to post.
 /// Returns ??? if the signature is not valid.
 /// Returns a text body message w/ OK/Error message.
-fn put_item(
+async fn put_item(
     backend: Data<Box<dyn Backend>>,
     path: Path<(String, String,)>,
     req: HttpRequest,
@@ -193,8 +196,8 @@ fn put_item(
 ) -> Result<impl Responder, Error> 
 {
     let (user_path, sig_path) = path.into_inner();
-    let user = UserID::from_base58(user_path.as_str()).context("decoding user ID")?;
-    let signature = Signature::from_base58(sig_path.as_str()).context("decoding signature")?;
+    let user = UserID::from_base58(user_path.as_str()).context("decoding user ID").compat()?;
+    let signature = Signature::from_base58(sig_path.as_str()).context("decoding signature").compat()?;
 
     let length = match req.headers().get("content-length") {
         Some(length) => length,
@@ -231,7 +234,7 @@ fn put_item(
 
     // TODO: Eventually also check if this user is "followed". Their content
     // can be posted here too.
-    let can_post = backend.server_user(&user)?.is_some();
+    let can_post = backend.server_user(&user).compat()?.is_some();
 
     if !can_post {
         return Ok(
@@ -298,7 +301,7 @@ fn put_item(
 // }
 
 
-fn file_not_found() -> impl Responder {
+async fn file_not_found() -> impl Responder {
     NotFoundPage {}
         .responder()
         .with_status(StatusCode::NOT_FOUND)
@@ -323,3 +326,26 @@ struct IndexPage {
 struct PostPage {
 }
 
+/// A type implementing ResponseError that can hold any kind of std::error::Error.
+#[derive(Debug)]
+struct Error {
+    inner: Box<dyn std::error::Error + 'static>
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> std::result::Result<(), fmt::Error> { 
+        self.inner.fmt(formatter)
+    }
+}
+
+impl actix_web::error::ResponseError for Error {}
+
+impl <E> From<E> for Error
+where E: std::error::Error + 'static
+{
+    fn from(err: E) -> Self {
+        Error{
+            inner: err.into()
+        }
+    }
+}

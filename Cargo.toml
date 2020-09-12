@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 # Web:
-actix-web = "1"
+actix-web = "3"
 actix-web-codegen = "*"
 # required for reading Actix Payloads:
 futures = "*"
@@ -23,8 +23,7 @@ rust-base58 = "*"
 bs58 = { version = "*", features = ["check"] }
 
 # crypto:
-rust_sodium = "0.10.2"
-rust_sodium-sys = "*"
+sodiumoxide = "*"
 
 # Markdown:
 pulldown-cmark = "*"
@@ -37,7 +36,8 @@ mime_guess = "2"
 # (De)serialization for signed blobs:
 serde = "*"
 serde_derive = "*"
-serde_cbor = "0.10"
+
+async-trait = "*"
 
 [dependencies.rusqlite]
 version = "*"
