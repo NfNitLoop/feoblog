@@ -35,11 +35,15 @@ rust-embed = { version = "*" }
 # ... and serving those files w/ the right mime types.
 mime_guess = "2"
 
-# (De)serialization for signed blobs:
-serde = "*"
-serde_derive = "*"
 
+
+# Used to make Traits that have async functions which can be used as response
+# objects with actix-web
 async-trait = "*"
+
+protobuf = "2"
+time = "0.2"
+
 
 [dependencies.rusqlite]
 version = "*"
@@ -54,3 +58,6 @@ version = "*"
 # See: https://github.com/djc/askama/issues/246
 # features = ["with-actix-web"]
 
+[build-dependencies]
+# Generate rust from .proto files.
+protoc-rust = "2"

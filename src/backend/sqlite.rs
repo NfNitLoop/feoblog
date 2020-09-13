@@ -5,7 +5,7 @@
 //! Mostly, this makes data management trivial since it's all in one file.
 //! But if performance is an issue we can implement a different backend.
 
-use crate::backend::{self, UserID, ItemRow, Timestamp, ServerUser};
+use crate::backend::{self, UserID, Signature, ItemRow, Timestamp, ServerUser};
 
 use failure::{Error, bail};
 use rusqlite::{params, OptionalExtension, Row};
@@ -264,11 +264,6 @@ impl backend::Backend for Connection
     //     Ok(hashes?)
     // }
 
-    fn save_user_item(&self, _:ItemRow)
-    -> Result<(), Error>
-    {
-        todo!() 
-    }
 
     fn homepage_items(&self, _:Timestamp)
     -> Result<Vec<backend::ItemRow>, Error>
@@ -295,7 +290,7 @@ impl backend::Backend for Connection
             let on_homepage: isize = row.get(1)?;
              Ok(
                  ServerUser {
-                    user: (*user).clone(),
+                    user: user.clone(),
                     notes: row.get(0)?,
                     on_homepage: on_homepage != 0,
                 }
@@ -309,5 +304,90 @@ impl backend::Backend for Connection
 
         Ok(item)
 
+    }
+    
+    
+    fn user_item_exists(&self, user: &UserID, signature: &Signature) -> Result<bool, Error> { 
+        let mut stmt = self.conn.prepare("
+            SELECT COUNT(*)
+            FROM item
+            WHERE user_id = ?
+            AND signature = ?
+        ")?;
+
+        let count: u32 = stmt.query_row(
+            params![
+                user.bytes(),
+                signature.bytes(),
+            ],
+            |row| { Ok(row.get(0)?) }
+        )?;
+
+        if count > 1 {
+            bail!("Found {} matches!? (user_id,signature) should be unique!", count);
+        }
+
+        Ok(count > 0)
+    }
+
+    fn user_item(&self, user: &UserID, signature: &Signature) -> Result<Option<ItemRow>, Error> { 
+        let mut stmt = self.conn.prepare("
+            SELECT
+                user_id
+                , signature
+                , unix_utc_ms
+                , received_utc_ms
+                , bytes
+            FROM item
+            WHERE user_id = ?
+            AND signature = ?
+        ")?;
+
+        let mut rows = stmt.query(params![
+            user.bytes(),
+            signature.bytes(),
+        ])?;
+
+        let row = match rows.next()? {
+            None => return Ok(None),
+            Some(row) => row,
+        };
+
+        let item = ItemRow{
+            user: UserID::from_vec(row.get(0)?)?,
+            signature: Signature::from_vec(row.get(1)?)?,
+            timestamp: Timestamp{ unix_utc_ms: row.get(2)? },
+            received: Timestamp{ unix_utc_ms: row.get(3)? },
+            item_bytes: row.get(4)?,
+        };
+
+        if rows.next()?.is_some() {
+            bail!("Found multiple matching rows!? (user_id,signature) should be unique!");
+        }
+
+        Ok(Some(item))
+    }
+
+    fn save_user_item(&self, row: &ItemRow) -> Result<(), Error>
+    {
+        let stmt = "
+            INSERT INTO item (
+                user_id
+                , signature
+                , unix_utc_ms
+                , received_utc_ms
+                , bytes
+            ) VALUES (?, ?, ?, ?, ?);
+       ";
+
+        self.conn.execute(stmt, params![
+            row.user.bytes(),
+            row.signature.bytes(),
+            row.timestamp.unix_utc_ms,
+            row.received.unix_utc_ms,
+            row.item_bytes.as_slice(),
+        ])?;
+
+        Ok(())
     }
 }

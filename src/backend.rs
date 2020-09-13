@@ -18,6 +18,10 @@ pub trait Factory: Clone
 /// with it.
 pub trait Backend
 {
+    // TODO: Remove reliance on failure::Error. We should define our own error
+    // type here. Should probably impl Error, which requires changes in sqlite.
+    // Maybe Box<dyn Error> is sufficient? https://github.com/dtolnay/anyhow/issues/25
+    
     /// Set up the initial DB state, maybe running migrations.
     fn setup(&self) -> Result<(), Error>;
 
@@ -30,8 +34,14 @@ pub trait Backend
     /// Find the most recent items for a particular user
     fn user_items(&self, user: &UserID, before: Timestamp) -> Result<Vec<ItemRow>, Error>;
 
+    /// Find one particular UserItem
+    fn user_item(&self, user: &UserID, signature: &Signature) -> Result<Option<ItemRow>, Error>;
+
+    /// Effieicntly check whether a user item exists:
+    fn user_item_exists(&self, user: &UserID, signature: &Signature) -> Result<bool, Error>;
+
     /// Save an uploaded item to the data store. 
-    fn save_user_item(&self, item: ItemRow) -> Result<(), Error>;
+    fn save_user_item(&self, item: &ItemRow) -> Result<(), Error>;
 
     /// Get a "server user" -- a user granted direct access to post to the
     /// server.
@@ -112,7 +122,7 @@ impl Signature {
     }
 
     pub fn to_base58(&self) -> String {
-        bs58::encode(&self.signature).into_string()
+        bs58::encode(self.bytes()).into_string()
     }
 
     pub fn bytes(&self) -> &[u8] {
@@ -155,6 +165,8 @@ pub struct ItemRow {
     pub item_bytes: Vec<u8>
 }
 
+/// Info about users explicitly allowed on this server.
+/// i.e.: A row in the server_user table.
 pub struct ServerUser {
     user: UserID,
     notes: String,
@@ -169,7 +181,13 @@ pub struct Timestamp {
 }
 
 impl Timestamp {
-    // TODO: now()
+    pub fn now() -> Self {
+        use time::OffsetDateTime;
+        let delta = OffsetDateTime::now_utc() - OffsetDateTime::unix_epoch();
+        Timestamp {
+            unix_utc_ms: delta.whole_milliseconds() as i64,
+        }
+    }
 }
 
 // A multihash

@@ -20,14 +20,16 @@ use actix_web::web::{
 use actix_web::{App, HttpServer, Responder};
 use askama::Template;
 use failure::{bail, ResultExt, format_err};
-use serde::Deserialize;
 use rust_embed::RustEmbed;
 
-use crate::backend::{self, Backend, Factory, UserID, Signature, Hash};
-use crate::responder_util::ToResponder;
 use actix_web::http::StatusCode;
 use async_trait::async_trait;
 
+use protobuf::Message;
+
+use crate::backend::{self, Backend, Factory, UserID, Signature, Hash, ItemRow, Timestamp};
+use crate::responder_util::ToResponder;
+use crate::protos::{Item, Post, ProtoValid};
 
 pub(crate) fn serve(options: crate::SharedOptions) -> Result<(), failure::Error> {
 
@@ -181,6 +183,7 @@ async fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error>
 }
 
 const MAX_ITEM_SIZE: usize = 1024 * 32; 
+const PLAINTEXT: &'static str = "text/plain; charset=utf-8";
 
 /// Accepts a proto3 Item
 /// Returns 200 if the PUT was successful.
@@ -204,7 +207,7 @@ async fn put_item(
         None => {
             return Ok(
                 HttpResponse::BadRequest()
-                .content_type("text/plain; charset=utf-8")
+                .content_type(PLAINTEXT)
                 .body("Must include length header.".to_string())
             );
         }
@@ -215,7 +218,7 @@ async fn put_item(
         Err(_) => {
             return Ok(
                 HttpResponse::BadRequest()
-                .content_type("text/plain; charset=utf-8")
+                .content_type(PLAINTEXT)
                 .body("Must include length header.".to_string())
             );
         },
@@ -224,10 +227,11 @@ async fn put_item(
     if length > MAX_ITEM_SIZE {
         return Ok(
             HttpResponse::PayloadTooLarge()
-            .content_type("text/plain; charset=utf-8")
+            .content_type(PLAINTEXT)
             .body("Item too large".to_string())
         );
     }
+
 
     // TODO: Eventually also check if this user is "followed". Their content
     // can be posted here too.
@@ -236,14 +240,20 @@ async fn put_item(
     if !can_post {
         return Ok(
             HttpResponse::Forbidden()
-            .content_type("text/plain; charset=utf-8")
+            .content_type(PLAINTEXT)
             .body("Not accepting Items for this user".to_string())
         )
     }
 
-    println!("user OK");
-
-
+    // If the content already exists, do nothing: 202 Accepted?
+    if backend.user_item_exists(&user, &signature).compat()? {
+        return Ok(
+            HttpResponse::Accepted()
+            .content_type(PLAINTEXT)
+            .body("Item already exists")
+        );
+    }
+    
     let mut bytes: Vec<u8> = Vec::with_capacity(length);
     while let Some(chunk) = body.next().await {
         println!("Got chunk.");
@@ -255,13 +265,33 @@ async fn put_item(
         Err(format_err!("Invalid signature").compat())?;
     }
 
-    // TODO: Parse & validate Item.
-    // TODO: Save Item.
-    let message = format!("OK. Got {} bytes", bytes.len());
-       
-    // TODO: 201 Created / 202 Accepted?
-    let response = HttpResponse::Ok()
-        .content_type("text/plain; charset=utf-8")
+    let mut item: Item = Item::new();
+    item.merge_from_bytes(&bytes)?;
+    item.validate()?;
+
+    if item.has_post() {
+        println!("Got a post!");
+        println!("timestamp: {}", item.get_timestamp_ms_utc());
+        println!("offset minutes: {}", item.get_utc_offset_minutes());
+        let post = item.get_post();
+        println!("title: {}", post.get_title());
+        println!("body:\n{}", post.get_body());
+    }
+
+    let message = format!("OK. Received {} bytes.", bytes.len());
+    
+    let row = ItemRow{
+        user: user,
+        signature: signature,
+        timestamp: Timestamp{ unix_utc_ms: item.get_timestamp_ms_utc()},
+        received: Timestamp::now(),
+        item_bytes: bytes,
+    };
+
+    backend.save_user_item(&row).compat()?;
+
+    let response = HttpResponse::Created()
+        .content_type(PLAINTEXT)
         .body(message);
 
     Ok(response)

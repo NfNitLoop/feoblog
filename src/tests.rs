@@ -77,3 +77,19 @@ fn bs58_bytes() {
     // assert_eq!(original_bytes, decoded);
 
 }
+
+// The time crate doesn't really specify what the max duration is. 
+#[test]
+fn time_duration() {
+    use time::Duration;
+
+    let max = Duration::max_value();
+    assert_eq!(9223372036854775807999, max.whole_milliseconds());
+
+    // Seems like enough years. 😆
+    assert_eq!(292471208677, max.whole_days() / 365);
+
+    // FeoBlog uses an i64 # ms since epoch, so its max is:
+    let max_feo = Duration::milliseconds(i64::MAX);
+    assert_eq!(292471208, max_feo.whole_days() / 365);
+}
