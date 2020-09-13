@@ -1,5 +1,7 @@
-use futures::Stream;
 use std::fmt;
+
+use futures_core::stream::Stream;
+use futures_util::StreamExt;
 
 use actix_web::http::header;
 use actix_web::web::{
@@ -17,7 +19,7 @@ use actix_web::web::{
 };
 use actix_web::{App, HttpServer, Responder};
 use askama::Template;
-use failure::{bail, ResultExt};
+use failure::{bail, ResultExt, format_err};
 use serde::Deserialize;
 use rust_embed::RustEmbed;
 
@@ -57,14 +59,12 @@ pub(crate) fn serve(options: crate::SharedOptions) -> Result<(), failure::Error>
     }
     println!("Started at: {}", url);
 
-    // TODO: Pass this to an async runner.
     let mut system = actix_web::rt::System::new("web server");
     system.block_on(server.run())?;
    
     Ok(())
 }
 
-/// Routes appropriate for servers and local use.
 fn routes(cfg: &mut web::ServiceConfig) {
     cfg
         .route("/", get().to(index))
@@ -192,7 +192,7 @@ async fn put_item(
     backend: Data<Box<dyn Backend>>,
     path: Path<(String, String,)>,
     req: HttpRequest,
-    body: Payload,
+    mut body: Payload,
 ) -> Result<impl Responder, Error> 
 {
     let (user_path, sig_path) = path.into_inner();
@@ -223,14 +223,11 @@ async fn put_item(
 
     if length > MAX_ITEM_SIZE {
         return Ok(
-            HttpResponse::BadRequest()
+            HttpResponse::PayloadTooLarge()
             .content_type("text/plain; charset=utf-8")
             .body("Item too large".to_string())
-            
         );
     }
-
-    println!("Checkintg user");
 
     // TODO: Eventually also check if this user is "followed". Their content
     // can be posted here too.
@@ -246,26 +243,23 @@ async fn put_item(
 
     println!("user OK");
 
-    // Payloads can only be fetched async in Actix? 
-    // And async in Actix v1 is a PITA.
 
     let mut bytes: Vec<u8> = Vec::with_capacity(length);
-    // while let Some(chunk) = body.next().await {
-    //     println!("Got chunk.");
-    //     let chunk = match chunk {
-    //         Ok(chunk) => chunk,
-    //         Err(err) => {
-    //             bail!("{}", err.to_string());
-    //         }
-    //     };
-    //     bytes.extend_from_slice(&chunk);
-    // }
+    while let Some(chunk) = body.next().await {
+        println!("Got chunk.");
+        let chunk = chunk.context("Error parsing chunk").compat()?;
+        bytes.extend_from_slice(&chunk);
+    }
 
-    // TODO: Check signature.
+    if !signature.is_valid(&user, &bytes) {
+        Err(format_err!("Invalid signature").compat())?;
+    }
+
     // TODO: Parse & validate Item.
     // TODO: Save Item.
     let message = format!("OK. Got {} bytes", bytes.len());
        
+    // TODO: 201 Created / 202 Accepted?
     let response = HttpResponse::Ok()
         .content_type("text/plain; charset=utf-8")
         .body(message);

@@ -46,6 +46,9 @@
                 <th></th>
                 <td>
                     <button name="submit" on:click={submit} disabled={!valid}>Submit</button>
+                    {#if status}
+                        <div>{status}</div>
+                    {/if}
                 </td>
             </tr>
         </table>
@@ -101,7 +104,8 @@ const DATE_FORMATS = [
 
 let title = ""
 let post = "Hello world!"
-let textbox; // .value holds `post`
+let textbox // .value holds `post`
+let status = ""
 onMount(() => {
     textbox.focus();
     textbox.selectionStart = 0;
@@ -276,7 +280,7 @@ function bufferToHex (x) {
         .join (" ");
 }
 
-function submit() {
+async function submit() {
     if (!valid) {
         console.error("Submit clicked when not valid");
         return;
@@ -285,15 +289,25 @@ function submit() {
     let url = `/u/${userID}/i/${signature}/proto3`
     let bytes = itemProtoBytes;
     console.log("Making request")
-    fetch(url, {
-        method: "PUT",
-        body: bytes,
-    }).then((response) => {
-        console.log("response:")
-        console.log(response)
-    }).catch((e) => {
+    status = "Making request"
+    
+    let response: Response
+    try {
+        response = await fetch(url, {
+            method: "PUT",
+            body: bytes,
+        })
+    } catch (e) {
         console.log("PUT exception:", e)
-    })
+        status = `PUT exception: ${e}`
+        return 
+    }
+
+    console.log("response:")
+    console.log(response)
+    let code = response.status
+    let message = await response.text()
+    status = `${code}: ${message}`
 }
 
 </script>

@@ -10,6 +10,8 @@ actix-web = "3"
 actix-web-codegen = "*"
 # required for reading Actix Payloads:
 futures = "*"
+futures-core = "*"
+futures-util = "*"
 
 # Error handling:
 failure = "*"
