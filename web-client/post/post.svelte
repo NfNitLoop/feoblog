@@ -217,13 +217,11 @@ $: itemProto = function(): Item {
     let item = new Item({
         timestamp_ms_utc: timestampMoment.valueOf(),
         utc_offset_minutes: timestampMoment.utcOffset(),
-        post: new Post()
+        post: new Post({
+            title: title,
+            body: post,
+        })
     })
-
-    // See: https://github.com/thesayyn/protoc-gen-ts/issues/16
-    let postPb = item.post;
-    if (title) { postPb.title = title }
-    if (post) { postPb.body = post }
 
     return item;
 }()
