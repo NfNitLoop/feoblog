@@ -265,7 +265,7 @@ impl backend::Backend for Connection
     // }
 
 
-    fn homepage_items(&self, before: Timestamp, max_count: u32) -> Result<Vec<ItemRow>, Error>
+    fn homepage_items<'a>(&self, before: Timestamp, callback: &'a mut dyn FnMut(ItemRow) -> Result<bool,Error>) -> Result<(), Error>
     {
         let mut stmt = self.conn.prepare("
             SELECT
@@ -282,12 +282,10 @@ impl backend::Backend for Connection
                 WHERE on_homepage = 1
             )
             ORDER BY unix_utc_ms DESC
-            LIMIT ?
         ")?;
 
         let mut rows = stmt.query(params![
             before.unix_utc_ms,
-            max_count,
         ])?;
 
         let to_item_row = |row: &Row<'_>| -> Result<ItemRow, Error> {
@@ -301,12 +299,13 @@ impl backend::Backend for Connection
             Ok(item)
         };
 
-        let mut items = vec![];
         while let Some(row) = rows.next()? {
-            items.push(to_item_row(row)?);
+            let item = to_item_row(row)?;
+            let result = callback(item)?;
+            if !result { break; }
         }
 
-        Ok( items )
+        Ok( () )
     }
 
     fn user_items(&self, _: &UserID, _:Timestamp)

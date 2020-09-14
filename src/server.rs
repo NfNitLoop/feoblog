@@ -164,24 +164,20 @@ async fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error>
    
     let mut max_time = Timestamp::now();
 
-    let mut items = Vec::with_capacity(10);
+    let max_items = 10;
+    let mut items = Vec::with_capacity(max_items);
 
-    'outer: while items.len() < 10 {
-        let rows = backend.homepage_items(max_time, 20).compat()?;
-        if rows.is_empty() { break; } // no more rows.
-        for row in rows {
-            max_time = row.timestamp;
-            let mut item = Item::new();
-            item.merge_from_bytes(&row.item_bytes)?;
-            // We only know how to display Post items for now:
-            if !item.has_post() { continue; }
-            items.push((row, item));
+    let mut item_callback = |row: ItemRow| {
+        if items.len() >= max_items { return Ok(false); }
+        
+        let mut item = Item::new();
+        item.merge_from_bytes(&row.item_bytes)?;
+        items.push((row, item));
+        
+        Ok(items.len() < max_items)
+    };
 
-            if items.len() >= 10 { break 'outer; }
-        }
-    }
-
-
+    backend.homepage_items(max_time, &mut item_callback).compat()?;
 
     let response = IndexPage {
         name: "World".into(),

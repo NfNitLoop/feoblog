@@ -29,7 +29,9 @@ pub trait Backend
 
     /// Find most recent items for users flagged to be displayed on the
     /// home page, which have timestamps before `before`.
-    fn homepage_items(&self, before: Timestamp, max_count: u32) -> Result<Vec<ItemRow>, Error>;
+    /// Items are returned through callback, and will continue to be fetched while callback continues
+    /// to return Ok(true).
+    fn homepage_items<'a>(&self, before: Timestamp, callback: &'a mut dyn FnMut(ItemRow) -> Result<bool,Error>) -> Result<(), Error>;
 
     /// Find the most recent items for a particular user
     fn user_items(&self, user: &UserID, before: Timestamp) -> Result<Vec<ItemRow>, Error>;
@@ -165,27 +167,6 @@ pub struct ItemRow {
     pub item_bytes: Vec<u8>
 }
 
-// pub struct ItemRowIter<'bend, Error> 
-// {
-//     next_fn: &'bend dyn FnMut() -> Option<Result<ItemRow, Error>>
-// }
-
-// impl <'bend, Error> ItemRowIter<'bend, Error>
-// {
-//     fn new(f: NextFn) -> Self {
-//         ItemRowIter{ next_fn: f }
-//     }
-// }
-
-// impl <F, Error> Iterator for ItemRowIter<F, Error>
-// where F: FnMut() -> Option<Result<ItemRow, Error>>
-// {
-//     type Item = Result<ItemRow, Error>;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         (self.next_fn)()
-//     }
-// }
 
 /// Info about users explicitly allowed on this server.
 /// i.e.: A row in the server_user table.
