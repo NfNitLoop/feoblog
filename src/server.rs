@@ -151,21 +151,9 @@ struct StaticFiles;
 struct WebClientBuild;
 
 
-
-
 fn statics(cfg: &mut web::ServiceConfig) {
     cfg
-        // .route(
-        //     "/style.css",
-        //     get().to(|| {
-        //         HttpResponse::Ok()
-        //             .body(include_str!("../static/style.css"))
-        //            s.with_header("content-type", "text/css")
-        //     })
-        // )
         .route("/static/{path:.*}", get().to(StaticFiles::response))
-        // .route("/web-cli/modules/{path:.*}", get().to(WebClientDeps::response))
-        // .route("/web-cli/dist/{path:.*}", get().to(WebClientDist::response))
         .route("/client/{path:.*}", get().to(WebClientBuild::response))
     ;
 }
@@ -173,9 +161,31 @@ fn statics(cfg: &mut web::ServiceConfig) {
 async fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error> {
     // TODO: Update this to show homepage posts.
 
+   
+    let mut max_time = Timestamp::now();
+
+    let mut items = Vec::with_capacity(10);
+
+    'outer: while items.len() < 10 {
+        let rows = backend.homepage_items(max_time, 20).compat()?;
+        if rows.is_empty() { break; } // no more rows.
+        for row in rows {
+            max_time = row.timestamp;
+            let mut item = Item::new();
+            item.merge_from_bytes(&row.item_bytes)?;
+            // We only know how to display Post items for now:
+            if !item.has_post() { continue; }
+            items.push((row, item));
+
+            if items.len() >= 10 { break 'outer; }
+        }
+    }
+
+
+
     let response = IndexPage {
         name: "World".into(),
-        hashes: vec![],
+        posts: items,
     }
     .responder();
 
@@ -186,8 +196,8 @@ const MAX_ITEM_SIZE: usize = 1024 * 32;
 const PLAINTEXT: &'static str = "text/plain; charset=utf-8";
 
 /// Accepts a proto3 Item
-/// Returns 200 if the PUT was successful.
-/// Returns ??? if the item already exists.
+/// Returns 201 if the PUT was successful.
+/// Returns 202 if the item already exists.
 /// Returns ??? if the user lacks permission to post.
 /// Returns ??? if the signature is not valid.
 /// Returns a text body message w/ OK/Error message.
@@ -339,10 +349,10 @@ async fn file_not_found() -> impl Responder {
 struct NotFoundPage {}
 
 #[derive(Template)]
-#[template(path = "index.html")]
+#[template(path = "index.html")] 
 struct IndexPage {
     name: String,
-    hashes: Vec<Hash>,
+    posts: Vec<(ItemRow, Item)>,
 }
 
 #[derive(Template, Default)]

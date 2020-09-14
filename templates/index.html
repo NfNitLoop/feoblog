@@ -8,8 +8,8 @@
 <p><a href="/create_id">Create an Identity</a></p>
 
 <ul>
-{% for hash in hashes %}
-    <li><a href="/blob/{{ hash.to_base58() }}">{{ hash.to_base58() }}</a></li>
+{% for (row, item) in posts %}
+    <li><a href="/u/{{ row.user.to_base58() }}/i/{{row.signature.to_base58()}}">/u/{{ row.user.to_base58() }}/i/{{row.signature.to_base58()}}</a></li>
 {% endfor %}
 </ul>
 

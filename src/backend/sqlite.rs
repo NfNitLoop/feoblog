@@ -265,10 +265,48 @@ impl backend::Backend for Connection
     // }
 
 
-    fn homepage_items(&self, _:Timestamp)
-    -> Result<Vec<backend::ItemRow>, Error>
+    fn homepage_items(&self, before: Timestamp, max_count: u32) -> Result<Vec<ItemRow>, Error>
     {
-        todo!() 
+        let mut stmt = self.conn.prepare("
+            SELECT
+                user_id
+                , signature
+                , unix_utc_ms
+                , received_utc_ms
+                , bytes
+            FROM item
+            WHERE unix_utc_ms < ?
+            AND user_id IN (
+                SELECT user_id
+                FROM server_user
+                WHERE on_homepage = 1
+            )
+            ORDER BY unix_utc_ms DESC
+            LIMIT ?
+        ")?;
+
+        let mut rows = stmt.query(params![
+            before.unix_utc_ms,
+            max_count,
+        ])?;
+
+        let to_item_row = |row: &Row<'_>| -> Result<ItemRow, Error> {
+            let item = ItemRow{
+                user: UserID::from_vec(row.get(0)?)?,
+                signature: Signature::from_vec(row.get(1)?)?,
+                timestamp: Timestamp{ unix_utc_ms: row.get(2)? },
+                received: Timestamp{ unix_utc_ms: row.get(3)? },
+                item_bytes: row.get(4)?,
+            };
+            Ok(item)
+        };
+
+        let mut items = vec![];
+        while let Some(row) = rows.next()? {
+            items.push(to_item_row(row)?);
+        }
+
+        Ok( items )
     }
 
     fn user_items(&self, _: &UserID, _:Timestamp)
