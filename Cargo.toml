@@ -54,7 +54,7 @@ features = [
 
 
 [dependencies.askama]
-version = "*"
+version = "0.10"
 # See: https://github.com/djc/askama/issues/246
 # features = ["with-actix-web"]
 

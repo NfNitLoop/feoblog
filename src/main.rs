@@ -10,6 +10,7 @@ use failure::{Error, bail, ResultExt};
 use structopt::StructOpt;
 
 mod backend;
+mod markdown;
 mod protos;
 mod responder_util;
 mod server;

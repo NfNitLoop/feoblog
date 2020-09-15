@@ -31,6 +31,8 @@ use crate::backend::{self, Backend, Factory, UserID, Signature, Hash, ItemRow, T
 use crate::responder_util::ToResponder;
 use crate::protos::{Item, Post, ProtoValid};
 
+mod filters;
+
 pub(crate) fn serve(options: crate::SharedOptions) -> Result<(), failure::Error> {
 
     // TODO: Error if the file doesn't exist, and make a separate 'init' command.
@@ -162,14 +164,11 @@ async fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error>
     // TODO: Update this to show homepage posts.
 
    
-    let mut max_time = Timestamp::now();
 
     let max_items = 10;
     let mut items = Vec::with_capacity(max_items);
 
-    let mut item_callback = |row: ItemRow| {
-        if items.len() >= max_items { return Ok(false); }
-        
+    let mut item_callback = |row: ItemRow| {        
         let mut item = Item::new();
         item.merge_from_bytes(&row.item_bytes)?;
         items.push((row, item));
@@ -177,10 +176,10 @@ async fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error>
         Ok(items.len() < max_items)
     };
 
+    let max_time = Timestamp::now();
     backend.homepage_items(max_time, &mut item_callback).compat()?;
 
     let response = IndexPage {
-        name: "World".into(),
         posts: items,
     }
     .responder();
@@ -347,7 +346,6 @@ struct NotFoundPage {}
 #[derive(Template)]
 #[template(path = "index.html")] 
 struct IndexPage {
-    name: String,
     posts: Vec<(ItemRow, Item)>,
 }
 

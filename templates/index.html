@@ -1,16 +1,24 @@
 {% extends "page.html" %}
 
-{% block content %}
-<p>Hello, {{ name }}!</p>
+{% block body %}
 
-<p><a href="/post">/post</a></p>
-<p><a href="/login">/login</a></p>
-<p><a href="/create_id">Create an Identity</a></p>
+<div class="nav">
+    <a href="/">Home</a>
+    <a href="https://www.google.com/">Google</a>
+    <div>Some exmaple test. Woo.</div>
+</div>
 
-<ul>
-{% for (row, item) in posts %}
-    <li><a href="/u/{{ row.user.to_base58() }}/i/{{row.signature.to_base58()}}">/u/{{ row.user.to_base58() }}/i/{{row.signature.to_base58()}}</a></li>
+{%- for (row, item) in posts -%}
+{%- let userID = row.user.to_base58() -%}
+{%- let signature = row.signature.to_base58() -%}
+{%- let post = item.get_post() -%}
+{%- let title = post.get_title() -%}
+
+<div class="item post">
+    {% if title.len() > 0 %}<h1 class="title">{{ title }}</h1>{% endif %}
+    <div class="timestamp"><a href="/u/{{ userID }}/i/{{ signature }}/">{{ item.get_timestamp_ms_utc() }}</a></div>
+    {{ post.get_body() | markdown | safe }}
+</div>
 {% endfor %}
-</ul>
 
 {% endblock %}

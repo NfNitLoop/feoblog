@@ -54,15 +54,13 @@
         </table>
     </div>
 
-    <div id="output">
-        <div class="postPreviewHead">
-            {#if title}
-            <h1 class="title">{ title }</h1>
-            {/if}
-            <div class="timestamp">{ formattedDate }</div>
-        </div>
+    <div class="item">
+        {#if title}
+        <h1 class="title">{ title }</h1>
+        {/if}
+        <div class="timestamp">{ formattedDate }</div>
         
-        <div id="markdown-out">{@html markdownOut}</div>
+        {@html markdownOut}
     </div>
 
     {#if debug}
@@ -320,10 +318,10 @@ async function submit() {
         /* max-height: 80vh; */
     }
     
-    #app > div {
+    /* #app > div {
         margin-left: 0.5em;
         margin-right: 0.5em;
-    }
+    } */
     
     #app .postBody textarea {
         min-height: 20em;

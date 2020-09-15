@@ -1,18 +1,3 @@
-.userID {
-    font-family: monospace;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background-color: #f5f5f5;
-    padding-left: 0.25em;
-    padding-right: 0.25em;
-}
-
-.secret {
-    font-weight: bold;
-    color: red;
-}
-
-
 *
 {
 box-sizing: border-box;
@@ -43,68 +28,72 @@ which MAY have a left-hand nav preceding it. */
 
 
 
-/** Use table-cell layout so that #contentArea takes space #nav doesn't: */
 body
 {
-	display: table;
-	table-layout: fixed;
-	width: 100%;
 	padding: 0px;
 	margin: 0px;
-}
-#nav, #contentArea
-{
-	display: table-cell;
+	/** display: table allows vertical-align: top to work for blocks. */
+	display: table;
 	vertical-align: top;
+	/** Also requires width otherwise tries to make a small table: */
+	width: 100%;
 }
 
-#nav {
-	margin: 0px;
+/* Flexible left-hand nav. */
+.nav {
 	padding: 1em;
 	padding-top: 3em;
-	padding-right: 0px; /* redundant w/ content margin. */
-	width: 15%;
-	min-width: 100px;
 }
 
-
-#nav a, #nav div
+.nav > *
 {
 	display: block;
-	text-align: right;
-	margin-top: 1em;
 	overflow: auto;
 }
 
-#content, #comments {
+.nav > *:not(:first-child) {
+	margin-top: 0.5em;
+}
+
+
+/* Nav floats left */
+@media (min-width: 30em) {
+	.nav {
+		float: left;
+		min-width: 10em;
+		max-width: 20%;
+		margin: 0px;
+		padding-right: 0px; /* redundant w/ content margin. */
+
+	}
+
+	.nav a, .nav div {
+		text-align: right;
+	}
+}
+
+.item, .nav {
 	margin: 1em;
 	padding: 1em;
-	min-height: 500px;
 	background: #fff;
 	border-radius: 20px;
 	box-shadow: 10px 10px 5px #ddd;
 }
 
+/* Post, reply, etc. */
+.item {
+	overflow: auto;
+}
+
 /** Things like H1s like to add their own margins, but it doesn't make sense
 as the first item in the content. */
-#content *:first-child
+.item *:first-child
 {
 	margin-top: 0px;
 }
 
-#contentArea
-{
-	/* Must surround Content so that its margin can take effect.
-	   (Margins are ignored in table-cell layout.)
-	*/
-	margin: 0px;
-	padding: 0px;
-}
 
-.dateline { font-size: 0.8em; }
-h1 + .dateline { margin-top: -2em; }
-
-.post + .post
+.item + .item
 {
 	padding-top: 20px;
 	margin-top: 20px;
@@ -144,14 +133,28 @@ blockquote blockquote blockquote blockquote
 }
 
 
-div.image {
+.item img {
 	margin-top: 1em;
 	margin-bottom: 1em;
 	text-align: center;
 }
 
-div.image img {
-	max-width: 90%;
-	box-shadow: 0px 0px 10px 6px #ccc;
+/* Always comes before the timestamp, so bottom margin doesn't make sense. */
+.item .title {
+	margin-bottom: 0px;
+	padding-bottom: 0px;
 }
 
+.item .timestamp {
+	color: grey;
+	font-size: 0.8em;
+}
+
+.userID {
+    font-family: monospace;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: #f5f5f5;
+    padding-left: 0.25em;
+    padding-right: 0.25em;
+}
