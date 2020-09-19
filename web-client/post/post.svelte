@@ -1,32 +1,29 @@
-<div id="app">
-    <div class="postMetadata">
+<div id="postPage">
+    <div class="postInput item">
         <table class="form">
             <tr>
-                <th><label for="title">Title</label>:</th>
-                <td><input type="text" name="title" bind:value={title}></td>
+                <th><label for="title" disabled={validPost}>Title</label>:</th>
+                <td><input type="text" name="title" bind:value={title} disabled={validPost}></td>
             </tr>
             <tr>
                 <th><label for="time">Time</label>:</th>
                 <td>
-                    <input type="text" name="time" bind:value={timeInput}>
+                    <input type="text" name="time" bind:value={timeInput} disabled={validPost}>
                     {#if timeInputError}
                     <div class="error">{timeInputError}</div>
                     {/if}
                 </td>
             </tr>
-        </table>
-    </div>
-
-    <div class="postPreviewHeader">
-        Markdown Preview
-    </div>
-
-    <div class="postBody">
-        <textarea bind:this={textbox} bind:value={post}></textarea>
-        <table class="form">
+            <tr><td colspan=2>
+                <textarea bind:this={textbox} bind:value={post} disabled={validPost}></textarea>
+            </td></tr>
             <tr>
                 <th><label for="userID">User ID</label>:</th>
-                <td><input type="text" name="userID" bind:value={userID}></td>
+                <td><input type="text" name="userID" bind:value={userID} disabled></td>
+            </tr>
+            <tr>
+                <th><label for="signature">Signature</label>:</th>
+                <td><input type="text" name="signature" bind:value={signature} disabled></td>
             </tr>
             <tr>
                 <th><label for="privateKey">Private Key</label>:</th>
@@ -39,13 +36,14 @@
                 </td>
             </tr>
             <tr>
-                <th><label for="signature">Signature</label>:</th>
-                <td><input type="text" name="signature" bind:value={signature} disabled></td>
-            </tr>
-            <tr>
                 <th></th>
                 <td>
-                    <button name="submit" on:click={submit} disabled={!valid}>Submit</button>
+                    {#if validPost}
+                        <button name="unsign" on:click={unSign}>Edit</button>
+                    {:else}
+                        <button name="sign" on:click={sign} disabled={!validPrivateKey}>Sign</button>
+                    {/if}
+                    <button name="submit" on:click={submit} disabled={!validPost}>Submit</button>
                     {#if status}
                         <div>{status}</div>
                     {/if}
@@ -54,7 +52,8 @@
         </table>
     </div>
 
-    <div class="item">
+
+    <div class="postPreview item">
         {#if title}
         <h1 class="title">{ title }</h1>
         {/if}
@@ -63,19 +62,20 @@
         {@html markdownOut}
     </div>
 
-    {#if debug}
-    <div class="protoPreview">
-        <pre>
-    bytes: {protoSize}
-    {itemJson}
-        </pre>
-
-        binary: <code>{ protoHex }</code>
-    </div>
-    {/if}
 
 </div>
 
+
+{#if debug}
+<div class="protoPreview">
+    <pre>
+bytes: {protoSize}
+{itemJson}
+    </pre>
+
+    binary: <code>{ protoHex }</code>
+</div>
+{/if}
 
 <script lang="ts">
 import { onMount } from 'svelte';
@@ -101,14 +101,23 @@ const DATE_FORMATS = [
 ]
 
 let title = ""
-let post = "Hello world!"
+let post = "Hello **world**!"
 let textbox // .value holds `post`
 let status = ""
 onMount(() => {
+    // <textarea>:
     textbox.focus();
     textbox.selectionStart = 0;
     textbox.selectionEnd = textbox.value.length;
-});
+
+    // // contenteditable element:
+    // let range = document.createRange()
+    // range.selectNode(textbox)
+    // let sel = window.getSelection()
+    // sel.removeAllRanges()
+    // sel.addRange(range)
+    // textbox.focus()
+})
 // focusTextBox()
 
 
@@ -165,19 +174,13 @@ $: privateKeyError = function() {
         return "Invalid Password"
     }
     
-
     let keypair = nacl.sign_keyPair_fromSeed(buf);
     userID = bs58.encode(keypair.publicKey)
-    let binSignature = nacl.sign_detached(itemProtoBytes, keypair.secretKey)
-    signature = bs58.encode(binSignature)
 
-    // Delete the privateKey, we don't want to save it any longer than
-    // necessary:
-    privateKey = ""
-
-    console.log("generated signature", signature)
     return ""    
 }()
+
+$: validPrivateKey = privateKey.length > 0 && privateKeyError == ""
 
 let signature = ""
 
@@ -212,7 +215,7 @@ $: formattedDate = timestampMoment.format(DATE_FORMATS[0])
 
 
 $: itemProto = function(): Item {
-    let item = new Item({
+    return new Item({
         timestamp_ms_utc: timestampMoment.valueOf(),
         utc_offset_minutes: timestampMoment.utcOffset(),
         post: new Post({
@@ -220,13 +223,11 @@ $: itemProto = function(): Item {
             body: post,
         })
     })
-
-    return item;
 }()
 
 $: itemProtoBytes = itemProto.serialize()
 $: protoSize = itemProtoBytes.length
-$: protoHex = bufferToHex(itemProtoBytes)
+$: protoHex = debug ? bufferToHex(itemProtoBytes) : "";
 
 $: itemJson = JSON.stringify(itemProto.toObject(), null, 1)
 
@@ -252,7 +253,7 @@ $: errors = function(): string[] {
 }()
 
 // This post is valid and signed and ready to send to the server:
-$: valid = errors.length == 0;
+$: validPost = errors.length == 0;
 
 $: validSignature = function(): boolean {
     if (!userID || !signature) {
@@ -276,15 +277,37 @@ function bufferToHex (x) {
         .join (" ");
 }
 
+// Create a signature, delete the password.
+function sign() {
+    if (privateKeyError) {
+        console.error("Shouldn't be able to call sign w/ invalid private key.")
+        return
+    }
+   
+    let buf = bs58check.decode(privateKey)
+    let keypair = nacl.sign_keyPair_fromSeed(buf);
+    let binSignature = nacl.sign_detached(itemProtoBytes, keypair.secretKey)
+    signature = bs58.encode(binSignature)
+
+    // Delete the privateKey, we don't want to save it any longer than
+    // necessary:
+    privateKey = ""
+
+    console.log("generated signature", signature)
+}
+
+function unSign() {
+    signature = ""
+}
+
 async function submit() {
-    if (!valid) {
+    if (!validPost) {
         console.error("Submit clicked when not valid");
         return;
     }
 
     let url = `/u/${userID}/i/${signature}/proto3`
     let bytes = itemProtoBytes;
-    console.log("Making request")
     status = "Making request"
     
     let response: Response
@@ -299,8 +322,11 @@ async function submit() {
         return 
     }
 
-    console.log("response:")
-    console.log(response)
+    if (debug) {
+        console.debug("response:")
+        console.debug(response)
+    }
+
     let code = response.status
     let message = await response.text()
     status = `${code}: ${message}`
@@ -311,19 +337,23 @@ async function submit() {
 
 
 <style type="text/css">
-    #app {
-        display: grid;
-        width: 100%;
-        grid-template-columns: 1fr 1fr;
-        /* max-height: 80vh; */
+
+    @media (min-width: 60em) {
+        #postPage {
+            display: grid;
+            width: 100%;
+            grid-template-columns: 1fr 1fr;
+            /* max-height: 80vh; */
+        }
     }
+
     
-    /* #app > div {
+    /* #postPage > div {
         margin-left: 0.5em;
         margin-right: 0.5em;
     } */
     
-    #app .postBody textarea {
+    textarea {
         min-height: 20em;
         width: 100%;
     }

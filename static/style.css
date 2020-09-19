@@ -93,13 +93,6 @@ as the first item in the content. */
 }
 
 
-.item + .item
-{
-	padding-top: 20px;
-	margin-top: 20px;
-	border-top: 6px solid #eee;
-}
-
 pre code
 {
 	display: block;
