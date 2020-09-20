@@ -6,7 +6,9 @@ pub(crate) trait ToHTML {
 impl ToHTML for str {
     fn md_to_html(&self) -> String {
         let parser = pulldown_cmark::Parser::new(self);
-        use pulldown_cmark::Event::*;
+        use pulldown_cmark::Event::*; 
+
+        // TODO: Fix unsafe links like javascript:. see commonmark JS library.
         let parser = parser.map(|event| match event {
             Html(value) => Code(value),
             InlineHtml(value) => Text(value),

@@ -27,13 +27,16 @@ use async_trait::async_trait;
 
 use protobuf::Message;
 
+use crate::ServeCommand;
 use crate::backend::{self, Backend, Factory, UserID, Signature, Hash, ItemRow, Timestamp};
 use crate::responder_util::ToResponder;
 use crate::protos::{Item, Post, ProtoValid};
 
 mod filters;
 
-pub(crate) fn serve(options: crate::SharedOptions) -> Result<(), failure::Error> {
+pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
+
+    let ServeCommand{open, shared_options: options, mut binds} = command;
 
     // TODO: Error if the file doesn't exist, and make a separate 'init' command.
     let factory = backend::sqlite::Factory::new(options.sqlite_file.clone());
@@ -53,16 +56,29 @@ pub(crate) fn serve(options: crate::SharedOptions) -> Result<(), failure::Error>
         return app;
     };
 
-    let server = HttpServer::new(app_factory).bind("127.0.0.1:8080")?;
-    let url = "http://127.0.0.1:8080/";
-    // TODO: This opens up a (AFAICT) blocking CLI browser on Linux. Boo. Don't do that.
-    // TODO: Also move this outside of the server module.
-    let opened = webbrowser::open(url);
-    if !opened.is_ok() {
-        println!("Warning: Couldn't open browser.");
+    if binds.is_empty() {
+        binds.push("127.0.0.1:8080".into());
     }
-    println!("Started at: {}", url);
 
+    let mut server = HttpServer::new(app_factory); 
+    for bind in &binds {
+        server = server.bind(bind)?;
+    }
+
+    if open {
+        // TODO: This opens up a (AFAICT) blocking CLI browser on Linux. Boo. Don't do that.
+        // TODO: Handle wildcard addresses (0.0.0.0, ::0) and open them via localhost.
+        let url = format!("http://{}/", binds[0]);
+        let opened = webbrowser::open(&url);
+        if !opened.is_ok() {
+            println!("Warning: Couldn't open browser.");
+        }
+    }
+
+    for bind in &binds {
+        println!("Started at: http://{}/", bind);
+    }
+ 
     let mut system = actix_web::rt::System::new("web server");
     system.block_on(server.run())?;
    
@@ -75,10 +91,9 @@ fn routes(cfg: &mut web::ServiceConfig) {
 
         // .route("/u/{userID}/i/{signature}/", get().to(TODO))
         .route("/u/{user_id}/i/{signature}/proto3", put().to(put_item))
+
         
 
-        // TODO: view raw markdown
-        // .route("/md/{base58hash}", get().to(view_md))
     ;
     statics(cfg);
 }
@@ -161,9 +176,6 @@ fn statics(cfg: &mut web::ServiceConfig) {
 }
 
 async fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error> {
-    // TODO: Update this to show homepage posts.
-
-   
 
     let max_items = 10;
     let mut items = Vec::with_capacity(max_items);

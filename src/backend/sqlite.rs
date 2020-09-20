@@ -5,9 +5,11 @@
 //! Mostly, this makes data management trivial since it's all in one file.
 //! But if performance is an issue we can implement a different backend.
 
+use rusqlite::NO_PARAMS;
+use crate::backend::FnIter;
 use crate::backend::{self, UserID, Signature, ItemRow, Timestamp, ServerUser};
 
-use failure::{Error, bail};
+use failure::{Error, bail, ResultExt};
 use rusqlite::{params, OptionalExtension, Row};
 
 #[derive(Clone)]
@@ -244,27 +246,6 @@ impl backend::Backend for Connection
         Ok(hash)
     }
 
-    // fn get_hashes(&self) -> Result<Vec<backend::Hash>, Error>
-    // {
-    //     let mut stmt = self.conn.prepare("
-    //         SELECT hash
-    //         FROM blob
-    //         ORDER BY hash
-    //         LIMIT 10000
-    //     ")?;
-
-    //     let hash_iter = stmt.query_map(
-    //         params![],
-    //         |row| Ok(
-    //             backend::Hash{multihash: row.get(0)?}
-    //         )
-    //     )?;
-
-    //     let hashes: Result<Vec<backend::Hash>, rusqlite::Error> = hash_iter.collect();
-    //     Ok(hashes?)
-    // }
-
-
     fn homepage_items<'a>(&self, before: Timestamp, callback: &'a mut dyn FnMut(ItemRow) -> Result<bool,Error>) -> Result<(), Error>
     {
         let mut stmt = self.conn.prepare("
@@ -341,6 +322,35 @@ impl backend::Backend for Connection
 
         Ok(item)
 
+    }
+
+    fn server_users<'a>(&self, cb: FnIter<'a, ServerUser>) -> Result<(), Error> {
+
+        let mut stmt = self.conn.prepare("
+            SELECT 
+                user_id
+                , notes
+                , on_homepage
+            FROM server_user
+            ORDER BY on_homepage, user_id
+        ")?;
+
+        let mut rows = stmt.query(NO_PARAMS)?;
+
+        while let Some(row) = rows.next()? {
+            let on_homepage: isize = row.get(2)?;
+            let on_homepage = on_homepage != 0;
+
+            let user = ServerUser {
+                user: UserID::from_vec(row.get(0)?).compat()?,
+                notes: row.get(1)?,
+                on_homepage,
+            };
+            let more = cb(user)?;
+            if !more {break;}
+        }
+
+        Ok(())
     }
     
     

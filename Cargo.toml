@@ -17,7 +17,7 @@ futures-util = "*"
 failure = "*"
 
 # CLI: 
-structopt = "*"
+structopt = "0.3.17"
 webbrowser = "*"
 
 multihash = "*"

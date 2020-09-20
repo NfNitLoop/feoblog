@@ -14,9 +14,12 @@
 {%- let post = item.get_post() -%}
 {%- let title = post.get_title() -%}
 
+
 <div class="item post">
     {% if title.len() > 0 %}<h1 class="title">{{ title }}</h1>{% endif %}
-    <div class="timestamp"><a href="/u/{{ userID }}/i/{{ signature }}/">{{ item.get_timestamp_ms_utc() }}</a></div>
+    <div class="timestamp"><a href="/u/{{ userID }}/i/{{ signature }}/">{{ 
+        item.get_timestamp_ms_utc() | with_offset(item.get_utc_offset_minutes())
+    }}</a></div>
     {{ post.get_body() | markdown | safe }}
 </div>
 {% endfor %}

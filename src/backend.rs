@@ -49,12 +49,19 @@ pub trait Backend
     /// server.
     fn server_user(&self, user: &UserID) -> Result<Option<ServerUser>, Error>;
 
+    /// List users granted direct access to post to the server.
+    fn server_users<'a>(&self, cb: FnIter<'a, ServerUser>) -> Result<(), Error>;
+
     /// Reads an entire blob into memory. TODO: Make a streaming version.
     fn get_blob(&self, key: &Hash) -> Result<Option<Vec<u8>>, Error>;
 }
 
+/// A callback function used for callback iteration through large database resultsets.
+/// Each row T will be sent to the callback. The callback should return Ok(true) to continue iteration.
+type FnIter<'a, T> = &'a mut dyn FnMut(T) -> Result<bool, Error>; 
+
 /// A UserID is a nacl public key. (32 bytes)
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct UserID {
     pub_key: sign::PublicKey,
 }
@@ -170,10 +177,11 @@ pub struct ItemRow {
 
 /// Info about users explicitly allowed on this server.
 /// i.e.: A row in the server_user table.
+#[derive(Debug, Clone)]
 pub struct ServerUser {
-    user: UserID,
-    notes: String,
-    on_homepage: bool,
+    pub user: UserID,
+    pub notes: String,
+    pub on_homepage: bool,
 }
 
 
@@ -190,6 +198,18 @@ impl Timestamp {
         Timestamp {
             unix_utc_ms: delta.whole_milliseconds() as i64,
         }
+    }
+
+    pub fn format_with_offset(self, minutes: i16) -> String {
+        use time::{Duration, UtcOffset, OffsetDateTime};
+        use std::ops::Add;
+
+        let ms = Duration::milliseconds(self.unix_utc_ms);
+        let datetime = OffsetDateTime::unix_epoch().add(ms);
+        let offset = UtcOffset::minutes(minutes);
+        let datetime = datetime.to_offset(offset);
+
+        datetime.format("%Y-%m-%d %H:%M:%S %z")
     }
 }
 
