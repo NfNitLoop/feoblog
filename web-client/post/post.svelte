@@ -1,29 +1,24 @@
 <div id="postPage">
     <div class="postInput item">
+        <h1 class="title"><input type="text" name="title" placeholder="Title (optional)" bind:value={title} disabled={validPost}></h1>
+        <div class="timestamp">                    
+            <input type="text" name="time" bind:value={timeInput} disabled={validPost}>
+            {#if timeInputError}
+            <div class="error">{timeInputError}</div>
+            {/if}
+        </div>
+        <textarea bind:this={textbox} bind:value={post} disabled={validPost}></textarea>
+
+
+
         <table class="form">
             <tr>
-                <th><label for="title" disabled={validPost}>Title</label>:</th>
-                <td><input type="text" name="title" bind:value={title} disabled={validPost}></td>
-            </tr>
-            <tr>
-                <th><label for="time">Time</label>:</th>
-                <td>
-                    <input type="text" name="time" bind:value={timeInput} disabled={validPost}>
-                    {#if timeInputError}
-                    <div class="error">{timeInputError}</div>
-                    {/if}
-                </td>
-            </tr>
-            <tr><td colspan=2>
-                <textarea bind:this={textbox} bind:value={post} disabled={validPost}></textarea>
-            </td></tr>
-            <tr>
                 <th><label for="userID">User ID</label>:</th>
-                <td><input type="text" name="userID" bind:value={userID} disabled></td>
+                <td><input class="userID" type="text" name="userID" bind:value={userID} disabled></td>
             </tr>
             <tr>
                 <th><label for="signature">Signature</label>:</th>
-                <td><input type="text" name="signature" bind:value={signature} disabled></td>
+                <td><input type="text" name="signature" class="signature" bind:value={signature} disabled></td>
             </tr>
             <tr>
                 <th><label for="privateKey">Private Key</label>:</th>
@@ -53,7 +48,7 @@
     </div>
 
 
-    <div class="postPreview item">
+    <div class="postPreview item" bind:this={postPreviewDiv}>
         {#if title}
         <h1 class="title">{ title }</h1>
         {/if}
@@ -101,8 +96,14 @@ const DATE_FORMATS = [
 ]
 
 let title = ""
-let post = "Hello **world**!"
+let post = `Hello **world**!
+
+Welcome to [FeoBlog].
+
+[FeoBlog]: https://www.github.com/nfnitloop/feoblog/
+`
 let textbox // .value holds `post`
+let postPreviewDiv: HTMLElement
 let status = ""
 onMount(() => {
     // <textarea>:
@@ -117,8 +118,43 @@ onMount(() => {
     // sel.removeAllRanges()
     // sel.addRange(range)
     // textbox.focus()
+
+    postPreviewDiv.onclick = interceptLinkClicks
 })
 // focusTextBox()
+
+// Send link clicks to target=_blank to save the contents of the edit box:
+function interceptLinkClicks(event: Event) {
+    let target = event.target as HTMLElement
+    let anchor: HTMLAnchorElement = undefined
+    let tag = target.tagName
+
+    if (tag == "A") {
+        anchor = (target as HTMLAnchorElement)
+    } else if (tag == "IMG") {
+        let parent = target.parentElement
+        if (parent.tagName == "A") {
+            anchor = (parent as HTMLAnchorElement)
+        }
+    }
+
+    if (!anchor) { return }
+    anchor.target = "_blank"
+}
+
+$: {
+    post // on change:
+    expandTextarea(textbox)
+}
+
+function expandTextarea(textarea) {
+    if (!textarea) { return } // not mounted yet
+    
+    if (textarea.scrollHeight > textarea.clientHeight) {
+        let borderHeight = textarea.offsetHeight - textarea.clientHeight
+        textarea.style.height = textarea.scrollHeight + borderHeight;
+    }
+}
 
 
 // <3 Moment in that it'll keep the time and offset together:
@@ -209,6 +245,17 @@ $: markdownOut = function() {
     var parsed = reader.parse(post);
     return writer.render(parsed);
 }()
+
+function updateLinkTargets() {
+    if (!postPreviewDiv) { return } // not yet mounted
+
+    let anchors = postPreviewDiv.getElementsByTagName("a")
+    console.debug(`Found ${anchors.length} anchors`)
+    for (let i = 0; i < anchors.length; i++) {
+        let anchor = anchors[i]
+        anchor.target = "_blank"
+    }
+}
 
 // Used for display in the rendered post.
 $: formattedDate = timestampMoment.format(DATE_FORMATS[0])
@@ -334,10 +381,7 @@ async function submit() {
 
 </script>
 
-
-
 <style type="text/css">
-
     @media (min-width: 60em) {
         #postPage {
             display: grid;
@@ -345,55 +389,41 @@ async function submit() {
             grid-template-columns: 1fr 1fr;
             /* max-height: 80vh; */
         }
+        #postPage :first-child {
+            margin-right: 0px;
+        }
     }
 
-    
-    /* #postPage > div {
-        margin-left: 0.5em;
-        margin-right: 0.5em;
-    } */
-    
+    .title input, .timestamp input {
+        font-size: inherit;
+        font-family: inherit;
+        font-weight: inherit;
+        color: inherit;
+        border: 0px;
+    }
+    input {
+        width: 100%;
+    }
+
     textarea {
+        margin-top: 1em;
+        border: 0px;
         min-height: 20em;
         width: 100%;
     }
-    
-    #output {
-        border: 1px dashed grey;
-        border-radius: 1em;
-        padding-left: 1em;
-        padding-right: 1em;
-        overflow: auto;
-        min-height: 1em; /* fixes overflow? */
-        max-height: 100%;
-    
-    }
-    
-    #output .timestamp {
-        color: grey;
-        font-size: 0.8em;
-    }
-    
-    .postPreviewHead .title {
-        margin-bottom: 0px;
-    }
-    
+
+       
     table.form {
         width: 100%;
     }
     table.form th {
         text-align: right;
-        width: 20%;
+        width: auto;
         min-width: 12ch;
     }
     table.form td {
-        width: 80%;
-    }
-    
-    table.form input[type=text], table.form input[type=password] {
         width: 100%;
     }
-    
     
     div.error {
         color: red;
