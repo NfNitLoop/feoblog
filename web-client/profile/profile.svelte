@@ -253,7 +253,6 @@ async function addFollow() {
     follows.push(new FollowEntry())
     follows = follows
     await tick()
-    console.log("after tick")
     // TODO: Focus the new userID box.
 }
 
@@ -356,8 +355,6 @@ $: itemProto = function(): Item {
             userIDBytes = new Uint8Array(buf)
         } catch (_ignored) {}
 
-        console.log("Sending:", userIDBytes)
-
         profile.follows.push(new Follow({
             user: new UserID({bytes: userIDBytes}),
             display_name: entry.displayName,
@@ -366,23 +363,13 @@ $: itemProto = function(): Item {
 
     // TODO: servers.
 
-    console.log("returning Item")
     return item
 
 }()
 
-$: itemProtoBytes = function() {
-    console.log("Serializing to bytes")
-    let bytes = itemProto.serialize()
-    console.log("Done serializing")
-    return bytes
-}()
-
+$: itemProtoBytes = itemProto.serialize()
 $: protoSize = itemProtoBytes.length
-$: protoHex = function() {
-    console.log("making hex")
-    return debug ? bufferToHex(itemProtoBytes) : "";
-}()
+$: protoHex = debug ? bufferToHex(itemProtoBytes) : ""
 
 $: itemJson = JSON.stringify(itemProto.toObject(), null, 1)
 
@@ -428,7 +415,6 @@ $: signErrors = function(): string[] {
         errs.push(`Item size is ${protoSize}/${MAX_ITEM_SIZE}`)
     }
 
-    console.log("signErrors", errs)
     return errs
 }()
 
@@ -499,8 +485,6 @@ async function sign() {
     // Delete the privateKey, we don't want to save it any longer than
     // necessary:
     privateKey = ""
-
-    console.log("generated signature", signature)
 }
 
 function unSign() {
@@ -524,7 +508,7 @@ async function submit() {
             body: bytes,
         })
     } catch (e) {
-        console.log("PUT exception:", e)
+        console.error("PUT exception:", e)
         status = `PUT exception: ${e}`
         return 
     }
