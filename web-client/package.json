@@ -4,6 +4,7 @@
   "description": "web client for the feoblog backend",
   "main": "index.js",
   "dependencies": {
+    "@types/bs58": "^4.0.1",
     "base58": "*",
     "bs58": "*",
     "bs58check": "^2.1.2",

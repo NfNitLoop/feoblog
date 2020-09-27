@@ -46,7 +46,7 @@ time = "0.2"
 
 
 [dependencies.rusqlite]
-version = "*"
+version = "0.24"
 features = [
     # Use a bundled, statically-linked version of sqlite. (Simplifies building on Windows)
     "bundled"

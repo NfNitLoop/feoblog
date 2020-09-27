@@ -33,10 +33,25 @@ impl ProtoValid for Item {
             );
         }
 
-        if self.item_type.is_none() {
-            return Some(
-                "An item_type is required".into()
-            );
+        // TODO: Validations for specific item types.
+        if self.has_profile() {
+            let err = self.get_profile().get_error();
+            if err.is_some() {
+                return err;
+            }
+        }
+
+        None
+    }
+}
+
+impl ProtoValid for Profile {
+    fn get_error(&self) -> Option<Cow<'static, str>> {
+
+        for follow in self.get_follows() {
+            if follow.get_user().get_bytes().len() != 32 {
+                return Some("UserID.bytes must be 32 bytes".into())
+            }
         }
 
         None

@@ -53,7 +53,7 @@ message Item {
 //    should render (some number of) the user's most recent posts before
 //    timestamp_ms_utc. These may be truncated.
 // 2. /u/{userID}/i/{itemID}/
-//    should render a single user post.
+//    should render a single user post, in full.
 //    
 message Post {
     // An optional plaintext title for the post.
@@ -69,7 +69,7 @@ message Post {
     // size of the enclosing Item.
     string body = 2;
 
-    // TODO: files
+    // TODO: files? Or should that be Attachments in the Item?
     // TODO: replyTo
 }
 
@@ -83,14 +83,68 @@ message Post {
 // If a server hosts a user profile, it must allow uploads of newer signed
 // Item entries to replace it.
 message Profile {
-    // TODO
-    // handle
-    // name
-    // aliases
-    // post
-    // servers
-    // follows
-    // read_only. // abandoned/finished blogs.
+
+    // A name to display instead of your userID.
+    string display_name = 1;
+
+    // An "about me" section, formatted in Commonmark markdown.
+    // Servers should suppress unsafe raw HTML blocks in the body.
+    string about = 2;
+
+    // A list of servers where the user expects their content to be hosted.
+    // The first server is considered the "primary" server, but others may be listed
+    // as backups.
+    // This allows users to move servers by updating their preferred server list.
+    repeated Server servers = 3;
+
+
+    // A list of users who this user "follows".
+    // This allows the server to know what additional users it should cache data for, so that it can present this
+    // (Profile) user's feed of new content.
+    //
+    // The order of the list is unimportant.
+    repeated Follow follows = 4;
+
+
+    // TODO:
     // irrevocably_purge_this_user
 
+}
+
+// Information about where a 
+message Server {
+
+    // A URL to a FeoBlog server.
+    // Ex:
+    // "https://feo.example.com"
+    // "https://feo.example.com/"
+    // "https://feo.example.com:8080"
+    // "https://feo.example.com:8080/"
+    //
+    // Note: subpaths are currently not supported. Ex: "https://feo.example.com/some/subpath/"
+    string url = 1;
+}
+
+message Follow {
+    // REQUIRED
+    UserID user = 1;
+
+    // Set a display name for a user within the context of your feed.
+    //
+    // Users may change their display names in their profiles. But, unlike Twitter, FeoBlog does not have
+    // a globally-unique human-readable ID to fall back on to identify someone, so it can be difficult to
+    // know who's who if people keep changing their names. 
+    // Here you can set a stable name so you always know who's who.
+    string display_name = 2;
+
+    // Possible future features:
+    // * tags -- only follow or exclude certain tags users post about.
+    // * quota -- determine how much disk space a particular user may use.
+    //   (i.e.: how much of their content to cache on their behalf)
+}
+
+message UserID {
+
+    // A user's public NaCL key/ID. Should be 32 bytes:
+    bytes bytes = 1;
 }

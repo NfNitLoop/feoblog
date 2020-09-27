@@ -184,7 +184,6 @@ let privateKey = ""
 
 // Error to display about the private key:
 $: privateKeyError = function() {
-    console.debug(`Got pkey of length ${privateKey.length}`)
     if (privateKey.length == 0) {
         return "";
     }
@@ -245,17 +244,6 @@ $: markdownOut = function() {
     var parsed = reader.parse(post);
     return writer.render(parsed);
 }()
-
-function updateLinkTargets() {
-    if (!postPreviewDiv) { return } // not yet mounted
-
-    let anchors = postPreviewDiv.getElementsByTagName("a")
-    console.debug(`Found ${anchors.length} anchors`)
-    for (let i = 0; i < anchors.length; i++) {
-        let anchor = anchors[i]
-        anchor.target = "_blank"
-    }
-}
 
 // Used for display in the rendered post.
 $: formattedDate = timestampMoment.format(DATE_FORMATS[0])

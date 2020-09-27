@@ -65,7 +65,7 @@ struct ServeCommand {
 #[derive(StructOpt, Debug, Clone)]
 pub(crate) struct SharedOptions
 {
-    #[structopt(default_value = "feoblog.sqlite3")]
+    #[structopt(long, default_value = "feoblog.sqlite3")]
     pub sqlite_file: String,
 }
 
@@ -103,7 +103,7 @@ impl UserListCommand {
         let factory = backend::sqlite::Factory::new(self.shared_options.sqlite_file.clone());
         let conn = factory.open()?;
         
-        conn.server_users(&mut move |server_user| {
+        conn.server_users(&mut |server_user| {
 
             let ServerUser{user, notes, on_homepage} = server_user;
             let on_homepage = if on_homepage { "H" } else { " " };
@@ -124,16 +124,28 @@ struct UserAddCommand {
 
     user_id: UserID,
 
+    /// Should this user's posts appear on the homepage?
     #[structopt(long)]
-    on_home_page: bool,
+    on_homepage: bool,
 
+    /// Notes for the server admin
     #[structopt(long, default_value="")]
     comment: String,
 }
 
 impl UserAddCommand {
     fn main(&self) -> Result<(), Error> {
-        todo!();
+        let factory = backend::sqlite::Factory::new(self.shared_options.sqlite_file.clone());
+        let conn = factory.open()?;
+
+        let user = ServerUser{
+            user: self.user_id.clone(),
+            on_homepage: self.on_homepage,
+            notes: self.comment.clone(),
+        };
+
+        conn.add_server_user(&user)?;
+        Ok(())
     }
 }
 

@@ -2,6 +2,7 @@
 
 pub(crate) mod sqlite;
 
+use crate::protos::Item;
 use core::str::FromStr;
 use failure::{Error, ResultExt, bail, format_err};
 use bs58;
@@ -42,8 +43,8 @@ pub trait Backend
     /// Effieicntly check whether a user item exists:
     fn user_item_exists(&self, user: &UserID, signature: &Signature) -> Result<bool, Error>;
 
-    /// Save an uploaded item to the data store. 
-    fn save_user_item(&self, item: &ItemRow) -> Result<(), Error>;
+    /// Save an uploaded item to the data store.
+    fn save_user_item(&self, item_row: &ItemRow, item: &Item) -> Result<(), Error>;
 
     /// Get a "server user" -- a user granted direct access to post to the
     /// server.
@@ -51,6 +52,9 @@ pub trait Backend
 
     /// List users granted direct access to post to the server.
     fn server_users<'a>(&self, cb: FnIter<'a, ServerUser>) -> Result<(), Error>;
+
+    // Add a new "server user" who is explicitly allowed to post to this server.
+    fn add_server_user(&self, server_user: &ServerUser) -> Result<(), Error>;
 
     /// Reads an entire blob into memory. TODO: Make a streaming version.
     fn get_blob(&self, key: &Hash) -> Result<Option<Vec<u8>>, Error>;

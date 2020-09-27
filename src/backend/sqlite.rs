@@ -5,12 +5,16 @@
 //! Mostly, this makes data management trivial since it's all in one file.
 //! But if performance is an issue we can implement a different backend.
 
+use crate::protos::Item;
 use rusqlite::NO_PARAMS;
 use crate::backend::FnIter;
-use crate::backend::{self, UserID, Signature, ItemRow, Timestamp, ServerUser};
+use crate::backend::{self, UserID, Signature, ItemRow, Timestamp, ServerUser, Backend};
 
 use failure::{Error, bail, ResultExt};
 use rusqlite::{params, OptionalExtension, Row};
+
+const CURRENT_VERSION: u32 = 3;
+
 
 #[derive(Clone)]
 pub(crate) struct Factory
@@ -51,7 +55,7 @@ impl Connection
                 version INTEGER
             )
         ")?;
-        self.run("INSERT INTO version VALUES(2)")?;
+        self.run("INSERT INTO version VALUES(3)")?;
 
         self.run("
             CREATE TABLE item(
@@ -128,10 +132,37 @@ impl Connection
         ")?;
 
 
-        // TODO: a "profile" table which tracks users' latest profile.
-        // TODO: a "follow" table which shows which users are followed by
-        // server_users
+        self.run("
+            CREATE TABLE follow(
+                -- Lists which users follow which other users.
+                -- Always represents the latest Profile saved by a user.
+                source_user_id BLOB,
+                followed_user_id BLOB,
+                display_name TEXT
+            )
+        ")?;
 
+        self.run("
+            CREATE UNIQUE INDEX follow_primary_idx
+            ON follow(source_user_id, followed_user_id)
+        ")?;
+
+        self.run("
+            CREATE TABLE profile(
+                -- Always contains a reference to the latest profile uploaded by a user
+                user_id BLOB,
+                signature BLOB,
+                display_name TEXT
+            )
+        ")?;
+
+        self.run("
+            CREATE UNIQUE INDEX profile_primary_idx
+            ON profile(user_id)
+        ")?;
+
+
+        // TODO: Store file attachments, etc:
         // self.run("
         //     CREATE TABLE blob(
         //         -- A content-addressable store for many kinds of data.
@@ -140,8 +171,6 @@ impl Connection
         //     )
         // ")?; 
 
-
-        // TODO: Cache tables for quick lookups of things.
 
         Ok(())
     }
@@ -169,11 +198,6 @@ impl Connection
             return Ok(None);
         }
 
-        // TODO: Oops, meant to count rows here, not tables. 
-        // if table_count > 1 {
-        //     bail!("Found {} versions in the version table.", table_count);
-        // }
-
         let  version = self.conn.prepare(
             "SELECT MAX(version) from version"
         )?.query_row(
@@ -183,9 +207,78 @@ impl Connection
 
         Ok(version)
     }
+
+    /// We're saving a profile. If it's new, update the profile and follow tables.
+    /// Expects to be run from within a transaction.
+    fn update_profile(&self, item_row: &ItemRow, item: &Item) -> Result<(), Error> {
+
+        // TODO: Really could just get the profile timestamp from the DB w/o deserializing.
+        let profile = self.get_profile(&item_row.user)?;
+
+        // Never replace a newer profile's metadata:
+        if let Some(profile) = profile {
+            if profile.timestamp.unix_utc_ms >= item.timestamp_ms_utc {
+                return Ok(())
+            }
+        }
+
+        // Replace all follows with new ones listed in the profile:
+        self.conn.execute("DELETE FROM follow WHERE source_user_id = ?", params![item_row.user.bytes()])?;
+
+        // Behavior is undefined if duplicate follows exist in a Profile.
+        let mut add_follow = self.conn.prepare("
+            INSERT OR REPLACE INTO follow (source_user_id, followed_user_id, display_name)
+            VALUES (?, ?, ?)
+        ")?;
+
+        for follow in item.get_profile().get_follows() {
+            add_follow.execute(params![
+                item_row.user.bytes(),
+                follow.get_user().get_bytes(),
+                follow.get_display_name(),
+            ])?;
+        }
+
+        let mut add_profile = self.conn.prepare("
+            INSERT OR REPLACE INTO profile(user_id, signature, display_name)
+            VALUES (?,?,?)
+        ")?;
+        add_profile.execute(params![
+            item_row.user.bytes(),
+            item_row.signature.bytes(),
+            item.get_profile().get_display_name()
+        ])?;
+
+        Ok(())
+    }
+
+    // TODO: Should move to the Backend trait:
+    fn get_profile(&self, user: &UserID) -> Result<Option<ItemRow>, Error> {
+
+        // TODO: I'm not crazy about making 2 queries here instead of a join, but it lets me
+        // re-use the user_item() loading logic.
+        let mut find_profile = self.conn.prepare("
+            SELECT user_id, signature
+            FROM profile
+            WHERE user_id = ?
+        ")?;
+
+        let mut rows = find_profile.query(params![user.bytes()])?;
+        let row = match rows.next()? {
+            None => return Ok(None),
+            Some(row) => row,
+        };
+
+        let user_id: Vec<u8> = row.get(0)?;
+        let signature: Vec<u8> = row.get(1)?;
+
+        let user_id = UserID::from_vec(user_id)?;
+        let signature = Signature::from_vec(signature)?;
+
+        self.user_item(&user_id, &signature)
+    }
 }
 
-const CURRENT_VERSION: u32 = 2;
 
 impl backend::Backend for Connection
 {
@@ -415,8 +508,10 @@ impl backend::Backend for Connection
         Ok(Some(item))
     }
 
-    fn save_user_item(&self, row: &ItemRow) -> Result<(), Error>
+    fn save_user_item(&self, row: &ItemRow, item: &Item) -> Result<(), Error>
     {
+        let tx = self.conn.unchecked_transaction()?;
+
         let stmt = "
             INSERT INTO item (
                 user_id
@@ -433,6 +528,30 @@ impl backend::Backend for Connection
             row.timestamp.unix_utc_ms,
             row.received.unix_utc_ms,
             row.item_bytes.as_slice(),
+        ])?;
+
+        if item.has_profile() {
+            self.update_profile(row, item)?;
+        }
+
+        tx.commit()?;
+
+        Ok(())
+    }
+
+    fn add_server_user(&self, server_user: &ServerUser) -> Result<(), Error> {
+
+        let stmt = "
+            INSERT INTO server_user(user_id, notes, on_homepage)
+            VALUES (?,?,?)
+        ";
+
+        let on_homepage = if server_user.on_homepage { 1 } else { 0 };
+
+        self.conn.execute(stmt, params![
+            server_user.user.bytes(),
+            server_user.notes.as_str(),
+            on_homepage
         ])?;
 
         Ok(())

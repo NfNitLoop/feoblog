@@ -226,6 +226,7 @@ async fn put_item(
                 HttpResponse::BadRequest()
                 .content_type(PLAINTEXT)
                 .body("Must include length header.".to_string())
+                // ... so that we can reject things that are too large outright.
             );
         }
     };
@@ -248,7 +249,6 @@ async fn put_item(
             .body("Item too large".to_string())
         );
     }
-
 
     // TODO: Eventually also check if this user is "followed". Their content
     // can be posted here too.
@@ -273,7 +273,6 @@ async fn put_item(
     
     let mut bytes: Vec<u8> = Vec::with_capacity(length);
     while let Some(chunk) = body.next().await {
-        println!("Got chunk.");
         let chunk = chunk.context("Error parsing chunk").compat()?;
         bytes.extend_from_slice(&chunk);
     }
@@ -286,15 +285,6 @@ async fn put_item(
     item.merge_from_bytes(&bytes)?;
     item.validate()?;
 
-    if item.has_post() {
-        println!("Got a post!");
-        println!("timestamp: {}", item.get_timestamp_ms_utc());
-        println!("offset minutes: {}", item.get_utc_offset_minutes());
-        let post = item.get_post();
-        println!("title: {}", post.get_title());
-        println!("body:\n{}", post.get_body());
-    }
-
     let message = format!("OK. Received {} bytes.", bytes.len());
     
     let row = ItemRow{
@@ -305,7 +295,7 @@ async fn put_item(
         item_bytes: bytes,
     };
 
-    backend.save_user_item(&row).compat()?;
+    backend.save_user_item(&row, &item).compat()?;
 
     let response = HttpResponse::Created()
         .content_type(PLAINTEXT)
@@ -313,33 +303,6 @@ async fn put_item(
 
     Ok(response)
 }
-
-
-// fn view_md(
-//     backend: Data<Box<dyn Backend>>,
-//     path: Path<(String,)>,
-// ) -> Result<impl Responder, Error> {
-//     let (base58hash,) = path.into_inner();
-//     let hash = Hash::from_base58(base58hash.as_ref())?;
-//     let result = backend.get_blob(&hash)?.unwrap_or("No result.".into());
-//     let result = String::from_utf8(result)?;
-
-//     let parser = pulldown_cmark::Parser::new(&result);
-//     use pulldown_cmark::Event::*;
-//     let parser = parser.map(|event| match event {
-//         Html(value) => Code(value),
-//         InlineHtml(value) => Text(value),
-//         x => x,
-//     });
-
-//     let mut html = String::new();
-//     pulldown_cmark::html::push_html(&mut html, parser);
-
-//     let response = HttpResponse::Ok()
-//         .content_type("text/html; charset=utf-8")
-//         .body(html);
-//     Ok(response)
-// }
 
 
 async fn file_not_found() -> impl Responder {
