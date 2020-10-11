@@ -32,17 +32,13 @@ body
 {
 	padding: 0px;
 	margin: 0px;
-	/** display: table allows vertical-align: top to work for blocks. */
-	display: table;
-	vertical-align: top;
-	/** Also requires width otherwise tries to make a small table: */
-	width: 100%;
 }
 
-/* Flexible left-hand nav. */
+/* Flexible left-hand/top nav. */
 .nav {
 	padding: 1em;
 	padding-top: 3em;
+	margin: 1em;
 }
 
 .nav > *
@@ -55,52 +51,86 @@ body
 	margin-top: 0.5em;
 }
 
-
-/* Nav floats left */
-@media (min-width: 30em) {
-	.nav {
-		float: left;
-		min-width: 10em;
-		max-width: 20%;
-		margin: 0px;
-		padding-right: 0px; /* redundant w/ content margin. */
-
-	}
-
-	.nav a, .nav div {
-		text-align: right;
-	}
+.item > * {
+	margin: 0;
 }
 
-.item, .nav {
-	margin: 1em;
-	padding: 1em;
-	background: #fff;
-	border-radius: 20px;
-	box-shadow: 10px 10px 5px #ddd;
+.item > *:not(:first-child) {
+	margin-top: 1em;
 }
 
-/* Post, reply, etc. */
-.item {
-	overflow: auto;
-}
-
-/** Things like H1s like to add their own margins, but it doesn't make sense
-as the first item in the content. */
-.item *:first-child
-{
-	margin-top: 0px;
-}
-
-
-pre code
+.item pre
 {
 	display: block;
 	border: 2px solid #ddd;
 	background: #eee;
 	padding: 0.5em;
 	overflow-x: auto;
+	transition: box-shadow 1s ease-in-out 0s;
 }
+
+
+/* Nav floats left */
+@media (min-width: 55em) {
+	.nav-layout-container {
+		display: flex;
+		flex-direction: horizontal;
+	}
+	
+	.nav-container {
+		min-width: 10em;
+		max-width: 20%;
+		margin: 0;
+		padding: 0;
+	}
+
+	.nav {
+		margin-right: 0;
+	}
+
+	.nav a, .nav div {
+		text-align: right;
+	}
+
+	.items {
+		flex-grow: 10;
+		min-width: 0;
+	}
+}
+
+/* Show wide code: */
+@media (min-width: 90em) {
+	.item pre {
+		border-radius: 5px;
+		min-width: 100%;
+		width: max-content;
+		box-shadow: 10px 10px 10px rgba(0, 0, 0, 0.2);
+	}
+}
+
+
+.item, .nav {
+	padding: 1em;
+	background: #fff;
+	border-radius: 20px;
+	box-shadow: 10px 10px 5px #ddd;
+}
+
+
+/* Post, reply, etc. */
+.item {
+	margin: 1em;
+	max-width: 55em;
+}
+
+/** Things like H1s like to add their own margins, but it doesn't make sense
+as the first item in the content. */
+.item > *:first-child
+{
+	margin-top: 0px;
+}
+
+
 
 blockquote
 , blockquote blockquote blockquote blockquote blockquote
@@ -127,9 +157,11 @@ blockquote blockquote blockquote blockquote
 
 
 .item img {
-	margin-top: 1em;
-	margin-bottom: 1em;
-	text-align: center;
+	display: block;
+	max-width: 100%;
+	border-radius: 5px;
+	margin-left: auto;
+	margin-right: auto;
 }
 
 /* Always comes before the timestamp, so bottom margin doesn't make sense. */
