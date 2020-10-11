@@ -86,6 +86,8 @@ body
 
 	.nav {
 		margin-right: 0;
+		position: sticky;
+		top: 1em;
 	}
 
 	.nav a, .nav div {
