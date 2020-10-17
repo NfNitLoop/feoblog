@@ -192,6 +192,13 @@ async fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error>
     backend.homepage_items(max_time, &mut item_callback).compat()?;
 
     let response = IndexPage {
+        nav: vec![
+            Nav::Text("FeoBlog".into()),
+            Nav::Link{
+                text: "Client".into(),
+                href: "/client/".into(),
+            }
+        ],
         posts: items,
     }
     .responder();
@@ -322,12 +329,17 @@ struct NotFoundPage {}
 #[template(path = "index.html")] 
 struct IndexPage {
     posts: Vec<(ItemRow, Item)>,
+    nav: Vec<Nav>,
 }
 
-#[derive(Template, Default)]
-#[template(path = "post.html")]
-struct PostPage {
+enum Nav {
+    Text(String),
+    Link{
+        text: String,
+        href: String,
+    },
 }
+
 
 /// A type implementing ResponseError that can hold any kind of std::error::Error.
 #[derive(Debug)]
