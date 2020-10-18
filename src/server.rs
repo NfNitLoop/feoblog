@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{borrow::Cow, fmt};
 
 use futures_core::stream::Stream;
 use futures_util::StreamExt;
@@ -183,7 +183,10 @@ async fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error>
     let mut item_callback = |row: ItemRow| {        
         let mut item = Item::new();
         item.merge_from_bytes(&row.item_bytes)?;
-        items.push((row, item));
+
+        if DisplayItem::can_display(&item) {
+            items.push(DisplayItem{row, item});
+        }
         
         Ok(items.len() < max_items)
     };
@@ -300,6 +303,7 @@ async fn put_item(
         timestamp: Timestamp{ unix_utc_ms: item.get_timestamp_ms_utc()},
         received: Timestamp::now(),
         item_bytes: bytes,
+        profile: None, // read-only.
     };
 
     backend.save_user_item(&row, &item).compat()?;
@@ -326,10 +330,46 @@ async fn file_not_found() -> impl Responder {
 struct NotFoundPage {}
 
 #[derive(Template)]
-#[template(path = "index.html")] 
+#[template(path = "index.html", print="code")] 
 struct IndexPage {
-    posts: Vec<(ItemRow, Item)>,
     nav: Vec<Nav>,
+    posts: Vec<DisplayItem>,
+}
+
+/// An Item we want to display on a page.
+struct DisplayItem {
+    row: ItemRow,
+    item: Item,
+}
+
+impl DisplayItem {
+    fn item(&self) -> &Item { &self.item }
+    fn row(&self) -> &ItemRow { &self.row }
+
+    fn display_name(&self) -> Cow<'_, str>{
+        self.row.profile
+            .as_ref()
+            .map(|p| p.display_name.trim())
+            .map(|n| if n.is_empty() { None } else { Some (n) })
+            .flatten()
+            .map(|n| n.into())
+            // TODO: Detect/protect against someone setting a userID that mimics a pubkey?
+            .unwrap_or_else(|| self.row.user.to_base58().into())
+    }
+
+    /// Does IndexPage know how to display this item?
+    fn can_display(item: &Item) -> bool {
+        let item_type = match &item.item_type {
+            Some(t) => t,
+            None => return false,
+        };
+
+        use crate::protos::Item_oneof_item_type as IType;
+        match item_type {
+            IType::post(_) => true,
+            _ => false,
+        }
+    }
 }
 
 enum Nav {

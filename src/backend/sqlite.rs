@@ -8,7 +8,7 @@
 use crate::protos::Item;
 use rusqlite::NO_PARAMS;
 use crate::backend::FnIter;
-use crate::backend::{self, UserID, Signature, ItemRow, Timestamp, ServerUser, Backend};
+use crate::backend::{self, UserID, Signature, ItemRow, Profile, Timestamp, ServerUser, Backend};
 
 use failure::{Error, bail, ResultExt};
 use rusqlite::{params, OptionalExtension, Row};
@@ -344,11 +344,14 @@ impl backend::Backend for Connection
         let mut stmt = self.conn.prepare("
             SELECT
                 user_id
-                , signature
+                , i.signature
                 , unix_utc_ms
                 , received_utc_ms
                 , bytes
-            FROM item
+                , p.signature
+                , p.display_name
+            FROM item AS i
+            LEFT OUTER JOIN profile AS p USING (user_id)
             WHERE unix_utc_ms < ?
             AND user_id IN (
                 SELECT user_id
@@ -363,12 +366,23 @@ impl backend::Backend for Connection
         ])?;
 
         let to_item_row = |row: &Row<'_>| -> Result<ItemRow, Error> {
+            let profile = match (row.get(5)?, row.get(6)?) {
+                (Some(signature), Some(display_name)) => Some(
+                        Profile{
+                        signature: Signature::from_vec(signature)?,
+                        display_name,                    
+                    }
+                ),
+                _ => None
+            };
+
             let item = ItemRow{
                 user: UserID::from_vec(row.get(0)?)?,
                 signature: Signature::from_vec(row.get(1)?)?,
                 timestamp: Timestamp{ unix_utc_ms: row.get(2)? },
                 received: Timestamp{ unix_utc_ms: row.get(3)? },
                 item_bytes: row.get(4)?,
+                profile,
             };
             Ok(item)
         };
@@ -499,6 +513,7 @@ impl backend::Backend for Connection
             timestamp: Timestamp{ unix_utc_ms: row.get(2)? },
             received: Timestamp{ unix_utc_ms: row.get(3)? },
             item_bytes: row.get(4)?,
+            profile: None, // TODO
         };
 
         if rows.next()?.is_some() {

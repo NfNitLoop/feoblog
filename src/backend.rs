@@ -175,7 +175,21 @@ pub struct ItemRow {
     pub received: Timestamp,
 
     /// Bytes which can be deserialized into an Item.
-    pub item_bytes: Vec<u8>
+    pub item_bytes: Vec<u8>,
+
+    // TODO: Move to a separate struct.
+    /// Read-only, sometimes fetched from the DB via join when reading items.
+    pub profile: Option<Profile>
+}
+
+/// Profile information from the `profile` table. `profile` table.
+/// Expected to be fetched via join/query on userID, so that's excluded.
+pub struct Profile {
+    /// The signature for the Item that contains the latest profile.
+    pub signature: Signature,
+
+    /// May be empty if the user omitted a display name.
+    pub display_name: String,
 }
 
 

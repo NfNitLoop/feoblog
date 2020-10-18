@@ -132,6 +132,10 @@ as the first item in the content. */
 	margin-top: 0px;
 }
 
+.item .userInfo, .item .timestamp {
+	margin-top: 0;
+}
+
 
 
 blockquote
@@ -174,7 +178,7 @@ blockquote blockquote blockquote blockquote
 
 .item .timestamp {
 	color: grey;
-	font-size: 0.8em;
+	font-family: monospace;
 }
 
 .userID, .signature {
