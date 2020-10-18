@@ -32,7 +32,7 @@ pub trait Backend
     /// home page, which have timestamps before `before`.
     /// Items are returned through callback, and will continue to be fetched while callback continues
     /// to return Ok(true).
-    fn homepage_items<'a>(&self, before: Timestamp, callback: &'a mut dyn FnMut(ItemRow) -> Result<bool,Error>) -> Result<(), Error>;
+    fn homepage_items<'a>(&self, before: Timestamp, callback: &'a mut dyn FnMut(ItemProfileRow) -> Result<bool,Error>) -> Result<(), Error>;
 
     /// Find the most recent items for a particular user
     fn user_items(&self, user: &UserID, before: Timestamp) -> Result<Vec<ItemRow>, Error>;
@@ -176,10 +176,20 @@ pub struct ItemRow {
 
     /// Bytes which can be deserialized into an Item.
     pub item_bytes: Vec<u8>,
+}
 
-    // TODO: Move to a separate struct.
-    /// Read-only, sometimes fetched from the DB via join when reading items.
+/// An [`ItemRow`] that also contains the user's latest profile (if available)
+pub struct ItemProfileRow {
+    pub item: ItemRow,
     pub profile: Option<Profile>
+}
+
+/// An [`ItemProfileRow`] that also includes information about the user's
+/// follow.display_name for someone they follow.
+pub struct ItemProfileFollowRow {
+    pub item: ItemRow,
+    pub profile: Option<Profile>,
+    pub follow: Option<String>, // TODO
 }
 
 /// Profile information from the `profile` table. `profile` table.

@@ -8,7 +8,7 @@
 use crate::protos::Item;
 use rusqlite::NO_PARAMS;
 use crate::backend::FnIter;
-use crate::backend::{self, UserID, Signature, ItemRow, Profile, Timestamp, ServerUser, Backend};
+use crate::backend::{self, UserID, Signature, ItemRow, Profile, ItemProfileRow, Timestamp, ServerUser, Backend};
 
 use failure::{Error, bail, ResultExt};
 use rusqlite::{params, OptionalExtension, Row};
@@ -339,7 +339,7 @@ impl backend::Backend for Connection
         Ok(hash)
     }
 
-    fn homepage_items<'a>(&self, before: Timestamp, callback: &'a mut dyn FnMut(ItemRow) -> Result<bool,Error>) -> Result<(), Error>
+    fn homepage_items<'a>(&self, before: Timestamp, callback: &'a mut dyn FnMut(ItemProfileRow) -> Result<bool,Error>) -> Result<(), Error>
     {
         let mut stmt = self.conn.prepare("
             SELECT
@@ -365,7 +365,7 @@ impl backend::Backend for Connection
             before.unix_utc_ms,
         ])?;
 
-        let to_item_row = |row: &Row<'_>| -> Result<ItemRow, Error> {
+        let to_item_profile_row = |row: &Row<'_>| -> Result<ItemProfileRow, Error> {
             let profile = match (row.get(5)?, row.get(6)?) {
                 (Some(signature), Some(display_name)) => Some(
                         Profile{
@@ -382,13 +382,13 @@ impl backend::Backend for Connection
                 timestamp: Timestamp{ unix_utc_ms: row.get(2)? },
                 received: Timestamp{ unix_utc_ms: row.get(3)? },
                 item_bytes: row.get(4)?,
-                profile,
             };
-            Ok(item)
+
+            Ok(ItemProfileRow{item, profile})
         };
 
         while let Some(row) = rows.next()? {
-            let item = to_item_row(row)?;
+            let item = to_item_profile_row(row)?;
             let result = callback(item)?;
             if !result { break; }
         }
@@ -513,7 +513,6 @@ impl backend::Backend for Connection
             timestamp: Timestamp{ unix_utc_ms: row.get(2)? },
             received: Timestamp{ unix_utc_ms: row.get(3)? },
             item_bytes: row.get(4)?,
-            profile: None, // TODO
         };
 
         if rows.next()?.is_some() {

@@ -27,7 +27,7 @@ use async_trait::async_trait;
 
 use protobuf::Message;
 
-use crate::ServeCommand;
+use crate::{ServeCommand, backend::ItemProfileRow};
 use crate::backend::{self, Backend, Factory, UserID, Signature, Hash, ItemRow, Timestamp};
 use crate::responder_util::ToResponder;
 use crate::protos::{Item, Post, ProtoValid};
@@ -180,9 +180,9 @@ async fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error>
     let max_items = 10;
     let mut items = Vec::with_capacity(max_items);
 
-    let mut item_callback = |row: ItemRow| {        
+    let mut item_callback = |row: ItemProfileRow| {        
         let mut item = Item::new();
-        item.merge_from_bytes(&row.item_bytes)?;
+        item.merge_from_bytes(&row.item.item_bytes)?;
 
         if DisplayItem::can_display(&item) {
             items.push(DisplayItem{row, item});
@@ -303,7 +303,6 @@ async fn put_item(
         timestamp: Timestamp{ unix_utc_ms: item.get_timestamp_ms_utc()},
         received: Timestamp::now(),
         item_bytes: bytes,
-        profile: None, // read-only.
     };
 
     backend.save_user_item(&row, &item).compat()?;
@@ -338,13 +337,13 @@ struct IndexPage {
 
 /// An Item we want to display on a page.
 struct DisplayItem {
-    row: ItemRow,
+    row: ItemProfileRow,
     item: Item,
 }
 
 impl DisplayItem {
     fn item(&self) -> &Item { &self.item }
-    fn row(&self) -> &ItemRow { &self.row }
+    fn row(&self) -> &ItemProfileRow { &self.row }
 
     fn display_name(&self) -> Cow<'_, str>{
         self.row.profile
@@ -354,7 +353,7 @@ impl DisplayItem {
             .flatten()
             .map(|n| n.into())
             // TODO: Detect/protect against someone setting a userID that mimics a pubkey?
-            .unwrap_or_else(|| self.row.user.to_base58().into())
+            .unwrap_or_else(|| self.row.item.user.to_base58().into())
     }
 
     /// Does IndexPage know how to display this item?

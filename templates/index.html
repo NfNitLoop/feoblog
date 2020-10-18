@@ -21,8 +21,8 @@
     {%- for display_item in posts -%}
         {%- let item = display_item.item() -%}
         {%- let row = display_item.row() -%}
-        {%- let userID = row.user.to_base58() -%}
-        {%- let signature = row.signature.to_base58() -%}
+        {%- let userID = row.item.user.to_base58() -%}
+        {%- let signature = row.item.signature.to_base58() -%}
         {%- let post = item.get_post() -%}
         {%- let title = post.get_title() -%}
         
