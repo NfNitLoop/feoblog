@@ -6,6 +6,27 @@
     {% block head %}{% endblock %}
 </head>
 <body>
-{% block body %}{% endblock %}
+
+<div class="nav-layout-container">
+    {% block nav %}
+        {% if !nav.is_empty() %}
+        <div class="nav-container">
+            <div class="nav">
+                {% for nav_item in nav %}
+                    {% match nav_item %}
+                        {% when Nav::Text with (text) %}
+                            <div>{{ text }}</div>
+                        {% when Nav::Link with {text, href} %}
+                            <a href="{{href}}">{{text}}</a>
+                    {% endmatch %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    {% endblock %}
+
+    {% block body %}{% endblock %}
+</div>
+
 </body>
 </html>

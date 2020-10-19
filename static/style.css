@@ -39,6 +39,7 @@ body
 	padding: 1em;
 	padding-top: 3em;
 	margin: 1em;
+	word-break: break-word;
 }
 
 .nav > *

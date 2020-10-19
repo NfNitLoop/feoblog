@@ -44,6 +44,9 @@ async-trait = "*"
 protobuf = "2"
 time = "0.2"
 
+# Used to deserialize strings in URL paths.
+serde = "*"
+
 
 [dependencies.rusqlite]
 version = "0.24"

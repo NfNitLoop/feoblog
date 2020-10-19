@@ -1,6 +1,7 @@
 use actix_web::web::{self, Path, resource, HttpResponse as Response};
 
 // Work around https://github.com/djc/askama/issues/246
+// TODO: The above has been fixed, we can probably delete this code.
 pub(crate) trait ToResponder
 {
     type ResponderType;

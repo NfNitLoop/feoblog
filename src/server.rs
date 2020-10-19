@@ -89,6 +89,8 @@ fn routes(cfg: &mut web::ServiceConfig) {
     cfg
         .route("/", get().to(index))
 
+        .route("/u/{user_id}/", get().to(get_user_items))
+
         // .route("/u/{userID}/i/{signature}/", get().to(TODO))
         .route("/u/{user_id}/i/{signature}/proto3", put().to(put_item))
 
@@ -184,8 +186,8 @@ async fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error>
         let mut item = Item::new();
         item.merge_from_bytes(&row.item.item_bytes)?;
 
-        if DisplayItem::can_display(&item) {
-            items.push(DisplayItem{row, item});
+        if IndexPageItem::can_display(&item) {
+            items.push(IndexPageItem{row, item});
         }
         
         Ok(items.len() < max_items)
@@ -207,6 +209,46 @@ async fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error>
     .responder();
 
     Ok(response)
+}
+
+/// Display a single user's posts/etc.
+async fn get_user_items(
+    backend: Data<Box<dyn Backend>>,
+    path: Path<(UserID,)>
+) -> Result<impl Responder, Error> {
+    let max_items = 10;
+    let mut items = Vec::with_capacity(max_items);
+
+    let mut callback = |row: ItemRow| -> Result<bool, failure::Error>{
+        let mut item = Item::new();
+        item.merge_from_bytes(&row.item_bytes)?;
+
+        // TODO: Skip things we can't display.
+
+        items.push(UserPageItem{ row, item });
+
+        Ok(items.len() < max_items)
+    };
+
+    let max_time = Timestamp::now();
+
+    let (user,) = path.into_inner();
+    backend.user_items(&user, max_time, &mut callback).compat()?;
+
+    let page = UserPage{
+        nav: vec![
+            Nav::Text("Profile".into()),
+            Nav::Text("TODO: Username".into()),
+            Nav::Link{
+                text: "Homepage".into(),
+                href: "/".into()
+            }
+        ],
+        posts: items,
+        user_display_name: "TODO: Display name".into(),
+    };
+
+    Ok(page.responder())
 }
 
 const MAX_ITEM_SIZE: usize = 1024 * 32; 
@@ -329,19 +371,27 @@ async fn file_not_found() -> impl Responder {
 struct NotFoundPage {}
 
 #[derive(Template)]
-#[template(path = "index.html", print="code")] 
+#[template(path = "index.html")] 
 struct IndexPage {
     nav: Vec<Nav>,
-    posts: Vec<DisplayItem>,
+    posts: Vec<IndexPageItem>,
+}
+
+#[derive(Template)]
+#[template(path = "user_page.html")]
+struct UserPage {
+    nav: Vec<Nav>,
+    posts: Vec<UserPageItem>,
+    user_display_name: String,
 }
 
 /// An Item we want to display on a page.
-struct DisplayItem {
+struct IndexPageItem {
     row: ItemProfileRow,
     item: Item,
 }
 
-impl DisplayItem {
+impl IndexPageItem {
     fn item(&self) -> &Item { &self.item }
     fn row(&self) -> &ItemProfileRow { &self.row }
 
@@ -369,6 +419,17 @@ impl DisplayItem {
             _ => false,
         }
     }
+}
+
+
+struct UserPageItem {
+    row: ItemRow,
+    item: Item,
+}
+
+impl UserPageItem {
+    fn row(&self) -> &ItemRow { &self.row }
+    fn item(&self) -> &Item { &self.item }
 }
 
 enum Nav {

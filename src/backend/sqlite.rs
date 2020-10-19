@@ -339,8 +339,11 @@ impl backend::Backend for Connection
         Ok(hash)
     }
 
-    fn homepage_items<'a>(&self, before: Timestamp, callback: &'a mut dyn FnMut(ItemProfileRow) -> Result<bool,Error>) -> Result<(), Error>
-    {
+    fn homepage_items<'a>(
+        &self,
+        before: Timestamp,
+        callback: &'a mut dyn FnMut(ItemProfileRow) -> Result<bool,Error>
+    ) -> Result<(), Error> {
         let mut stmt = self.conn.prepare("
             SELECT
                 user_id
@@ -396,10 +399,50 @@ impl backend::Backend for Connection
         Ok( () )
     }
 
-    fn user_items(&self, _: &UserID, _:Timestamp)
-    -> Result<Vec<ItemRow>, Error>
-    {
-        todo!() 
+    fn user_items<'a>(
+        &self,
+        user: &UserID,
+        before: Timestamp,
+        callback: &'a mut dyn FnMut(ItemRow) -> Result<bool,Error>
+    ) -> Result<(), Error> {
+        let mut stmt = self.conn.prepare("
+            SELECT
+                user_id
+                , i.signature
+                , unix_utc_ms
+                , received_utc_ms
+                , bytes
+            FROM item AS i
+            WHERE
+                unix_utc_ms < ?
+                AND user_id = ?
+            ORDER BY unix_utc_ms DESC
+        ")?;
+
+        let mut rows = stmt.query(params![
+            before.unix_utc_ms,
+            user.bytes(),
+        ])?;
+
+        let convert = |row: &Row<'_>| -> Result<ItemRow, Error> {
+            let item = ItemRow{
+                user: UserID::from_vec(row.get(0)?)?,
+                signature: Signature::from_vec(row.get(1)?)?,
+                timestamp: Timestamp{ unix_utc_ms: row.get(2)? },
+                received: Timestamp{ unix_utc_ms: row.get(3)? },
+                item_bytes: row.get(4)?,
+            };
+
+            Ok(item)
+        };
+
+        while let Some(row) = rows.next()? {
+            let item = convert(row)?;
+            let result = callback(item)?;
+            if !result { break; }
+        }
+
+        Ok( () )
     }
 
     fn server_user(&self, user: &UserID)

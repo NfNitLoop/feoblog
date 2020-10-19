@@ -4,8 +4,10 @@ pub(crate) mod sqlite;
 
 use crate::protos::Item;
 use core::str::FromStr;
+use std::marker::PhantomData;
 use failure::{Error, ResultExt, bail, format_err};
 use bs58;
+use serde::{Deserialize, de::{self, Visitor}};
 use sodiumoxide::crypto::sign;
 
 
@@ -35,7 +37,12 @@ pub trait Backend
     fn homepage_items<'a>(&self, before: Timestamp, callback: &'a mut dyn FnMut(ItemProfileRow) -> Result<bool,Error>) -> Result<(), Error>;
 
     /// Find the most recent items for a particular user
-    fn user_items(&self, user: &UserID, before: Timestamp) -> Result<Vec<ItemRow>, Error>;
+    fn user_items<'a>(
+        &self,
+        user: &UserID,
+        before: Timestamp,
+        callback: &'a mut dyn FnMut(ItemRow) -> Result<bool, Error>,
+    ) -> Result<(), Error>;
 
     /// Find one particular UserItem
     fn user_item(&self, user: &UserID, signature: &Signature) -> Result<Option<ItemRow>, Error>;
@@ -150,11 +157,57 @@ impl Signature {
 
 }
 
-/// Allows easy destructuring from URLs.
+/// Allows easy destructuring from URLs. (in Warp)
 impl FromStr for Signature {
     type Err = failure::Error;
     fn from_str(value: &str) -> Result<Self, Self::Err> { 
         Signature::from_base58(value)
+    }
+}
+
+impl <'de> Deserialize<'de> for Signature {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: serde::Deserializer<'de> 
+    {
+        deserializer.deserialize_str(FromStrVisitor::<Self>::new())
+    }
+}
+
+impl <'de> Deserialize<'de> for UserID {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: serde::Deserializer<'de> 
+    {
+        deserializer.deserialize_str(FromStrVisitor::<Self>::new())
+    }
+}
+
+struct FromStrVisitor<T: FromStr> {
+    _t: PhantomData<T>
+}
+
+impl <T: FromStr> FromStrVisitor<T> {
+    fn new() -> Self {
+        FromStrVisitor { _t: PhantomData }
+    }
+}
+
+impl <'de, T: FromStr<Err=Error>> Visitor<'de> for FromStrVisitor<T> 
+{
+    type Value = T;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            formatter,
+            "a &str that can be converted to a {}",
+            std::any::type_name::<T>()
+        )
+    }
+
+    fn visit_str<E>(self, v: &str)
+    -> Result<Self::Value, E>
+    where E: de::Error
+    {
+        T::from_str(v).map_err(|e| de::Error::custom(format!("{}", e.compat())))
     }
 }
 
