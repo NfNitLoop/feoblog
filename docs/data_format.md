@@ -1,43 +1,30 @@
 Data Format
 ===========
 
-FeoBlog uses base58-encoded [NaCL] public keys to identify users, and
-base58-encoded signatures to identify "posts" by users.
+Goals
+-----
 
-The signatures sign a binary [CBOR] payload that includes metata about the post.
+ * User data should be easy to cache on multiple distributed servers, or for
+   offline use.
+ * Different servers may have different policies about which or how much data
+   different users may store/cache on them.
+ * User data should be publicly verifiable using public cryptographic
+   signatures.
 
-[NaCL]: https://nacl.cr.yp.to/
-[CBOR]: https://cbor.io/
+Implementation
+--------------
 
-Required fields
----------------
+FeoBlog uses Protocol Buffers (v3) to define a compat encoding for blog posts
+and other data. These types are currently defined in [feoblog.proto].
 
-Every post must include the following fields:
+[feoblog.proto]: ../protobufs/feoblog.proto
 
- * `utcTime`: a signed 64-bit integer representing unix time in the UTC time zone.
- * `type`: A string representing the type of the post.
+Users/software create these protobuf objects, sign them, and send them to one or
+more servers to host. Unlike Scuttlebutt, or typical blockchain data structures,
+the items do not depend on previous items, so can be considered a (mostly)
+unordered collection. This allows servers to truncate history, deny, or even
+delete items as their local policies may require.
 
-   Valid types:
-    * `post`: a markdown post 
+See [crypto.md] for details of how signing works.
 
-
-Optional Fields
----------------
- * `utcOffset`: A string of the format (+|-)hhmm (ex: -0700) representing the
-   post's time zone relative to UTC. This may be used to display the post's
-   timestamp using local time.
-
-
-Type: "post"
-============
-
-A post reprents a blog post made in CommonMark (Markdown) format. A post has the following additional attributes:
-
-Required:
-
- * `content`: bytes representing the multihash of the blog post.
-
-Optional:
-
- * `title`: A title for the post.
- * `files`: a list 
+[crypto.md]: ./crypto.md

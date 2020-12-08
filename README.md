@@ -3,7 +3,7 @@ FeoBlog
 
 FeoBlog is a distributed blogging platform. It takes a lot of its
 inspiration from [Mastodon] and [Scuttlebutt]. It aims to solve a couple of
-the problems from those services.
+problems with those services.
 
 [Mastodon]: https://joinmastodon.org/
 [Scuttlebutt]: https://www.scuttlebutt.nz/
@@ -18,6 +18,9 @@ getting a new user ID and having to manually tell all of your friends.
 Scuttlebutt tries to be a distributed system, but it has one big problem: Only
 one device can post new content. If you copy your identity to two devices and
 post from both of them, you can get into a state where your identity is broken.
+This is because Scuttlebutt tries to maintain an append-only, linear chain of
+history (a bit like a blockchain) which could fork if you use it on devices.
+(And Scuttlebutt doesn't deal well with forks.)
 FeoBlog treats your identity as a *collection* of posts by you. (Not an
 append-only chain.) This lets you post from multiple devices, and lets servers
 eventually fetch and include all posts from all of those devices. This also
