@@ -14,6 +14,7 @@ futures-core = "*"
 futures-util = "*"
 
 # Error handling:
+# TODO: Update to Anyhow
 failure = "*"
 
 # CLI: 
@@ -46,6 +47,10 @@ time = "0.2"
 
 # Used to deserialize strings in URL paths.
 serde = "*"
+
+# connection pooling for rusqlite:
+r2d2 = "*"
+r2d2_sqlite = "*"
 
 
 [dependencies.rusqlite]

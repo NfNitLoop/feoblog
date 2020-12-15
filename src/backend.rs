@@ -28,8 +28,6 @@ pub trait Backend
     /// Set up the initial DB state, maybe running migrations.
     fn setup(&self) -> Result<(), Error>;
 
-    fn save_blob(&self, data: &[u8]) -> Result<Hash, Error>;
-
     /// Find most recent items for users flagged to be displayed on the
     /// home page, which have timestamps before `before`.
     /// Items are returned through callback, and will continue to be fetched while callback continues
@@ -62,9 +60,6 @@ pub trait Backend
 
     // Add a new "server user" who is explicitly allowed to post to this server.
     fn add_server_user(&self, server_user: &ServerUser) -> Result<(), Error>;
-
-    /// Reads an entire blob into memory. TODO: Make a streaming version.
-    fn get_blob(&self, key: &Hash) -> Result<Option<Vec<u8>>, Error>;
 }
 
 /// A callback function used for callback iteration through large database resultsets.

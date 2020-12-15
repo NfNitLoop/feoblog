@@ -219,7 +219,7 @@ async fn get_user_items(
     let max_items = 10;
     let mut items = Vec::with_capacity(max_items);
 
-    let mut callback = |row: ItemRow| -> Result<bool, failure::Error>{
+    let mut collect_items = |row: ItemRow| -> Result<bool, failure::Error>{
         let mut item = Item::new();
         item.merge_from_bytes(&row.item_bytes)?;
 
@@ -230,17 +230,19 @@ async fn get_user_items(
         Ok(items.len() < max_items)
     };
 
+    // TODO: Support pagination.
     let max_time = Timestamp::now();
 
     let (user,) = path.into_inner();
-    backend.user_items(&user, max_time, &mut callback).compat()?;
+    backend.user_items(&user, max_time, &mut collect_items).compat()?;
+
 
     let page = UserPage{
         nav: vec![
             Nav::Text("Profile".into()),
             Nav::Text("TODO: Username".into()),
             Nav::Link{
-                text: "Homepage".into(),
+                text: "Home".into(),
                 href: "/".into()
             }
         ],
@@ -442,6 +444,7 @@ enum Nav {
 
 
 /// A type implementing ResponseError that can hold any kind of std::error::Error.
+// TODO: Implement From<anyhow::Error> once I'm using it.
 #[derive(Debug)]
 struct Error {
     inner: Box<dyn std::error::Error + 'static>

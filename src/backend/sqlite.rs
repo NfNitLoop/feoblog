@@ -15,17 +15,21 @@ use rusqlite::{params, OptionalExtension, Row};
 
 const CURRENT_VERSION: u32 = 3;
 
+type Pool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
 
 #[derive(Clone)]
 pub(crate) struct Factory
 {
-    file_path: String
+    file_path: String,
+    pool: Pool,
 }
 
 impl Factory {
     pub fn new(file_path: String) -> Self
     {
-        Factory{file_path}
+        let manager = r2d2_sqlite::SqliteConnectionManager::file(file_path.as_str());
+        let pool = r2d2::Pool::new(manager).expect("Creating SQLite connection pool");
+        Factory{ file_path, pool }
     }
 }
 
@@ -33,8 +37,11 @@ impl backend::Factory for Factory
 {
     fn open(&self) -> Result<Box<dyn backend::Backend>, Error>
     {
+        // While we need to make a new Factory for each Actix thread, they can all
+        // share a single conneciton pool:
         let conn = Connection{
-            conn: rusqlite::Connection::open(&self.file_path)?
+            // conn: rusqlite::Connection::open(&self.file_path)?,
+            pool: self.pool.clone(), // (is an Arc)
         };
         Ok(Box::new(conn))
     }
@@ -42,7 +49,9 @@ impl backend::Factory for Factory
 
 pub(crate) struct Connection
 {
-    conn: rusqlite::Connection,
+    // TODO: Deprecate this in favor of a connection pool:
+    // conn: rusqlite::Connection,
+    pool: Pool,
 }
 
 impl Connection
@@ -175,15 +184,16 @@ impl Connection
         Ok(())
     }
 
-    fn run(&self, sql: &str) -> Result<(), rusqlite::Error>
+    fn run(&self, sql: &str) -> Result<(), Error>
     {
-        self.conn.execute(sql, params![])?;
+        self.pool.get()?.execute(sql, params![])?;
         Ok(())
     }
 
     fn get_version(&self) -> Result<Option<u32>, Error>
     {
-        let table_count: u32  = self.conn.prepare(
+        let conn = self.pool.get()?;
+        let table_count: u32  = conn.prepare(
             "SELECT count()
             FROM sqlite_master
             WHERE type = 'table'
@@ -198,7 +208,7 @@ impl Connection
             return Ok(None);
         }
 
-        let  version = self.conn.prepare(
+        let  version = conn.prepare(
             "SELECT MAX(version) from version"
         )?.query_row(
             params![],
@@ -212,7 +222,9 @@ impl Connection
     /// Expects to be run from within a transaction.
     fn update_profile(&self, item_row: &ItemRow, item: &Item) -> Result<(), Error> {
 
-        // TODO: Really could just get the profile timestamp from the DB w/o deserializing.
+        // TODO: This could be more lightweight:
+        // 1: Don't use a different connection.
+        // 2: Only really need to fetch the timestamp, not the full profile.
         let profile = self.get_profile(&item_row.user)?;
 
         // Never replace a newer profile's metadata:
@@ -222,32 +234,37 @@ impl Connection
             }
         }
 
-        // Replace all follows with new ones listed in the profile:
-        self.conn.execute("DELETE FROM follow WHERE source_user_id = ?", params![item_row.user.bytes()])?;
+        let mut conn = self.pool.get()?;
+        let sp = conn.savepoint()?;
+        {
+            // Replace all follows with new ones listed in the profile:
+            sp.execute("DELETE FROM follow WHERE source_user_id = ?", params![item_row.user.bytes()])?;
 
-        // Behavior is undefined if duplicate follows exist in a Profile.
-        let mut add_follow = self.conn.prepare("
-            INSERT OR REPLACE INTO follow (source_user_id, followed_user_id, display_name)
-            VALUES (?, ?, ?)
-        ")?;
+            // Behavior is undefined if duplicate follows exist in a Profile.
+            let mut add_follow = sp.prepare("
+                INSERT OR REPLACE INTO follow (source_user_id, followed_user_id, display_name)
+                VALUES (?, ?, ?)
+            ")?;
 
-        for follow in item.get_profile().get_follows() {
-            add_follow.execute(params![
+            for follow in item.get_profile().get_follows() {
+                add_follow.execute(params![
+                    item_row.user.bytes(),
+                    follow.get_user().get_bytes(),
+                    follow.get_display_name(),
+                ])?;
+            }
+
+            let mut add_profile = sp.prepare("
+                INSERT OR REPLACE INTO profile(user_id, signature, display_name)
+                VALUES (?,?,?)
+            ")?;
+            add_profile.execute(params![
                 item_row.user.bytes(),
-                follow.get_user().get_bytes(),
-                follow.get_display_name(),
+                item_row.signature.bytes(),
+                item.get_profile().get_display_name()
             ])?;
         }
-
-        let mut add_profile = self.conn.prepare("
-            INSERT OR REPLACE INTO profile(user_id, signature, display_name)
-            VALUES (?,?,?)
-        ")?;
-        add_profile.execute(params![
-            item_row.user.bytes(),
-            item_row.signature.bytes(),
-            item.get_profile().get_display_name()
-        ])?;
+        sp.commit()?;
 
         Ok(())
     }
@@ -255,9 +272,10 @@ impl Connection
     // TODO: Should move to the Backend trait:
     fn get_profile(&self, user: &UserID) -> Result<Option<ItemRow>, Error> {
 
+        let conn = self.pool.get()?;
         // TODO: I'm not crazy about making 2 queries here instead of a join, but it lets me
         // re-use the user_item() loading logic.
-        let mut find_profile = self.conn.prepare("
+        let mut find_profile = conn.prepare("
             SELECT user_id, signature
             FROM profile
             WHERE user_id = ?
@@ -308,43 +326,13 @@ impl backend::Backend for Connection
         bail!("DB version {} is unknown. Migration not implemented.", version);
     }
 
-    fn get_blob(&self, hash: &backend::Hash) -> Result<Option<Vec<u8>>, Error>
-    {
-        let mut stmt = self.conn.prepare("
-            SELECT data FROM blob WHERE hash = ?
-        ")?;
-
-        let blob = stmt.query_row(
-            params![hash.as_bytes()],
-            |row| Ok(row.get(0)?)
-        ).optional()?;
-
-        Ok(blob)
-    }
-
-
-    // Make a streaming version.
-    fn save_blob(&self, data: &[u8]) -> Result<backend::Hash, Error>
-    {
-        let hash = backend::Hash::calculate(data);
-        let mut stmt = self.conn.prepare("
-            INSERT OR IGNORE INTO blob(hash, data)
-            VALUES(?, ?)
-        ")?;
-
-        stmt.insert(
-            params![hash.as_bytes(), data]
-        )?;
-
-        Ok(hash)
-    }
-
     fn homepage_items<'a>(
         &self,
         before: Timestamp,
         callback: &'a mut dyn FnMut(ItemProfileRow) -> Result<bool,Error>
     ) -> Result<(), Error> {
-        let mut stmt = self.conn.prepare("
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare("
             SELECT
                 user_id
                 , i.signature
@@ -405,7 +393,8 @@ impl backend::Backend for Connection
         before: Timestamp,
         callback: &'a mut dyn FnMut(ItemRow) -> Result<bool,Error>
     ) -> Result<(), Error> {
-        let mut stmt = self.conn.prepare("
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare("
             SELECT
                 user_id
                 , i.signature
@@ -448,7 +437,8 @@ impl backend::Backend for Connection
     fn server_user(&self, user: &UserID)
     -> Result<Option<backend::ServerUser>, Error> 
     { 
-        let mut stmt = self.conn.prepare("
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare("
             SELECT notes, on_homepage
             FROM server_user
             WHERE user_id = ?
@@ -475,8 +465,8 @@ impl backend::Backend for Connection
     }
 
     fn server_users<'a>(&self, cb: FnIter<'a, ServerUser>) -> Result<(), Error> {
-
-        let mut stmt = self.conn.prepare("
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare("
             SELECT 
                 user_id
                 , notes
@@ -505,7 +495,8 @@ impl backend::Backend for Connection
     
     
     fn user_item_exists(&self, user: &UserID, signature: &Signature) -> Result<bool, Error> { 
-        let mut stmt = self.conn.prepare("
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare("
             SELECT COUNT(*)
             FROM item
             WHERE user_id = ?
@@ -528,7 +519,8 @@ impl backend::Backend for Connection
     }
 
     fn user_item(&self, user: &UserID, signature: &Signature) -> Result<Option<ItemRow>, Error> { 
-        let mut stmt = self.conn.prepare("
+        let conn = self.pool.get()?;
+        let mut stmt = conn.prepare("
             SELECT
                 user_id
                 , signature
@@ -567,7 +559,8 @@ impl backend::Backend for Connection
 
     fn save_user_item(&self, row: &ItemRow, item: &Item) -> Result<(), Error>
     {
-        let tx = self.conn.unchecked_transaction()?;
+        let conn = self.pool.get()?;
+        let tx = conn.unchecked_transaction()?;
 
         let stmt = "
             INSERT INTO item (
@@ -579,7 +572,7 @@ impl backend::Backend for Connection
             ) VALUES (?, ?, ?, ?, ?);
        ";
 
-        self.conn.execute(stmt, params![
+        conn.execute(stmt, params![
             row.user.bytes(),
             row.signature.bytes(),
             row.timestamp.unix_utc_ms,
@@ -605,7 +598,8 @@ impl backend::Backend for Connection
 
         let on_homepage = if server_user.on_homepage { 1 } else { 0 };
 
-        self.conn.execute(stmt, params![
+        let conn = self.pool.get()?;
+        conn.execute(stmt, params![
             server_user.user.bytes(),
             server_user.notes.as_str(),
             on_homepage
