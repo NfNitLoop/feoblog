@@ -20,7 +20,6 @@ type Pool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
 #[derive(Clone)]
 pub(crate) struct Factory
 {
-    file_path: String,
     pool: Pool,
 }
 
@@ -29,7 +28,7 @@ impl Factory {
     {
         let manager = r2d2_sqlite::SqliteConnectionManager::file(file_path.as_str());
         let pool = r2d2::Pool::new(manager).expect("Creating SQLite connection pool");
-        Factory{ file_path, pool }
+        Factory{ pool }
     }
 }
 
@@ -40,7 +39,6 @@ impl backend::Factory for Factory
         // While we need to make a new Factory for each Actix thread, they can all
         // share a single conneciton pool:
         let conn = Connection{
-            // conn: rusqlite::Connection::open(&self.file_path)?,
             pool: self.pool.clone(), // (is an Arc)
         };
         Ok(Box::new(conn))
@@ -49,8 +47,6 @@ impl backend::Factory for Factory
 
 pub(crate) struct Connection
 {
-    // TODO: Deprecate this in favor of a connection pool:
-    // conn: rusqlite::Connection,
     pool: Pool,
 }
 
@@ -225,7 +221,7 @@ impl Connection
         // TODO: This could be more lightweight:
         // 1: Don't use a different connection.
         // 2: Only really need to fetch the timestamp, not the full profile.
-        let profile = self.get_profile(&item_row.user)?;
+        let profile = self.user_profile(&item_row.user)?;
 
         // Never replace a newer profile's metadata:
         if let Some(profile) = profile {
@@ -267,33 +263,6 @@ impl Connection
         sp.commit()?;
 
         Ok(())
-    }
-
-    // TODO: Should move to the Backend trait:
-    fn get_profile(&self, user: &UserID) -> Result<Option<ItemRow>, Error> {
-
-        let conn = self.pool.get()?;
-        // TODO: I'm not crazy about making 2 queries here instead of a join, but it lets me
-        // re-use the user_item() loading logic.
-        let mut find_profile = conn.prepare("
-            SELECT user_id, signature
-            FROM profile
-            WHERE user_id = ?
-        ")?;
-
-        let mut rows = find_profile.query(params![user.bytes()])?;
-        let row = match rows.next()? {
-            None => return Ok(None),
-            Some(row) => row,
-        };
-
-        let user_id: Vec<u8> = row.get(0)?;
-        let signature: Vec<u8> = row.get(1)?;
-
-        let user_id = UserID::from_vec(user_id)?;
-        let signature = Signature::from_vec(signature)?;
-
-        self.user_item(&user_id, &signature)
     }
 }
 
@@ -559,8 +528,8 @@ impl backend::Backend for Connection
 
     fn save_user_item(&self, row: &ItemRow, item: &Item) -> Result<(), Error>
     {
-        let conn = self.pool.get()?;
-        let tx = conn.unchecked_transaction()?;
+        let mut conn = self.pool.get().context("getting connection from pool")?;
+        let tx = conn.savepoint().context("getting a transaction")?;
 
         let stmt = "
             INSERT INTO item (
@@ -572,7 +541,7 @@ impl backend::Backend for Connection
             ) VALUES (?, ?, ?, ?, ?);
        ";
 
-        conn.execute(stmt, params![
+        tx.execute(stmt, params![
             row.user.bytes(),
             row.signature.bytes(),
             row.timestamp.unix_utc_ms,
@@ -580,11 +549,14 @@ impl backend::Backend for Connection
             row.item_bytes.as_slice(),
         ])?;
 
+        tx.commit().context("committing")?;
+
         if item.has_profile() {
+            // TODO: This currently happens in another connection.
+            // We should re-use the same connection, so we have the same transaction for everything.
             self.update_profile(row, item)?;
         }
 
-        tx.commit()?;
 
         Ok(())
     }
@@ -606,5 +578,31 @@ impl backend::Backend for Connection
         ])?;
 
         Ok(())
+    }
+
+    fn user_profile(&self, user: &UserID) -> Result<Option<ItemRow>, Error> {
+
+        let conn = self.pool.get()?;
+        // TODO: I'm not crazy about making 2 queries here instead of a join, but it lets me
+        // re-use the user_item() loading logic.
+        let mut find_profile = conn.prepare("
+            SELECT user_id, signature
+            FROM profile
+            WHERE user_id = ?
+        ")?;
+
+        let mut rows = find_profile.query(params![user.bytes()])?;
+        let row = match rows.next()? {
+            None => return Ok(None),
+            Some(row) => row,
+        };
+
+        let user_id: Vec<u8> = row.get(0)?;
+        let signature: Vec<u8> = row.get(1)?;
+
+        let user_id = UserID::from_vec(user_id)?;
+        let signature = Signature::from_vec(signature)?;
+
+        self.user_item(&user_id, &signature)
     }
 }

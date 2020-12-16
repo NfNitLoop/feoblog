@@ -36,6 +36,8 @@ mod filters;
 
 pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
 
+    env_logger::init();
+
     let ServeCommand{open, shared_options: options, mut binds} = command;
 
     // TODO: Error if the file doesn't exist, and make a separate 'init' command.
@@ -45,9 +47,16 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
     
 
     let app_factory = move || {
-        let db = factory.open().expect("Couldn't open DB connection.");
+        // TODO: Revert to one connection per back-end:
+        // Right now, we're storing a backend per application thread. Each backend has a reference to the pool, which
+        // means every method gets a connection to the pool. 
+        // We should revert to having one connection per backend instance, and instead storing the *Factory* as app data here,
+        // and letting each connection create a new backend (with its associated connection) as needed.
+        // This may be even better with sqlx async functionality.
+        let backend = factory.open().expect("Couldn't open DB connection.");
         let mut app = App::new()
-            .data(db)
+            .wrap(actix_web::middleware::Logger::default())
+            .data(backend)
             .configure(routes)
         ;
 
@@ -236,18 +245,32 @@ async fn get_user_items(
     let (user,) = path.into_inner();
     backend.user_items(&user, max_time, &mut collect_items).compat()?;
 
+    
+    let mut nav = vec![];
+    let profile = backend.user_profile(&user).compat()?;
+    if let Some(row) = profile {
+        let mut item = Item::new();
+        item.merge_from_bytes(&row.item_bytes)?;
+
+        nav.push(
+            Nav::Text(item.get_profile().display_name.clone())
+        )
+    }
+
+    nav.extend(vec![
+        Nav::Link{
+            text: "Profile".into(),
+            href: format!("/u/{}/profile/", user.to_base58()),
+        },
+        Nav::Link{
+            text: "Home".into(),
+            href: "/".into()
+        },
+    ]);
 
     let page = UserPage{
-        nav: vec![
-            Nav::Text("Profile".into()),
-            Nav::Text("TODO: Username".into()),
-            Nav::Link{
-                text: "Home".into(),
-                href: "/".into()
-            }
-        ],
+        nav,
         posts: items,
-        user_display_name: "TODO: Display name".into(),
     };
 
     Ok(page.responder())
@@ -306,7 +329,7 @@ async fn put_item(
 
     // TODO: Eventually also check if this user is "followed". Their content
     // can be posted here too.
-    let can_post = backend.server_user(&user).compat()?.is_some();
+    let can_post = backend.server_user(&user).context("Loading server user").compat()?.is_some();
 
     if !can_post {
         return Ok(
@@ -349,7 +372,7 @@ async fn put_item(
         item_bytes: bytes,
     };
 
-    backend.save_user_item(&row, &item).compat()?;
+    backend.save_user_item(&row, &item).context("Error saving user item").compat()?;
 
     let response = HttpResponse::Created()
         .content_type(PLAINTEXT)
@@ -384,7 +407,6 @@ struct IndexPage {
 struct UserPage {
     nav: Vec<Nav>,
     posts: Vec<UserPageItem>,
-    user_display_name: String,
 }
 
 /// An Item we want to display on a page.
@@ -408,6 +430,7 @@ impl IndexPageItem {
             .unwrap_or_else(|| self.row.item.user.to_base58().into())
     }
 
+    // TODO: Rename. Everything should eventually be able to be displayed somewhere.
     /// Does IndexPage know how to display this item?
     fn can_display(item: &Item) -> bool {
         let item_type = match &item.item_type {

@@ -58,8 +58,11 @@ pub trait Backend
     /// List users granted direct access to post to the server.
     fn server_users<'a>(&self, cb: FnIter<'a, ServerUser>) -> Result<(), Error>;
 
-    // Add a new "server user" who is explicitly allowed to post to this server.
+    /// Add a new "server user" who is explicitly allowed to post to this server.
     fn add_server_user(&self, server_user: &ServerUser) -> Result<(), Error>;
+
+    /// Get the Item(Row) that represents the user's most recently saved profile, if it exists.
+    fn user_profile(&self, user_id: &UserID) -> Result<Option<ItemRow>, Error>;
 }
 
 /// A callback function used for callback iteration through large database resultsets.

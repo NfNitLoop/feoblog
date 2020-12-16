@@ -52,8 +52,11 @@ serde = "*"
 r2d2 = "*"
 r2d2_sqlite = "*"
 
+env_logger = "*"
+
 
 [dependencies.rusqlite]
+# TODO: Switch to sqlx for async sql support?
 version = "0.24"
 features = [
     # Use a bundled, statically-linked version of sqlite. (Simplifies building on Windows)
