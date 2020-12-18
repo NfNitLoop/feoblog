@@ -28,7 +28,7 @@ use async_trait::async_trait;
 use protobuf::Message;
 
 use crate::{ServeCommand, backend::ItemProfileRow};
-use crate::backend::{self, Backend, Factory, UserID, Signature, Hash, ItemRow, Timestamp};
+use crate::backend::{self, Backend, Factory, UserID, Signature, ItemRow, Timestamp};
 use crate::responder_util::ToResponder;
 use crate::protos::{Item, Post, ProtoValid};
 
@@ -47,16 +47,11 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
     
 
     let app_factory = move || {
-        // TODO: Revert to one connection per back-end:
-        // Right now, we're storing a backend per application thread. Each backend has a reference to the pool, which
-        // means every method gets a connection to the pool. 
-        // We should revert to having one connection per backend instance, and instead storing the *Factory* as app data here,
-        // and letting each connection create a new backend (with its associated connection) as needed.
-        // This may be even better with sqlx async functionality.
-        let backend = factory.open().expect("Couldn't open DB connection.");
         let mut app = App::new()
             .wrap(actix_web::middleware::Logger::default())
-            .data(backend)
+            .data(AppData{
+                backend_factory: Box::new(factory.clone()),
+            })
             .configure(routes)
         ;
 
@@ -92,6 +87,15 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
     system.block_on(server.run())?;
    
     Ok(())
+}
+
+/// Data available for our whole application.
+/// Gets stored in a Data<AppData>
+// This is so that we have typesafe access to AppData fields, because actix
+// Data<Foo> can fail at runtime if you delete a Foo and don't clean up after
+// yourself.
+struct AppData {
+    backend_factory: Box<dyn backend::Factory>,
 }
 
 fn routes(cfg: &mut web::ServiceConfig) {
@@ -186,7 +190,8 @@ fn statics(cfg: &mut web::ServiceConfig) {
     ;
 }
 
-async fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error> {
+async fn index(data: Data<AppData>) -> Result<impl Responder, Error> {
+
 
     let max_items = 10;
     let mut items = Vec::with_capacity(max_items);
@@ -203,6 +208,7 @@ async fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error>
     };
 
     let max_time = Timestamp::now();
+    let backend = data.backend_factory.open().compat()?;
     backend.homepage_items(max_time, &mut item_callback).compat()?;
 
     let response = IndexPage {
@@ -222,7 +228,7 @@ async fn index(backend: Data<Box<dyn Backend>>) -> Result<impl Responder, Error>
 
 /// Display a single user's posts/etc.
 async fn get_user_items(
-    backend: Data<Box<dyn Backend>>,
+    data: Data<AppData>,
     path: Path<(UserID,)>
 ) -> Result<impl Responder, Error> {
     let max_items = 10;
@@ -243,6 +249,7 @@ async fn get_user_items(
     let max_time = Timestamp::now();
 
     let (user,) = path.into_inner();
+    let backend = data.backend_factory.open().compat()?;
     backend.user_items(&user, max_time, &mut collect_items).compat()?;
 
     
@@ -286,7 +293,7 @@ const PLAINTEXT: &'static str = "text/plain; charset=utf-8";
 /// Returns ??? if the signature is not valid.
 /// Returns a text body message w/ OK/Error message.
 async fn put_item(
-    backend: Data<Box<dyn Backend>>,
+    data: Data<AppData>,
     path: Path<(String, String,)>,
     req: HttpRequest,
     mut body: Payload,
@@ -327,6 +334,7 @@ async fn put_item(
         );
     }
 
+    let mut backend = data.backend_factory.open().compat()?;
     // TODO: Eventually also check if this user is "followed". Their content
     // can be posted here too.
     let can_post = backend.server_user(&user).context("Loading server user").compat()?.is_some();

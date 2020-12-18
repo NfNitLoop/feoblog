@@ -12,7 +12,7 @@ use sodiumoxide::crypto::sign;
 
 
 /// Knows how to open Backend "connections".
-pub trait Factory: Clone
+pub trait Factory
 {
     fn open(&self) -> Result<Box<dyn Backend>, Error>;
 }
@@ -49,7 +49,7 @@ pub trait Backend
     fn user_item_exists(&self, user: &UserID, signature: &Signature) -> Result<bool, Error>;
 
     /// Save an uploaded item to the data store.
-    fn save_user_item(&self, item_row: &ItemRow, item: &Item) -> Result<(), Error>;
+    fn save_user_item(&mut self, item_row: &ItemRow, item: &Item) -> Result<(), Error>;
 
     /// Get a "server user" -- a user granted direct access to post to the
     /// server.
@@ -291,56 +291,3 @@ impl Timestamp {
         datetime.format("%Y-%m-%d %H:%M:%S %z")
     }
 }
-
-// A multihash
-pub struct Hash
-{
-    pub multihash: Vec<u8>
-}
-
-// TODO: Get rid of this.
-/// Mutliash!
-impl Hash
-{
-    /// Construct a multihash of the preferred type for the content.
-    pub fn calculate(bytes: &[u8]) -> Self
-    {
-        use multihash::{encode, Hash as Alg};
-        let hash = encode(Alg::SHA2256, bytes).expect(
-            "AFAICT this can't actually fail"
-        );
-
-        Hash{ multihash: hash }
-    }
-
-    pub fn as_bytes(&self) -> &[u8] { self.multihash.as_ref() }
-
-    pub fn to_base58(&self) -> String
-    {
-        use rust_base58::*;
-        self.multihash.to_base58()
-    }
-
-    pub fn from_base58(base58: &str) -> Result<Hash, Error>
-    {
-        use rust_base58::*;
-        use multihash::{decode, Hash as Alg};
-
-        let bytes = match base58.from_base58() {
-            Ok(value) => value,
-            Err(err) => bail!("Base54 error: {}", err)
-        };
-        let mh = decode(bytes.as_ref())
-            .context("Invalid multihash")?
-        ;
-        if mh.alg != Alg::SHA2256 {
-            bail!("Unsupported hash algorithm: {:?}", mh.alg);
-        }
-        Ok(
-            Hash{
-                multihash: bytes
-            }
-        )
-    }
-}
-

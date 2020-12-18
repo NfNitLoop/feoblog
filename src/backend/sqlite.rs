@@ -8,7 +8,7 @@
 use crate::protos::Item;
 use rusqlite::NO_PARAMS;
 use crate::backend::FnIter;
-use crate::backend::{self, UserID, Signature, ItemRow, Profile, ItemProfileRow, Timestamp, ServerUser, Backend};
+use crate::backend::{self, UserID, Signature, ItemRow, Profile, ItemProfileRow, Timestamp, ServerUser};
 
 use failure::{Error, bail, ResultExt};
 use rusqlite::{params, OptionalExtension, Row};
@@ -16,6 +16,7 @@ use rusqlite::{params, OptionalExtension, Row};
 const CURRENT_VERSION: u32 = 3;
 
 type Pool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
+type PConn = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
 #[derive(Clone)]
 pub(crate) struct Factory
@@ -36,10 +37,8 @@ impl backend::Factory for Factory
 {
     fn open(&self) -> Result<Box<dyn backend::Backend>, Error>
     {
-        // While we need to make a new Factory for each Actix thread, they can all
-        // share a single conneciton pool:
         let conn = Connection{
-            pool: self.pool.clone(), // (is an Arc)
+            conn: self.pool.get()?,
         };
         Ok(Box::new(conn))
     }
@@ -47,7 +46,7 @@ impl backend::Factory for Factory
 
 pub(crate) struct Connection
 {
-    pool: Pool,
+    conn: PConn,
 }
 
 impl Connection
@@ -182,14 +181,13 @@ impl Connection
 
     fn run(&self, sql: &str) -> Result<(), Error>
     {
-        self.pool.get()?.execute(sql, params![])?;
+        self.conn.execute(sql, params![])?;
         Ok(())
     }
 
     fn get_version(&self) -> Result<Option<u32>, Error>
     {
-        let conn = self.pool.get()?;
-        let table_count: u32  = conn.prepare(
+        let table_count: u32  = self.conn.prepare(
             "SELECT count()
             FROM sqlite_master
             WHERE type = 'table'
@@ -204,7 +202,7 @@ impl Connection
             return Ok(None);
         }
 
-        let  version = conn.prepare(
+        let  version = self.conn.prepare(
             "SELECT MAX(version) from version"
         )?.query_row(
             params![],
@@ -214,58 +212,60 @@ impl Connection
         Ok(version)
     }
 
-    /// We're saving a profile. If it's new, update the profile and follow tables.
-    /// Expects to be run from within a transaction.
-    fn update_profile(&self, item_row: &ItemRow, item: &Item) -> Result<(), Error> {
-
-        // TODO: This could be more lightweight:
-        // 1: Don't use a different connection.
-        // 2: Only really need to fetch the timestamp, not the full profile.
-        let profile = self.user_profile(&item_row.user)?;
-
-        // Never replace a newer profile's metadata:
-        if let Some(profile) = profile {
-            if profile.timestamp.unix_utc_ms >= item.timestamp_ms_utc {
-                return Ok(())
-            }
-        }
-
-        let mut conn = self.pool.get()?;
-        let sp = conn.savepoint()?;
-        {
-            // Replace all follows with new ones listed in the profile:
-            sp.execute("DELETE FROM follow WHERE source_user_id = ?", params![item_row.user.bytes()])?;
-
-            // Behavior is undefined if duplicate follows exist in a Profile.
-            let mut add_follow = sp.prepare("
-                INSERT OR REPLACE INTO follow (source_user_id, followed_user_id, display_name)
-                VALUES (?, ?, ?)
-            ")?;
-
-            for follow in item.get_profile().get_follows() {
-                add_follow.execute(params![
-                    item_row.user.bytes(),
-                    follow.get_user().get_bytes(),
-                    follow.get_display_name(),
-                ])?;
-            }
-
-            let mut add_profile = sp.prepare("
-                INSERT OR REPLACE INTO profile(user_id, signature, display_name)
-                VALUES (?,?,?)
-            ")?;
-            add_profile.execute(params![
-                item_row.user.bytes(),
-                item_row.signature.bytes(),
-                item.get_profile().get_display_name()
-            ])?;
-        }
-        sp.commit()?;
-
-        Ok(())
-    }
 }
 
+/// We're saving a profile. If it's new, update the profile and follow tables.
+fn update_profile(conn: &rusqlite::Savepoint, item_row: &ItemRow, item: &Item) -> Result<(), Error> {
+
+    let prev_timestamp: Option<i64> =  
+        conn.prepare("
+            SELECT i.unix_utc_ms
+            FROM profile AS p
+            INNER JOIN item AS i USING (user_id, signature)
+            WHERE user_id = ?
+        ")?
+        .query(params![ item_row.user.bytes() ])?
+        .next()?
+        .map(|row| row.get(0))
+        .transpose()?
+    ;
+
+    // Never replace a newer profile's metadata:
+    if let Some(previous) = prev_timestamp {
+        if previous >= item.timestamp_ms_utc {
+            return Ok(())
+        }
+    }
+
+    // Replace all follows with new ones listed in the profile:
+    conn.execute("DELETE FROM follow WHERE source_user_id = ?", params![item_row.user.bytes()])?;
+
+    // Behavior is undefined if duplicate follows exist in a Profile. So we just replace:
+    let mut add_follow = conn.prepare("
+        INSERT OR REPLACE INTO follow (source_user_id, followed_user_id, display_name)
+        VALUES (?, ?, ?)
+    ")?;
+
+    for follow in item.get_profile().get_follows() {
+        add_follow.execute(params![
+            item_row.user.bytes(),
+            follow.get_user().get_bytes(),
+            follow.get_display_name(),
+        ])?;
+    }
+
+    let mut add_profile = conn.prepare("
+        INSERT OR REPLACE INTO profile(user_id, signature, display_name)
+        VALUES (?,?,?)
+    ")?;
+    add_profile.execute(params![
+        item_row.user.bytes(),
+        item_row.signature.bytes(),
+        item.get_profile().get_display_name()
+    ])?;
+
+    Ok(())
+}
 
 impl backend::Backend for Connection
 {
@@ -300,8 +300,7 @@ impl backend::Backend for Connection
         before: Timestamp,
         callback: &'a mut dyn FnMut(ItemProfileRow) -> Result<bool,Error>
     ) -> Result<(), Error> {
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare("
+        let mut stmt = self.conn.prepare("
             SELECT
                 user_id
                 , i.signature
@@ -362,8 +361,7 @@ impl backend::Backend for Connection
         before: Timestamp,
         callback: &'a mut dyn FnMut(ItemRow) -> Result<bool,Error>
     ) -> Result<(), Error> {
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare("
+        let mut stmt = self.conn.prepare("
             SELECT
                 user_id
                 , i.signature
@@ -406,8 +404,7 @@ impl backend::Backend for Connection
     fn server_user(&self, user: &UserID)
     -> Result<Option<backend::ServerUser>, Error> 
     { 
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare("
+        let mut stmt = self.conn.prepare("
             SELECT notes, on_homepage
             FROM server_user
             WHERE user_id = ?
@@ -434,8 +431,7 @@ impl backend::Backend for Connection
     }
 
     fn server_users<'a>(&self, cb: FnIter<'a, ServerUser>) -> Result<(), Error> {
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare("
+        let mut stmt = self.conn.prepare("
             SELECT 
                 user_id
                 , notes
@@ -464,8 +460,7 @@ impl backend::Backend for Connection
     
     
     fn user_item_exists(&self, user: &UserID, signature: &Signature) -> Result<bool, Error> { 
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare("
+        let mut stmt = self.conn.prepare("
             SELECT COUNT(*)
             FROM item
             WHERE user_id = ?
@@ -488,8 +483,7 @@ impl backend::Backend for Connection
     }
 
     fn user_item(&self, user: &UserID, signature: &Signature) -> Result<Option<ItemRow>, Error> { 
-        let conn = self.pool.get()?;
-        let mut stmt = conn.prepare("
+        let mut stmt = self.conn.prepare("
             SELECT
                 user_id
                 , signature
@@ -526,10 +520,9 @@ impl backend::Backend for Connection
         Ok(Some(item))
     }
 
-    fn save_user_item(&self, row: &ItemRow, item: &Item) -> Result<(), Error>
+    fn save_user_item(&mut self, row: &ItemRow, item: &Item) -> Result<(), Error>
     {
-        let mut conn = self.pool.get().context("getting connection from pool")?;
-        let tx = conn.savepoint().context("getting a transaction")?;
+        let tx = self.conn.savepoint().context("getting a transaction")?;
 
         let stmt = "
             INSERT INTO item (
@@ -549,15 +542,11 @@ impl backend::Backend for Connection
             row.item_bytes.as_slice(),
         ])?;
 
-        tx.commit().context("committing")?;
-
         if item.has_profile() {
-            // TODO: This currently happens in another connection.
-            // We should re-use the same connection, so we have the same transaction for everything.
-            self.update_profile(row, item)?;
+            update_profile(&tx, row, item)?;
         }
 
-
+        tx.commit().context("committing")?;
         Ok(())
     }
 
@@ -570,8 +559,7 @@ impl backend::Backend for Connection
 
         let on_homepage = if server_user.on_homepage { 1 } else { 0 };
 
-        let conn = self.pool.get()?;
-        conn.execute(stmt, params![
+        self.conn.execute(stmt, params![
             server_user.user.bytes(),
             server_user.notes.as_str(),
             on_homepage
@@ -582,10 +570,9 @@ impl backend::Backend for Connection
 
     fn user_profile(&self, user: &UserID) -> Result<Option<ItemRow>, Error> {
 
-        let conn = self.pool.get()?;
         // TODO: I'm not crazy about making 2 queries here instead of a join, but it lets me
         // re-use the user_item() loading logic.
-        let mut find_profile = conn.prepare("
+        let mut find_profile = self.conn.prepare("
             SELECT user_id, signature
             FROM profile
             WHERE user_id = ?
