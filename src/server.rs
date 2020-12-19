@@ -107,7 +107,8 @@ fn routes(cfg: &mut web::ServiceConfig) {
         // .route("/u/{userID}/i/{signature}/", get().to(TODO))
         .route("/u/{user_id}/i/{signature}/proto3", put().to(put_item))
 
-        
+
+        .route("/u/{user_id}/profile/", get().to(show_profile))
 
     ;
     statics(cfg);
@@ -396,7 +397,62 @@ async fn file_not_found() -> impl Responder {
         .with_status(StatusCode::NOT_FOUND)
 }
 
+async fn show_profile(
+    data: Data<AppData>,
+    path: Path<(UserID,)>,
+) -> Result<impl Responder, Error> 
+{
+    let (user_id,) = path.into_inner();
+    let backend = data.backend_factory.open().compat()?;
 
+    let row = backend.user_profile(&user_id).compat()?;
+
+    let row = match row {
+        Some(r) => r,
+        None => {
+            return Ok(HttpResponse::NotFound().body("No such profile"));
+        }
+    };
+
+    let mut item = Item::new();
+    item.merge_from_bytes(&row.item_bytes)?;
+    let display_name = item.get_profile().display_name.clone();
+    let nav = vec![
+        Nav::Text(display_name.clone()),
+        // TODO: Edit link. Make generic.
+        Nav::Link{
+            text: "Home".into(),
+            href: "/".into(),
+        },
+    ];
+
+    let timestamp_utc_ms = item.timestamp_ms_utc;
+    let utc_offset_minutes = item.utc_offset_minutes;
+    let text = std::mem::take(&mut item.mut_profile().about);
+
+    let follows = std::mem::take(&mut item.get_profile()).follows.to_vec();
+    let follows = follows.into_iter().map(|mut follow: crate::protos::Follow | -> Result<ProfileFollow, Error>{
+        let mut user = std::mem::take(follow.mut_user());
+        let user_id = UserID::from_vec(std::mem::take(&mut user.bytes)).compat()?;
+        let display_name = follow.display_name;
+        Ok(
+            ProfileFollow{user_id, display_name}
+        )
+    }).collect::<Result<_,_>>()?;
+
+    let page = ProfilePage{
+        nav,
+        text,
+        display_name,
+        follows,
+        timestamp_utc_ms,
+        utc_offset_minutes,
+        user_id: row.user,
+        signature: row.signature,
+    };
+
+    Ok(page.responder())
+}
 
 
 #[derive(Template)]
@@ -415,6 +471,25 @@ struct IndexPage {
 struct UserPage {
     nav: Vec<Nav>,
     posts: Vec<UserPageItem>,
+}
+
+#[derive(Template)]
+#[template(path = "profile.html")]
+struct ProfilePage {
+    nav: Vec<Nav>,
+    user_id: UserID,
+    signature: Signature,
+    display_name: String,
+    text: String,
+    follows: Vec<ProfileFollow>,
+    timestamp_utc_ms: i64,
+    utc_offset_minutes: i32,
+}
+
+struct ProfileFollow {
+    /// May be ""
+    display_name: String,
+    user_id: UserID,
 }
 
 /// An Item we want to display on a page.
@@ -461,6 +536,7 @@ struct UserPageItem {
 }
 
 impl UserPageItem {
+    // TODO: Why did I (have to?) make getters for these?
     fn row(&self) -> &ItemRow { &self.row }
     fn item(&self) -> &Item { &self.item }
 }
