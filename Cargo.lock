@@ -315,6 +315,20 @@ dependencies = [
  "askama_derive",
  "askama_escape",
  "askama_shared",
+ "mime",
+ "mime_guess",
+]
+
+[[package]]
+name = "askama_actix"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20653490b9baa13ed557b0ea6dae1fc9bbc2349ace67efeaaffbaea1c76f518a"
+dependencies = [
+ "actix-web",
+ "askama",
+ "bytes",
+ "futures-util",
 ]
 
 [[package]]
@@ -489,6 +503,7 @@ dependencies = [
  "actix-web",
  "actix-web-codegen",
  "askama",
+ "askama_actix",
  "async-trait",
  "bs58",
  "env_logger",

@@ -29,7 +29,6 @@ use protobuf::Message;
 
 use crate::{ServeCommand, backend::ItemProfileRow};
 use crate::backend::{self, Backend, Factory, UserID, Signature, ItemRow, Timestamp};
-use crate::responder_util::ToResponder;
 use crate::protos::{Item, Post, ProtoValid};
 
 mod filters;
@@ -221,8 +220,7 @@ async fn index(data: Data<AppData>) -> Result<impl Responder, Error> {
             }
         ],
         posts: items,
-    }
-    .responder();
+    };
 
     Ok(response)
 }
@@ -281,7 +279,7 @@ async fn get_user_items(
         posts: items,
     };
 
-    Ok(page.responder())
+    Ok(page)
 }
 
 const MAX_ITEM_SIZE: usize = 1024 * 32; 
@@ -393,14 +391,14 @@ async fn put_item(
 
 async fn file_not_found() -> impl Responder {
     NotFoundPage {}
-        .responder()
         .with_status(StatusCode::NOT_FOUND)
 }
 
 async fn show_profile(
     data: Data<AppData>,
     path: Path<(UserID,)>,
-) -> Result<impl Responder, Error> 
+    req: HttpRequest,
+) -> Result<HttpResponse, Error> 
 {
     let (user_id,) = path.into_inner();
     let backend = data.backend_factory.open().compat()?;
@@ -410,7 +408,7 @@ async fn show_profile(
     let row = match row {
         Some(r) => r,
         None => {
-            return Ok(HttpResponse::NotFound().body("No such profile"));
+            return Ok(HttpResponse::NotFound().body("No such user, or profile."))
         }
     };
 
@@ -419,7 +417,7 @@ async fn show_profile(
     let display_name = item.get_profile().display_name.clone();
     let nav = vec![
         Nav::Text(display_name.clone()),
-        // TODO: Edit link. Make generic.
+        // TODO: Add an Edit link. Make abstract w/ a link provider trait.
         Nav::Link{
             text: "Home".into(),
             href: "/".into(),
@@ -451,7 +449,7 @@ async fn show_profile(
         signature: row.signature,
     };
 
-    Ok(page.responder())
+    Ok(page.respond_to(&req).await?)
 }
 
 

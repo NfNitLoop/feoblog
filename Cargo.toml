@@ -54,6 +54,8 @@ r2d2_sqlite = "*"
 
 env_logger = "*"
 
+askama_actix = "*"
+
 
 [dependencies.rusqlite]
 # TODO: Switch to sqlx for async sql support?
@@ -66,8 +68,7 @@ features = [
 
 [dependencies.askama]
 version = "0.10"
-# See: https://github.com/djc/askama/issues/246
-# features = ["with-actix-web"]
+features = ["with-actix-web"]
 
 [build-dependencies]
 # Generate rust from .proto files.
