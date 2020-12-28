@@ -27,7 +27,7 @@ use async_trait::async_trait;
 
 use protobuf::Message;
 
-use crate::{ServeCommand, backend::ItemProfileRow};
+use crate::{ServeCommand, backend::ItemProfileRow, protos::Item_oneof_item_type};
 use crate::backend::{self, Backend, Factory, UserID, Signature, ItemRow, Timestamp};
 use crate::protos::{Item, Post, ProtoValid};
 
@@ -54,7 +54,7 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
             .configure(routes)
         ;
 
-        app = app.default_service(route().to(file_not_found));
+        app = app.default_service(route().to(|| file_not_found("")));
 
         return app;
     };
@@ -103,8 +103,9 @@ fn routes(cfg: &mut web::ServiceConfig) {
 
         .route("/u/{user_id}/", get().to(get_user_items))
 
-        // .route("/u/{userID}/i/{signature}/", get().to(TODO))
-        .route("/u/{user_id}/i/{signature}/proto3", put().to(put_item))
+        .route("/u/{userID}/i/{signature}/", get().to(show_item))
+        .route("/u/{userID}/i/{signature}/proto3", put().to(put_item))
+        .route("/u/{userID}/i/{signature}/proto3", get().to(get_item))
 
 
         .route("/u/{user_id}/profile/", get().to(show_profile))
@@ -190,9 +191,8 @@ fn statics(cfg: &mut web::ServiceConfig) {
     ;
 }
 
+/// The root (`/`) page.
 async fn index(data: Data<AppData>) -> Result<impl Responder, Error> {
-
-
     let max_items = 10;
     let mut items = Vec::with_capacity(max_items);
 
@@ -200,7 +200,7 @@ async fn index(data: Data<AppData>) -> Result<impl Responder, Error> {
         let mut item = Item::new();
         item.merge_from_bytes(&row.item.item_bytes)?;
 
-        if IndexPageItem::can_display(&item) {
+        if display_by_default(&item) {
             items.push(IndexPageItem{row, item});
         }
         
@@ -226,6 +226,7 @@ async fn index(data: Data<AppData>) -> Result<impl Responder, Error> {
 }
 
 /// Display a single user's posts/etc.
+/// `/u/{userID}/`
 async fn get_user_items(
     data: Data<AppData>,
     path: Path<(UserID,)>
@@ -237,9 +238,10 @@ async fn get_user_items(
         let mut item = Item::new();
         item.merge_from_bytes(&row.item_bytes)?;
 
-        // TODO: Skip things we can't display.
-
-        items.push(UserPageItem{ row, item });
+        // TODO: Option: show_all=1.
+        if display_by_default(&item) {
+            items.push(UserPageItem{ row, item });
+        }
 
         Ok(items.len() < max_items)
     };
@@ -389,11 +391,113 @@ async fn put_item(
 }
 
 
-async fn file_not_found() -> impl Responder {
-    NotFoundPage {}
+async fn show_item(
+    data: Data<AppData>,
+    path: Path<(UserID, Signature,)>,
+    req: HttpRequest,
+) -> Result<HttpResponse, Error> {
+
+    let (user_id, signature) = path.into_inner();
+    let backend = data.backend_factory.open().compat()?;
+    let row = backend.user_item(&user_id, &signature).compat()?;
+    let row = match row {
+        Some(row) => row,
+        None => { 
+            // TODO: We could display a nicer error page here, showing where
+            // the user might find this item on other servers. Maybe I'll leave that
+            // for the in-browser client.
+
+            return Ok(
+                file_not_found("No such item").await
+                .respond_to(&req).await?
+            );
+        }
+    };
+
+    let mut item = Item::new();
+    item.merge_from_bytes(row.item_bytes.as_slice())?;
+
+    let row = backend.user_profile(&user_id).compat()?;
+    let display_name = {
+        let mut item = Item::new();
+        if let Some(row) = row {
+            item.merge_from_bytes(row.item_bytes.as_slice())?;
+        }
+        item
+    }.get_profile().display_name.clone();
+    
+    use crate::protos::Item_oneof_item_type as ItemType;
+    match item.item_type {
+        None => Ok(HttpResponse::InternalServerError().body("No known item type provided.")),
+        Some(ItemType::profile(p)) => Ok(HttpResponse::Ok().body("Profile update.")),
+        Some(ItemType::post(p)) => {
+            let page = PostPage {
+                nav: vec![
+                    Nav::Text(display_name.clone()),
+                    Nav::Link {
+                        text: "Profile".into(),
+                        href: format!("/u/{}/profile/", user_id.to_base58()),
+                    },
+                    Nav::Link {
+                        text: "Home".into(),
+                        href: "/".into()
+                    }
+                ],
+                user_id,
+                display_name,
+                signature,
+                text: p.body,
+                title: p.title,
+                timestamp_utc_ms: item.timestamp_ms_utc,
+                utc_offset_minutes: item.utc_offset_minutes,
+            };
+
+            Ok(page.respond_to(&req).await?)
+        },
+    }
+
+
+}
+
+/// Get the binary representation of the item.
+///
+/// `/u/{userID}/i/{sig}/proto3`
+async fn get_item(
+    data: Data<AppData>,
+    path: Path<(UserID, Signature,)>,
+) -> Result<HttpResponse, Error> {
+    
+    let (user_id, signature) = path.into_inner();
+    let backend = data.backend_factory.open().compat()?;
+    let item = backend.user_item(&user_id, &signature).compat()?;
+    let item = match item {
+        Some(item) => item,
+        None => { 
+            return Ok(
+                HttpResponse::NotFound().body("No such item")
+            );
+        }
+    };
+
+    // We could in theory validate the bytes ourselves, but if a client is directly fetching the 
+    // protobuf bytes via this endpoint, it's probably going to be so that it can verify the bytes
+    // for itself anyway.
+    Ok(
+        HttpResponse::Ok()
+        .content_type("application/protobuf3")
+        .body(item.item_bytes)
+    )
+
+}
+
+async fn file_not_found(msg: impl Into<String>) -> impl Responder<Error=actix_web::error::Error> {
+    NotFoundPage {
+        message: msg.into()
+    }
         .with_status(StatusCode::NOT_FOUND)
 }
 
+/// `/u/{userID}/profile/`
 async fn show_profile(
     data: Data<AppData>,
     path: Path<(UserID,)>,
@@ -455,7 +559,9 @@ async fn show_profile(
 
 #[derive(Template)]
 #[template(path = "not_found.html")]
-struct NotFoundPage {}
+struct NotFoundPage {
+    message: String,
+}
 
 #[derive(Template)]
 #[template(path = "index.html")] 
@@ -484,6 +590,21 @@ struct ProfilePage {
     utc_offset_minutes: i32,
 }
 
+#[derive(Template)]
+#[template(path = "post.html")]
+struct PostPage {
+    nav: Vec<Nav>,
+    user_id: UserID,
+    signature: Signature,
+    display_name: String,
+    text: String,
+    title: String,
+    timestamp_utc_ms: i64,
+    utc_offset_minutes: i32,
+
+    // TODO: Include comments from people this user follows.
+}
+
 struct ProfileFollow {
     /// May be ""
     display_name: String,
@@ -510,21 +631,6 @@ impl IndexPageItem {
             // TODO: Detect/protect against someone setting a userID that mimics a pubkey?
             .unwrap_or_else(|| self.row.item.user.to_base58().into())
     }
-
-    // TODO: Rename. Everything should eventually be able to be displayed somewhere.
-    /// Does IndexPage know how to display this item?
-    fn can_display(item: &Item) -> bool {
-        let item_type = match &item.item_type {
-            Some(t) => t,
-            None => return false,
-        };
-
-        use crate::protos::Item_oneof_item_type as IType;
-        match item_type {
-            IType::post(_) => true,
-            _ => false,
-        }
-    }
 }
 
 
@@ -533,12 +639,27 @@ struct UserPageItem {
     item: Item,
 }
 
+fn display_by_default(item: &Item) -> bool {
+    let item_type = match &item.item_type {
+        // Don't display items we can't find a type for. (newer than this server knows about):
+        None => return false,
+        Some(t) => t,
+    };
+
+    use crate::protos::Item_oneof_item_type as ItemType;
+    match item_type {
+        ItemType::post(_) => true,
+        ItemType::profile(_) => false,
+    }
+}
+
 impl UserPageItem {
     // TODO: Why did I (have to?) make getters for these?
     fn row(&self) -> &ItemRow { &self.row }
     fn item(&self) -> &Item { &self.item }
 }
 
+/// Represents an item of navigation on the page.
 enum Nav {
     Text(String),
     Link{
@@ -549,7 +670,6 @@ enum Nav {
 
 
 /// A type implementing ResponseError that can hold any kind of std::error::Error.
-// TODO: Implement From<anyhow::Error> once I'm using it.
 #[derive(Debug)]
 struct Error {
     inner: Box<dyn std::error::Error + 'static>

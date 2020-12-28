@@ -1,0 +1,23 @@
+{# Show a single post by a user. #}
+{% extends "page.html" %}
+
+{% block title %}{{ display_name }} (TODO: Title){% endblock %}
+
+{% block body %}
+
+<div class="items">
+    {# {%- let timestmap = with_offset(&timestamp_utc_ms, &utc_offset_minutes) -%} #}
+    {% let timestamp = "timestamp" %}
+    <div class="item post">
+        {% if title.len() > 0 %}<h1 class="title">{{ title }}</h1>{% endif %}
+        <div class="timestamp"><a href="/u/{{user_id.to_base58()}}/i/{{signature.to_base58()}}/">{{ 
+            timestamp_utc_ms|with_offset(utc_offset_minutes)
+        }}</a></div>
+        {#  #}
+        {{ text|markdown|safe }}
+    </div>
+
+    {# TODO: Show comments from users followed by this user. #}
+</div>
+
+{% endblock %}
