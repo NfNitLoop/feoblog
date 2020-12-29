@@ -8,9 +8,10 @@
 use crate::protos::Item;
 use rusqlite::NO_PARAMS;
 use crate::backend::FnIter;
-use crate::backend::{self, UserID, Signature, ItemRow, Profile, ItemProfileRow, Timestamp, ServerUser};
+use crate::backend::{self, UserID, Signature, ItemRow, ItemDisplayRow, Timestamp, ServerUser, QuotaDenyReason};
 
 use failure::{Error, bail, ResultExt};
+use protobuf::Message as _;
 use rusqlite::{params, OptionalExtension, Row};
 
 const CURRENT_VERSION: u32 = 3;
@@ -298,7 +299,7 @@ impl backend::Backend for Connection
     fn homepage_items<'a>(
         &self,
         before: Timestamp,
-        callback: &'a mut dyn FnMut(ItemProfileRow) -> Result<bool,Error>
+        callback: &'a mut dyn FnMut(ItemDisplayRow) -> Result<bool,Error>
     ) -> Result<(), Error> {
         let mut stmt = self.conn.prepare("
             SELECT
@@ -307,7 +308,6 @@ impl backend::Backend for Connection
                 , unix_utc_ms
                 , received_utc_ms
                 , bytes
-                , p.signature
                 , p.display_name
             FROM item AS i
             LEFT OUTER JOIN profile AS p USING (user_id)
@@ -324,16 +324,7 @@ impl backend::Backend for Connection
             before.unix_utc_ms,
         ])?;
 
-        let to_item_profile_row = |row: &Row<'_>| -> Result<ItemProfileRow, Error> {
-            let profile = match (row.get(5)?, row.get(6)?) {
-                (Some(signature), Some(display_name)) => Some(
-                        Profile{
-                        signature: Signature::from_vec(signature)?,
-                        display_name,                    
-                    }
-                ),
-                _ => None
-            };
+        let to_item_profile_row = |row: &Row<'_>| -> Result<ItemDisplayRow, Error> {
 
             let item = ItemRow{
                 user: UserID::from_vec(row.get(0)?)?,
@@ -343,7 +334,10 @@ impl backend::Backend for Connection
                 item_bytes: row.get(4)?,
             };
 
-            Ok(ItemProfileRow{item, profile})
+            Ok(ItemDisplayRow{
+                item,
+                display_name: row.get(5)?
+            })
         };
 
         while let Some(row) = rows.next()? {
@@ -591,5 +585,74 @@ impl backend::Backend for Connection
         let signature = Signature::from_vec(signature)?;
 
         self.user_item(&user_id, &signature)
+    }
+
+    fn user_known(&self, user_id: &UserID) -> Result<bool, Error> {
+        let mut query = self.conn.prepare("
+            SELECT
+                EXISTS(SELECT user_id FROM profile where user_id = :user_id)
+                OR EXISTS(SELECT user_id FROM item where user_id = :user_id)
+                OR EXISTS(SELECT user_id FROM server_user WHERE user_id = :user_id)
+                OR EXISTS(SELECT followed_user_id FROM follow WHERE followed_user_id = :user_id)
+        ")?;
+
+        let mut result = query.query_named(&[
+            (":user_id", &user_id.bytes())
+        ])?;
+
+        let row = match result.next()? {
+            Some(row) => row,
+            None => bail!("Expected at least 1 row from SQLite."),
+        };
+
+        Ok(row.get(0)?)
+    }
+
+    fn quota_check_item(&self, user_id: &UserID, bytes: &[u8], item: &Item) -> Result<Option<QuotaDenyReason>, Error> {
+        
+        if self.server_user(user_id)?.is_some() {
+            // TODO: Implement optional quotas for "server users".
+            // For now, there is no quota for them:
+            return Ok(None);
+        };
+
+        // Check those followed by "server users":
+        let mut statement = self.conn.prepare("
+            SELECT
+                f.followed_user_id
+            FROM
+                follow AS f
+                INNER JOIN server_user AS su ON su.user_id = f.source_user_id
+            WHERE
+                f.followed_user_id = ?
+        ")?;
+        let mut rows = statement.query(params![user_id.bytes()])?;
+        if rows.next()?.is_some() {
+            // TODO Implement quotas in follows. For now, presence of a follow gives unlimited quota.
+            // TODO: Exclude server users whose profiles/IDs have been revoked.
+            return Ok(None);
+        }
+
+        // TODO: When "pinning" is implemented, allow posting items which are pinned by server users and their follows.
+
+        // If you're not a server user, or followed by one, we only allow you to update your profile.
+        if !item.has_profile() {
+            return Ok(Some(QuotaDenyReason::OnlyProfileUpdatesAllowed));
+        }
+
+        let existing_profile = self.user_profile(user_id)?;
+        if let Some(existing_profile) = existing_profile {
+            let mut previous_item = Item::new();
+            previous_item.merge_from_bytes(existing_profile.item_bytes.as_slice())?;
+            
+            if previous_item.timestamp_ms_utc >= item.timestamp_ms_utc {
+                return Ok(Some(QuotaDenyReason::NewerProfileExists));
+            }
+            
+            // TODO: Check whether the previous profile was revoked, once revocation is implemented.
+        }
+
+        // No reason to deny based on quota:
+        Ok(None)
     }
 }

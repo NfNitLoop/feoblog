@@ -1,9 +1,13 @@
+{# 
+    Used on the home page to display posts from multiple users.
+    Also used to display posts from multiple users in a single users's feed.
+#}
 {% extends "page.html" %}
 
 {% block body %}
 
 <div class="items">
-{%- for display_item in posts -%}
+{%- for display_item in items -%}
     {%- let item = display_item.item() -%}
     {%- let row = display_item.row() -%}
     {%- let userID = row.item.user.to_base58() -%}
@@ -13,13 +17,24 @@
     
     <div class="item post">
         {% if title.len() > 0 %}<h1 class="title">{{ title }}</h1>{% endif %}
-        <div class="userInfo"><a href="/u/{{ userID }}/" class="userID">@{{ display_item.display_name() }}</a></div>
+        {% if show_authors -%}
+            <div class="userInfo"><a href="/u/{{ userID }}/" class="userID">@{{ display_item.display_name() }}</a></div>
+        {%- endif %}
         <div class="timestamp"><a href="/u/{{ userID }}/i/{{ signature }}/">{{ 
             item.get_timestamp_ms_utc() | with_offset(item.get_utc_offset_minutes())
         }}</a></div>
         {{ post.get_body()|markdown|safe }}
     </div>
 {% endfor -%}
+
+{# 
+{% if let Some(display_message) = warning_message %}
+    <div class="item">
+        <p>{{display_message}}</p>
+    </div>
+{% endif %}
+#}
+
 </div>
 
 {% endblock %}

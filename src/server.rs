@@ -27,7 +27,7 @@ use async_trait::async_trait;
 
 use protobuf::Message;
 
-use crate::{ServeCommand, backend::ItemProfileRow, protos::Item_oneof_item_type};
+use crate::{ServeCommand, backend::ItemDisplayRow, protos::Item_oneof_item_type};
 use crate::backend::{self, Backend, Factory, UserID, Signature, ItemRow, Timestamp};
 use crate::protos::{Item, Post, ProtoValid};
 
@@ -196,7 +196,7 @@ async fn index(data: Data<AppData>) -> Result<impl Responder, Error> {
     let max_items = 10;
     let mut items = Vec::with_capacity(max_items);
 
-    let mut item_callback = |row: ItemProfileRow| {        
+    let mut item_callback = |row: ItemDisplayRow| {        
         let mut item = Item::new();
         item.merge_from_bytes(&row.item.item_bytes)?;
 
@@ -219,7 +219,9 @@ async fn index(data: Data<AppData>) -> Result<impl Responder, Error> {
                 href: "/client/".into(),
             }
         ],
-        posts: items,
+        items,
+        display_message: None,
+        show_authors: true,
     };
 
     Ok(response)
@@ -240,7 +242,14 @@ async fn get_user_items(
 
         // TODO: Option: show_all=1.
         if display_by_default(&item) {
-            items.push(UserPageItem{ row, item });
+            items.push(IndexPageItem{ 
+                row: ItemDisplayRow{
+                    item: row,
+                    // We don't display the user's name on their own page.
+                    display_name: None,
+                },
+                item 
+            });
         }
 
         Ok(items.len() < max_items)
@@ -276,12 +285,12 @@ async fn get_user_items(
         },
     ]);
 
-    let page = UserPage{
+    Ok(IndexPage{
         nav,
-        posts: items,
-    };
-
-    Ok(page)
+        items,
+        show_authors: false,
+        display_message: None,
+    })
 }
 
 const MAX_ITEM_SIZE: usize = 1024 * 32; 
@@ -298,7 +307,7 @@ async fn put_item(
     path: Path<(String, String,)>,
     req: HttpRequest,
     mut body: Payload,
-) -> Result<impl Responder, Error> 
+) -> Result<HttpResponse, Error> 
 {
     let (user_path, sig_path) = path.into_inner();
     let user = UserID::from_base58(user_path.as_str()).context("decoding user ID").compat()?;
@@ -308,7 +317,7 @@ async fn put_item(
         Some(length) => length,
         None => {
             return Ok(
-                HttpResponse::BadRequest()
+                HttpResponse::LengthRequired()
                 .content_type(PLAINTEXT)
                 .body("Must include length header.".to_string())
                 // ... so that we can reject things that are too large outright.
@@ -322,7 +331,7 @@ async fn put_item(
             return Ok(
                 HttpResponse::BadRequest()
                 .content_type(PLAINTEXT)
-                .body("Must include length header.".to_string())
+                .body("Error parsing Length header.".to_string())
             );
         },
     };
@@ -331,30 +340,27 @@ async fn put_item(
         return Ok(
             HttpResponse::PayloadTooLarge()
             .content_type(PLAINTEXT)
-            .body("Item too large".to_string())
+            .body(format!("Item must be <= {} bytes", MAX_ITEM_SIZE))
         );
     }
 
     let mut backend = data.backend_factory.open().compat()?;
-    // TODO: Eventually also check if this user is "followed". Their content
-    // can be posted here too.
-    let can_post = backend.server_user(&user).context("Loading server user").compat()?.is_some();
 
-    if !can_post {
-        return Ok(
-            HttpResponse::Forbidden()
-            .content_type(PLAINTEXT)
-            .body("Not accepting Items for this user".to_string())
-        )
-    }
-
-    // If the content already exists, do nothing: 202 Accepted?
+    // If the content already exists, do nothing.
     if backend.user_item_exists(&user, &signature).compat()? {
         return Ok(
             HttpResponse::Accepted()
             .content_type(PLAINTEXT)
             .body("Item already exists")
         );
+    }
+
+    if !backend.user_known(&user).compat()? {
+        return Ok(
+            HttpResponse::Forbidden()
+            .content_type(PLAINTEXT)
+            .body("Unknown user ID".to_string())
+        )
     }
     
     let mut bytes: Vec<u8> = Vec::with_capacity(length);
@@ -370,6 +376,13 @@ async fn put_item(
     let mut item: Item = Item::new();
     item.merge_from_bytes(&bytes)?;
     item.validate()?;
+
+    if let Some(deny_reason) = backend.quota_check_item(&user, &bytes, &item).compat()? {
+        return Ok(
+            HttpResponse::InsufficientStorage()
+            .body(format!("{}", deny_reason))
+        )
+    }
 
     let message = format!("OK. Received {} bytes.", bytes.len());
     
@@ -567,14 +580,13 @@ struct NotFoundPage {
 #[template(path = "index.html")] 
 struct IndexPage {
     nav: Vec<Nav>,
-    posts: Vec<IndexPageItem>,
-}
+    items: Vec<IndexPageItem>,
 
-#[derive(Template)]
-#[template(path = "user_page.html")]
-struct UserPage {
-    nav: Vec<Nav>,
-    posts: Vec<UserPageItem>,
+    /// An error/warning message to display. (ex: no items)
+    display_message: Option<String>,
+
+    /// Should we show author info w/ links to their profiles?
+    show_authors: bool,
 }
 
 #[derive(Template)]
@@ -613,18 +625,18 @@ struct ProfileFollow {
 
 /// An Item we want to display on a page.
 struct IndexPageItem {
-    row: ItemProfileRow,
+    row: ItemDisplayRow,
     item: Item,
 }
 
 impl IndexPageItem {
     fn item(&self) -> &Item { &self.item }
-    fn row(&self) -> &ItemProfileRow { &self.row }
+    fn row(&self) -> &ItemDisplayRow { &self.row }
 
     fn display_name(&self) -> Cow<'_, str>{
-        self.row.profile
+        self.row.display_name
             .as_ref()
-            .map(|p| p.display_name.trim())
+            .map(|n| n.trim())
             .map(|n| if n.is_empty() { None } else { Some (n) })
             .flatten()
             .map(|n| n.into())
@@ -634,10 +646,7 @@ impl IndexPageItem {
 }
 
 
-struct UserPageItem {
-    row: ItemRow,
-    item: Item,
-}
+
 
 fn display_by_default(item: &Item) -> bool {
     let item_type = match &item.item_type {
@@ -651,12 +660,6 @@ fn display_by_default(item: &Item) -> bool {
         ItemType::post(_) => true,
         ItemType::profile(_) => false,
     }
-}
-
-impl UserPageItem {
-    // TODO: Why did I (have to?) make getters for these?
-    fn row(&self) -> &ItemRow { &self.row }
-    fn item(&self) -> &Item { &self.item }
 }
 
 /// Represents an item of navigation on the page.

@@ -144,7 +144,36 @@ message Follow {
 }
 
 message UserID {
-
     // A user's public NaCL key/ID. Should be 32 bytes:
     bytes bytes = 1;
+}
+
+message Signature {
+    // A NaCL signature. Should be 64 bytes:
+    bytes bytes = 1;
+}
+
+// A list of items available on a server.
+// GET /u/{userID}/items[?before=timestamp_ms_utc] to list a single user's items.
+// GET /u/{userID]/feed/items[?before=...] to list items in a user's feed.
+// The list is sorted in reverse chronological order.
+message ItemList {
+    // A list of items, in reverse chronological order.
+    repeated ItemID item_ids = 1;
+}
+
+// The unique ID of an item.
+message ItemID {
+    // user_id may be unspecified if it can be inferred from context.
+    // (ex: in an ItemList where a user_id is specified at the top level.)
+    UserID user_id = 1;
+
+    // REQUIRED.
+    Signature signature = 2;
+
+    // REQUIRED
+    // The timestamp coantained within Item.timestamp_ms_utc.
+    // This is used for ordering Items, and to fetch more ItemIDs in the event
+    // that this list is truncated/incomplete.   
+    int64 timestamp_ms_utc = 3;
 }

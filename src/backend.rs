@@ -32,7 +32,7 @@ pub trait Backend
     /// home page, which have timestamps before `before`.
     /// Items are returned through callback, and will continue to be fetched while callback continues
     /// to return Ok(true).
-    fn homepage_items<'a>(&self, before: Timestamp, callback: &'a mut dyn FnMut(ItemProfileRow) -> Result<bool,Error>) -> Result<(), Error>;
+    fn homepage_items<'a>(&self, before: Timestamp, callback: &'a mut dyn FnMut(ItemDisplayRow) -> Result<bool,Error>) -> Result<(), Error>;
 
     /// Find the most recent items for a particular user
     fn user_items<'a>(
@@ -63,6 +63,20 @@ pub trait Backend
 
     /// Get the Item(Row) that represents the user's most recently saved profile, if it exists.
     fn user_profile(&self, user_id: &UserID) -> Result<Option<ItemRow>, Error>;
+
+    /// Is this user ID known to this instance?
+    ///
+    /// This is true if any of these are true:
+    /// * The user is a "server user" (given direct permission to post to this server)
+    /// * The user is followed by a "server user".
+    /// * There is content by that user on this server at all.
+    ///
+    /// This is a very permissive check, because even if we don't allow a user to post in general, we should allow
+    /// them to post their latest profile (w/o attachments) to provide server links and ID revocation.
+    fn user_known(&self, user_id: &UserID) -> Result<bool, Error>;
+
+    /// Check whether a user has remaiing quota/permissions to upload a particular item.
+    fn quota_check_item(&self, user_id: &UserID, bytes: &[u8], item: &Item) -> Result<Option<QuotaDenyReason>, Error>;
 }
 
 /// A callback function used for callback iteration through large database resultsets.
@@ -229,18 +243,12 @@ pub struct ItemRow {
     pub item_bytes: Vec<u8>,
 }
 
-/// An [`ItemRow`] that also contains the user's latest profile (if available)
-pub struct ItemProfileRow {
+/// An [`ItemRow`] that has extra information (fetched via joins)
+pub struct ItemDisplayRow {
     pub item: ItemRow,
-    pub profile: Option<Profile>
-}
 
-/// An [`ItemProfileRow`] that also includes information about the user's
-/// follow.display_name for someone they follow.
-pub struct ItemProfileFollowRow {
-    pub item: ItemRow,
-    pub profile: Option<Profile>,
-    pub follow: Option<String>, // TODO
+    /// The display name for the author of the item, if available.
+    pub display_name: Option<String>
 }
 
 /// Profile information from the `profile` table. `profile` table.
@@ -289,5 +297,39 @@ impl Timestamp {
         let datetime = datetime.to_offset(offset);
 
         datetime.format("%Y-%m-%d %H:%M:%S %z")
+    }
+}
+/// A reason why a user can't post an Item or file attachment.
+pub enum QuotaDenyReason {
+    /// The user already has enough items newer than this one such that posting this one would exceed the quota.
+    /// 
+    NewerItemsExceedQuota {
+        /// The maximum bytes of Items this user can store on the server.
+        max_bytes: u64,
+    },
+
+    /// The only Item type we accept for this user is Profile updates, and this is not a profile update.
+    OnlyProfileUpdatesAllowed,
+
+    /// We only accept Profile updates for this user, and a newer one already exists.
+    /// (We may accept older profiles for "server users" and followed users to allow item syncing.)
+    NewerProfileExists,
+
+    /// We already have a profile that proves that this userID has been revoked.
+    ProfileRevoked,
+}
+
+impl std::fmt::Display for QuotaDenyReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NewerItemsExceedQuota { max_bytes } => 
+                write!(f, "Newer items exceed {} byte quota.", max_bytes),
+            Self::OnlyProfileUpdatesAllowed =>
+                write!(f, "Only profile updates are allowed for this user ID."),
+            Self::NewerProfileExists =>
+                write!(f, "Only profile updates are allowed for this user ID, and a newer profile already exists."),
+            Self::ProfileRevoked => 
+                write!(f, "This user ID has been revoked."),
+        }
     }
 }
