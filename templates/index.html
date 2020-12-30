@@ -27,13 +27,14 @@
     </div>
 {% endfor -%}
 
-{# 
-{% if let Some(display_message) = warning_message %}
+{% match display_message -%}
+    {% when Some with (display_message) %}
     <div class="item">
         <p>{{display_message}}</p>
     </div>
-{% endif %}
-#}
+    {%- else -%}
+{%- endmatch %}
+
 
 </div>
 

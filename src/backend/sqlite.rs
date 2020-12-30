@@ -395,6 +395,75 @@ impl backend::Backend for Connection
         Ok( () )
     }
 
+    fn user_feed_items<'a>(
+        &self,
+        user_id: &UserID,
+        before: Timestamp,
+        callback: &'a mut dyn FnMut(ItemDisplayRow) -> Result<bool, Error>,
+    ) -> Result<(), Error> {
+        let mut stmt = self.conn.prepare("
+            SELECT
+                user_id
+                , i.signature
+                , unix_utc_ms
+                , received_utc_ms
+                , bytes
+                , p.display_name
+                , f.display_name AS follow_display_name
+            FROM item AS i
+            LEFT OUTER JOIN profile AS p USING (user_id)
+            LEFT OUTER JOIN follow AS f ON (
+                i.user_id = f.followed_user_id
+                AND f.source_user_id = :user_id
+            )
+            WHERE unix_utc_ms < :timestamp
+            AND (
+                user_id IN (
+                    SELECT followed_user_id
+                    FROM follow
+                    WHERE source_user_id = :user_id
+                )
+                OR user_id = :user_id
+            )
+            ORDER BY unix_utc_ms DESC
+        ")?;
+
+        let mut rows = stmt.query_named(&[
+            (":timestamp", &before.unix_utc_ms),
+            (":user_id", &user_id.bytes())
+        ])?;
+
+        let to_item_profile_row = |row: &Row<'_>| -> Result<ItemDisplayRow, Error> {
+
+            let item = ItemRow{
+                user: UserID::from_vec(row.get(0)?)?,
+                signature: Signature::from_vec(row.get(1)?)?,
+                timestamp: Timestamp{ unix_utc_ms: row.get(2)? },
+                received: Timestamp{ unix_utc_ms: row.get(3)? },
+                item_bytes: row.get(4)?,
+            };
+
+            let display_name: Option<String> = row.get(5)?;
+            let follow_display_name: Option<String> = row.get(6)?;
+            fn not_empty(it: &String) -> bool { !it.trim().is_empty() }
+
+            Ok(ItemDisplayRow{
+                item,
+                // Prefer displaying the name that this user has assigned to the follow.
+                // TODO: This seems maybe business-logic-y? Should we move it out of Backend?
+                display_name: follow_display_name.filter(not_empty).or(display_name).filter(not_empty),
+            })
+        };
+
+        while let Some(row) = rows.next()? {
+            let item = to_item_profile_row(row)?;
+            let result = callback(item)?;
+            if !result { break; }
+        }
+
+        Ok( () )
+    }
+
     fn server_user(&self, user: &UserID)
     -> Result<Option<backend::ServerUser>, Error> 
     { 

@@ -42,6 +42,14 @@ pub trait Backend
         callback: &'a mut dyn FnMut(ItemRow) -> Result<bool, Error>,
     ) -> Result<(), Error>;
 
+    /// Find the most recent items that should be displayed on the user's feed page.
+    fn user_feed_items<'a>(
+        &self,
+        user_id: &UserID,
+        before: Timestamp,
+        callback: &'a mut dyn FnMut(ItemDisplayRow) -> Result<bool, Error>,
+    ) -> Result<(), Error>;
+
     /// Find one particular UserItem
     fn user_item(&self, user: &UserID, signature: &Signature) -> Result<Option<ItemRow>, Error>;
 
