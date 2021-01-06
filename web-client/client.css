@@ -1,0 +1,19 @@
+body {
+    padding: 0px;
+    margin: 0px;
+}
+
+.content {
+    margin: 8px;
+}
+
+.navBar {
+    margin-top: 0px;
+    margin-left: 0px;
+    margin-right: 0px;
+    border-bottom: 1px dotted black;
+    padding: 0.2em;
+    /*
+        TODO: Stay visible at top. 
+    */
+}

@@ -12,7 +12,8 @@
     "commonmark": "*",
     "google-protobuf": "^3.13.0",
     "moment": "^2.27.0",
-    "tweetnacl-ts": "^1.0.3"
+    "tweetnacl-ts": "^1.0.3",
+    "tinro": "*"
   },
   "devDependencies": {
     "@snowpack/plugin-svelte": "^2.0.4",
@@ -20,7 +21,7 @@
     "@types/commonmark": "^0.27.4",
     "protoc-gen-ts": "^0.3.0",
     "snowpack": "^2.10.1",
-    "svelte": "^3.24.1",
+    "svelte": "^3.31.2",
     "svelte-check": "^1.0.35",
     "svelte-preprocess": "^4.2.1",
     "typescript": "^3.9.7"
