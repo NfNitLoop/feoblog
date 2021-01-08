@@ -75,7 +75,8 @@ bytes: {protoSize}
 <script lang="ts">
 import { onMount } from 'svelte';
 import bs58 from "bs58"
-import commonmark from "commonmark"
+import * as commonmark from "commonmark"
+// TODO: Deprecate and replace with luxon.
 import moment from "moment"
 import { Item, Post } from "../protos/feoblog"
 import * as nacl from "tweetnacl-ts"
