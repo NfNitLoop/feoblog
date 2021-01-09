@@ -14,7 +14,7 @@
     "google-protobuf": "^3.14.0",
     "luxon": "1.25.0",
     "moment": "^2.29.1",
-    "tinro": "^0.5.5",
+    "svelte-spa-router": "^3.1.0",
     "tweetnacl-ts": "^1.0.3"
   },
   "devDependencies": {

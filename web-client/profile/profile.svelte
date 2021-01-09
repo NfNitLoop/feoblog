@@ -123,7 +123,7 @@ bytes: {protoSize}
 <script lang="ts">
 import { onMount, tick } from 'svelte';
 import bs58 from "bs58"
-import commonmark from "commonmark"
+import * as commonmark from "commonmark"
 import moment from "moment"
 import { Follow, Item, Post, Profile, UserID } from "../protos/feoblog"
 import * as nacl from "tweetnacl-ts"

@@ -13,9 +13,9 @@ import {DateTime, FixedOffsetZone} from "luxon"
 </script>
 
 <script lang="ts">
-export let utc_ms: number = undefined
-export let minute_offset: number = undefined
-export let href: string = undefined
+export let utc_ms: number|undefined = undefined
+export let minute_offset: number|undefined = undefined
+export let href = ""
 export let defaultFormat = "yyyy-MM-dd HH:mm:ss ZZZ"
 
 $: dateTime = function() {

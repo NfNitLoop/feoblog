@@ -1,47 +1,36 @@
 
-<div>
-    <NavBar/>
-    <div class="content">
-    <Route>
-        <Route path="/">
-            <p>This is a work in progress. For now, you can:</p>
-            <nav>
-                <a href="/create_id/foo">Create an ID</a>
-                <a href="profile">Edit your profile</a>
-                <a href="post">Write a post</a>
-                <a href="/u/Aci9P5BFoP27dH2pU7kVjWVaVqe7rNFnEyWeJm8ewWby/i/zDmH4ufNM9T1yNzxKqh9rMuB2i482qYgbUvnwPGcyjFL7fGW93iwRTnqmWx4LbnnDK6rR1tstzf3oVi3fbKcHim/">Sample post</a>
-            </nav>
-        </Route>
-        <Route path="/create_id">
-            <p>Create ID here.</p>
-        </Route>
-        <Route path="/u/:user_id/i/:signature/" let:params>
-            <ItemView user_id={params.user_id} signature={params.signature}/>
-        </Route>
-        <Route fallback>
-            Page not found. <a href="/">Home Page</a>
-        </Route>
-    </Route>
+<div class="nav-layout-container">
+    <div class="nav-container">
+        <div class="nav">
+            <a href="#/">Home</a>
+        </div>
     </div>
 
+    <div class="items">
+        <Router {routes}/>
+    </div>
 </div>
 
 <script context="module" lang="ts">
-    import {Route, router} from "tinro"
+    import Router from "svelte-spa-router"
+
     import NavBar from "./NavBar.svelte"
     import ItemView from "./ItemView.svelte"
+    import IndexPageDefault from "./IndexPageDefault.svelte"
+    import NotFoundPage from "./NotFoundPage.svelte"
+    import PostPage from "../post/post.svelte"
+    import CreateIDPage from "../create_id/create.svelte"
     
-    router.mode.hash()
-</script>
-
-<script lang="ts">
-import { Item, Post } from "../protos/feoblog"
-
+    const routes = {
+        "/": IndexPageDefault,
+        "/u/:userID/i/:signature/": ItemView,
+        "/post/": PostPage,
+        "/create_id/": CreateIDPage,
+        "*": NotFoundPage,
+    }
 
 </script>
 
 <style>
-    nav a {
-        display: block;
-    }
+
 </style>

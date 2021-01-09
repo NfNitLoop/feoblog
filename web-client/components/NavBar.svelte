@@ -1,6 +1,6 @@
 <div class="navBar">
     <input type="text" name="currentUserID" value="{currentUserID}" placeholder="Current user ID"/>
-    <a href="/">Home</a>
+    <a href="#/">Home</a>
 </div>
 
 <script lang="ts">

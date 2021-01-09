@@ -4,6 +4,11 @@
         "target": "ES2019",
         "esModuleInterop": true,
         "moduleResolution": "node",
-        "experimentalDecorators": true
-    }
+        "experimentalDecorators": true,
+        "strictNullChecks": true
+    },
+    "exclude": [
+        "build",
+        "node_modules"
+    ]
 }

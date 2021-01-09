@@ -107,7 +107,7 @@ body
 		border-radius: 5px;
 		min-width: 100%;
 		width: max-content;
-		box-shadow: 10px 10px 10px rgba(0, 0, 0, 0.2);
+		box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.2);
 	}
 }
 
@@ -116,7 +116,8 @@ body
 	padding: 1em;
 	background: #fff;
 	border-radius: 20px;
-	box-shadow: 10px 10px 5px #ddd;
+	box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.2);
+	word-wrap: break-word;
 }
 
 
