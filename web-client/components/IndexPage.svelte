@@ -3,8 +3,19 @@
     <div class="nav-container">
         <div class="nav">
             <a href="#/">Home</a>
-            <button on:click={popup.toggle}>{buttonText}</button>
+            {#if !$appState.loggedIn}
+                <a href="#/login">Log in</a>
+                <a href="#/create_id">Create an ID</a>
+            {:else}
+                <div>{$appState.userName || "(unknown user)"}</div>
+                <a href="#/login">Change User</a>
+                <a href="#/my_profile">My Profile</a>
+                <a href="#/feed">My Feed</a>
+                <a href="#/new_post">New Post</a>
+                <a href="#/sync">Sync</a>
+            {/if}
         </div>
+
     </div>
 
     <div class="items">
@@ -14,38 +25,42 @@
 </div>
 
 
-<Popup title="Settings" bind:this={popup} bind:shown={popupShown}>
-    Just testing
-    <div>This is a div</div>
-    <br><input type="text" name="foobar" placeholder="Some text">
-</Popup>
 
 <script context="module" lang="ts">
     import Router from "svelte-spa-router"
 
-    import ItemView from "./ItemView.svelte"
-    import IndexPageDefault from "./IndexPageDefault.svelte"
     import NotFoundPage from "./NotFoundPage.svelte"
-    import PostPage from "../post/post.svelte"
-    import CreateIDPage from "../create_id/create.svelte"
-    import Popup from "./Popup.svelte"
-    
-    const routes = {
-        "/": IndexPageDefault,
-        "/u/:userID/i/:signature/": ItemView,
-        "/post/": PostPage,
-        "/create_id/": CreateIDPage,
-        "*": NotFoundPage,
-    }
+    import * as app from "../ts/app"
 </script>
 
 <script lang="ts">
+import {wrap} from "svelte-spa-router/wrap"
+import { writable } from "svelte/store";
+let appState = writable(new app.AppState())
 
-let popup
-let popupShown
-$: buttonText = popupShown ? "Hide" : "Show"
-$: {
-    console.log("popupShown", popupShown)
+    
+let routes = {
+    "/": appPage("./IndexPageDefault.svelte"),
+    "/u/:userID/i/:signature/": appPage("./ItemView.svelte"),
+    "/post/": appPage("../post/post.svelte"),
+    "/create_id/": appPage("./pages/CreateID.svelte"),
+    "/login": appPage('./pages/Login.svelte'),
+    "*": NotFoundPage,
+}
+
+// Dynamically load a page of the app, and also pass through a reference to appState.
+function appPage(templatePath: string) {
+
+    // Weird. with wrap(), we can import Foo.svelte, but with appPage(), 
+    // it needs .js.
+    templatePath = templatePath.replace(/[.]svelte$/, ".js")
+
+    return wrap({
+        asyncComponent: () => import(templatePath),
+        props: {
+            "appState": appState,
+        }
+    })
 }
 
 </script>

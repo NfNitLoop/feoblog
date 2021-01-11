@@ -110,6 +110,7 @@ fn routes(cfg: &mut web::ServiceConfig) {
 
 
         .route("/u/{user_id}/profile/", get().to(show_profile))
+        .route("/u/{user_id}/profile/proto3", get().to(get_profile_item))
         .route("/u/{user_id}/feed/", get().to(get_user_feed))
 
     ;
@@ -694,6 +695,35 @@ async fn get_item(
 
 }
 
+/// Get the latest profile we have for a user ID.
+/// returns the signature in a "signature" header so clients can verify it.
+async fn get_profile_item(
+    data: Data<AppData>,
+    Path((user_id,)): Path<(UserID,)>,
+) -> Result<HttpResponse, Error> {
+    
+    let backend = data.backend_factory.open().compat()?;
+    let item = backend.user_profile(&user_id,).compat()?;
+    let item = match item {
+        Some(item) => item,
+        None => { 
+            return Ok(
+                HttpResponse::NotFound().body("No such item")
+            );
+        }
+    };
+
+    // We could in theory validate the bytes ourselves, but if a client is directly fetching the 
+    // protobuf bytes via this endpoint, it's probably going to be so that it can verify the bytes
+    // for itself anyway.
+    Ok(
+        HttpResponse::Ok()
+        .content_type("application/protobuf3")
+        .header("signature", item.signature.to_base58())
+        .body(item.item_bytes)
+    )
+
+}
 async fn file_not_found(msg: impl Into<String>) -> impl Responder<Error=actix_web::error::Error> {
     NotFoundPage {
         message: msg.into()

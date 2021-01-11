@@ -46,7 +46,8 @@ function equalBytes(array1: Uint8Array, array2: Uint8Array): boolean {
 
 </script>
 
-<div><button on:click={click}>Generate</button></div>
+<div class="item">
+<button on:click={click}>Create new ID</button>
 <table>
     <tr>
         <th>User ID:</th>
@@ -58,6 +59,16 @@ function equalBytes(array1: Uint8Array, array2: Uint8Array): boolean {
     </tr>
 </table>
 
+<p>Next steps:</p>
+<ul>
+    <li>SAVE YOUR PASSWORD. There is no password reset if you lose it!</li>
+    <li>Ask a server admin to add you as a user. (Or ask a friend to follow your ID.)</li>
+    <li><a href="#/login">Log in</a></li>
+    <li>Create a profile for your ID</li>
+    <li>Write your first post</li>
+</ul>
+
+</div>
 
 <style>
 table th {

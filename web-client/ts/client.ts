@@ -31,8 +31,11 @@ export class Client {
         if (!response.ok) {
             throw `${url} response error: ${response.status}: ${response.statusText}`
         }
-
-        let length = parseInt(response.headers.get("content-length"))
+        let lengthHeader = response.headers.get("content-length")
+        if (lengthHeader === null) {
+            throw `The server didn't return a length for ${url}`
+        }
+        let length = parseInt(lengthHeader)
         if (length > LENIENT_MAX_ITEM_SIZE) {
             throw `${url} returned ${length} bytes! (max supported is ${LENIENT_MAX_ITEM_SIZE})`
         }
@@ -49,6 +52,63 @@ export class Client {
 
         return Item.deserialize(bytes)
     }
+
+    // Like getItem, but just gets the latest profile that a server knows about for a given user ID.
+    // The signature is returned in a header from the server. This function verifies that signature
+    // before returning the Item.
+    // We also verify that the Item has a Profile.
+    async getProfile(userID: UserID|string): Promise<Item|null> {
+        
+        // Perform validation of these before sending:
+        if (typeof userID === "string") {
+            userID = UserID.fromString(userID)
+        }
+
+        let url = `${this.base_url}/u/${userID}/profile/proto3`
+        let response = await fetch(url)
+
+        if (response.status == 404) { return null }
+
+        if (!response.ok) {
+            throw `${url} response error: ${response.status}: ${response.statusText}`
+        }
+        let lengthHeader = response.headers.get("content-length")
+        if (lengthHeader === null) {
+            throw `The server didn't return a length for ${url}`
+        }
+        let length = parseInt(lengthHeader)
+        if (length > LENIENT_MAX_ITEM_SIZE) {
+            throw `${url} returned ${length} bytes! (max supported is ${LENIENT_MAX_ITEM_SIZE})`
+        }
+        if (length == 0) {
+            throw `Got 0 bytes`
+        }
+
+        let sigHeader = response.headers.get("signature")
+        if (sigHeader === null || sigHeader === "") {
+            throw `The server did not return a signature for ${url}`
+        }
+        let signature = Signature.fromString(sigHeader)
+
+        let buf = await response.arrayBuffer()
+        let bytes = new Uint8Array(buf)
+
+        if (!signature.isValid(userID, bytes)) {
+            throw `Invalid signature for ${url}`
+        }
+
+        let item
+        try {
+            item = Item.deserialize(bytes)
+        } catch (exception) {
+            throw `Error deserializing ${url}: ${exception}`
+        }
+        if (item.profile === null) {
+            throw `Server returned n Item for ${url} that is not a Profile.`
+        }
+        return item
+    }
+
 }
 
 export class Config {
@@ -57,7 +117,7 @@ export class Config {
     base_url: string
 }
 
-class UserID {
+export class UserID {
     readonly bytes: Uint8Array
 
     toString(): string {
@@ -101,7 +161,7 @@ class UserID {
 
 }
 
-class Signature {
+export class Signature {
     readonly bytes: Uint8Array
 
     toString(): string {

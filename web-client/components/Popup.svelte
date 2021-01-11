@@ -1,7 +1,7 @@
 <div class="item popup" bind:this={element} >
     <div class="titlebar" on:mousedown={onMouseDown}>
         <button class="close" on:click={hide}>X</button>
-        {#if title && false}<h1>{title}</h1>{/if}
+        <h1>{title}</h1>
     </div>
     
     <slot/>
@@ -70,6 +70,7 @@ function onMouseMove(event) {
     margin-top: 0px;
     margin-bottom: 0px;
     user-select: none;
+    cursor: move;
 }
 
 .titlebar {
