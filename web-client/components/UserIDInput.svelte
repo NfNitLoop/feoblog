@@ -9,7 +9,7 @@
 import { UserID } from "../ts/client";
 
 
-export let placeholder: string|undefined = undefined
+export let placeholder = "user ID"
 export let value = ""
 export let disabled = false
 

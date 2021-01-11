@@ -1,40 +1,42 @@
-<div class="item">
-{#if !loggedIn}
-    <p>You are not logged in.</p>
-    <form>
-        Log in as:
-        <br><UserIDInput bind:value={userID} bind:valid={validUserID}/>
-        <br><button on:click|preventDefault={logIn} disabled={!validUserID}>Log in</button>
-    </form>
-
-    {#if errorMessage != ""}
-        <p>Error: {errorMessage}</p>
-    {/if}
-
-    {#if attemptedProfileLoad}
-        {#if profile} 
-            <p>Log in as user "{profile.profile?.display_name}"?</p>
-        {:else}
-            <p>Could not load profile for that user ID. Log in anwyay?</p>
-        {/if}
-        <button on:click|preventDefault={confirmLogin}>Confirm</button>
-    {/if}
+{#each $appState.savedLogins as savedLogin, index (savedLogin.userID)}
+    <ViewSavedLogin {savedLogin} isLoggedIn={index===0} on:logIn={logInSaved} on:remove={removeSaved} on:change={updateSavedLogin}/>
 {:else}
-    <p>You are logged in.
-    <ul>
-        <li>Name: {$appState.userName || "(unknown user)"}
-        <li>userID: <span class="userID">{$appState.loggedInUser}</span>
-    </ul>
-    <button on:click|preventDefault={logout}>Log out</button>
+<div class="item">
+    You are not currently logged in.
+</div>
+{/each}
+
+<div class="item">
+<form>
+    Log in as:
+    <br><UserIDInput bind:value={userID} bind:valid={validUserID}/>
+    <br><button on:click|preventDefault={logIn} disabled={!validUserID}>Log in</button>
+</form>
+
+{#if errorMessage != ""}
+    <p>Error: {errorMessage}</p>
+{/if}
+
+{#if attemptedProfileLoad}
+    {#if profile} 
+        <p>Log in as user "{profile.profile?.display_name}"?</p>
+    {:else}
+        <p>Could not load profile for that user ID. Log in anwyay?</p>
+    {/if}
+    <button on:click|preventDefault={confirmLogin}>Confirm</button>
 {/if}
 </div>
 
+
+
+
 <script lang="ts">
-import type { Writable } from "svelte/store";
-import type { Item } from "../../protos/feoblog";
-import type { AppState, getInstance } from "../../ts/app"
-import { Client, UserID } from "../../ts/client";
+import type { Writable } from "svelte/store"
+import type { Item } from "../../protos/feoblog"
+import type { AppState, SavedLogin } from "../../ts/app"
+import { Client, UserID } from "../../ts/client"
 import UserIDInput from "../UserIDInput.svelte"
+import ViewSavedLogin from "../ViewSavedLogin.svelte"
 
 export let appState: Writable<AppState>
 let userID = ""
@@ -63,16 +65,11 @@ async function logIn() {
 function confirmLogin() {
     // Log in via app state.
     appState.update((state) => {
-        state.login(UserID.fromString(userID), profile)
-        return state
-    })
+        let login: SavedLogin = {userID}
+        let displayName = profile?.profile?.display_name
+        if (displayName) { login.displayName = displayName}
 
-    reset()
-}
-
-function logout() {
-    appState.update((state) => {
-        state.logout()
+        state.logIn(login)
         return state
     })
 
@@ -84,4 +81,28 @@ function reset() {
     profile = null
     userID = ""
 }
+
+function logInSaved(event) {
+    let savedLogin: SavedLogin = event.detail.savedLogin
+    appState.update((state) => {
+        state.logIn(savedLogin)
+        return state
+    })
+}
+
+function removeSaved(event) {
+    let savedLogin: SavedLogin = event.detail.savedLogin
+    appState.update((state) => {
+        state.forgetLogin(savedLogin.userID)
+        return state
+    })
+}
+function updateSavedLogin(event) {
+    let savedLogin: SavedLogin = event.detail.savedLogin
+    appState.update((state) => {
+        state.updateSavedLogin(savedLogin)
+        return state
+    })
+}
+
 </script>

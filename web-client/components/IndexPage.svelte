@@ -24,8 +24,6 @@
 
 </div>
 
-
-
 <script context="module" lang="ts">
     import Router from "svelte-spa-router"
 
@@ -61,6 +59,16 @@ function appPage(templatePath: string) {
             "appState": appState,
         }
     })
+}
+
+$: {
+    let color = $appState.userBGColor
+    let html = (window.document.body.parentElement as HTMLElement)
+    if (!color) {
+        html.style.removeProperty("background-color")
+    } else {
+        html.style.backgroundColor = color
+    }
 }
 
 </script>
