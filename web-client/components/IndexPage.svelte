@@ -11,7 +11,7 @@
                 <a href="#/login">Change User</a>
                 <a href="#/my_profile">My Profile</a>
                 <a href="#/feed">My Feed</a>
-                <a href="#/new_post">New Post</a>
+                <a href="#/post">New Post</a>
                 <a href="#/sync">Sync</a>
             {/if}
         </div>

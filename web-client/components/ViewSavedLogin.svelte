@@ -19,6 +19,24 @@ export let displayName = savedLogin.displayName || ""
 export let userID = savedLogin.userID
 export let bgColor = savedLogin.bgColor || ""
 
+$: itemStyle = function(){
+    if (isLoggedIn) {
+        return ""
+    }
+    let color = bgColor
+    if (!validColor(color)) {
+        color = "rgba(0,0,0,0)"
+    }
+    return `border: 5px solid ${color};`
+}()
+
+function validColor(color): boolean {
+    return (
+        /^#[0-9a-f]{3}$/i.test(color) 
+        || /^#[0-9a-f]{6}$/i.test(color) 
+    )   
+}
+
 let dispatch = createEventDispatcher()
 
 function logIn() {
@@ -30,6 +48,7 @@ function remove() {
 }
 
 function onChange(...ignored) {
+    if (bgColor && !validColor(bgColor)) return
     dispatch("change", eventData())
 }
 
@@ -52,8 +71,8 @@ class EventData {
 </script>
 
 
-<div class="savedLogin" style="background-color: {bgColor};">
-<div class="item" >
+<div class="savedLogin" >
+<div class="item" style={itemStyle}>
     <table>
         {#if isLoggedIn}
         <tr>
@@ -85,9 +104,13 @@ class EventData {
 
 <style>
     input {
-        border: 1px solid rgba(0, 0, 0, 0)
+        border: 1px solid rgba(0, 0, 0, 0);
+        font-family: inherit;
+        font-size: inherit;
     }
     input:hover, input:focus {
         border: 1px solid black;
     }
+
+
 </style>
