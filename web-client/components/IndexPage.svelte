@@ -43,6 +43,7 @@ let routes = {
     "/post/": appPage("../post/post.svelte"),
     "/create_id/": appPage("./pages/CreateID.svelte"),
     "/login": appPage('./pages/Login.svelte'),
+    "/my_profile": appPage("./pages/EditProfile.svelte"),
     "*": NotFoundPage,
 }
 

@@ -27,6 +27,7 @@
 {/if}
 </div>
 
+<CreateID></CreateID>
 
 
 
@@ -37,6 +38,7 @@ import type { AppState, SavedLogin } from "../../ts/app"
 import { Client, UserID } from "../../ts/client"
 import UserIDInput from "../UserIDInput.svelte"
 import ViewSavedLogin from "../ViewSavedLogin.svelte"
+import CreateID from "./CreateID.svelte"
 
 export let appState: Writable<AppState>
 let userID = ""
@@ -56,7 +58,8 @@ async function logIn() {
 
     try {
         attemptedProfileLoad = true
-        profile = await client.getProfile(UserID.fromString(userID))
+        let result = await client.getProfile(UserID.fromString(userID))
+        profile = result?.item || null
     } catch (exception) {
         console.log("error", exception)
         errorMessage = `${exception}`

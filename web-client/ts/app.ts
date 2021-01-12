@@ -1,5 +1,5 @@
 import type { Item, Profile } from "../protos/feoblog"
-import { UserID } from "./client"
+import { Client, UserID } from "./client"
 
 let instance: AppState|null = null
 
@@ -16,9 +16,17 @@ export function getInstance(): AppState {
 export class AppState
 {
     private _savedLogins: SavedLogin[] = []
+    private _client: Client
 
     constructor() {
         this.loadSavedLogins()
+        this._client = new Client({
+            base_url: ""
+        })
+    }
+
+    get client(): Client {
+        return this._client
     }
 
     get loggedIn(): boolean {

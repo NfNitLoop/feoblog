@@ -57,7 +57,7 @@ export class Client {
     // The signature is returned in a header from the server. This function verifies that signature
     // before returning the Item.
     // We also verify that the Item has a Profile.
-    async getProfile(userID: UserID|string): Promise<Item|null> {
+    async getProfile(userID: UserID|string): Promise<ProfileResult|null> {
         
         // Perform validation of these before sending:
         if (typeof userID === "string") {
@@ -97,7 +97,7 @@ export class Client {
             throw `Invalid signature for ${url}`
         }
 
-        let item
+        let item: Item
         try {
             item = Item.deserialize(bytes)
         } catch (exception) {
@@ -106,9 +106,25 @@ export class Client {
         if (item.profile === null) {
             throw `Server returned n Item for ${url} that is not a Profile.`
         }
-        return item
+        return {item, signature}
     }
 
+    // Load the latest profile from any server that hosts profiles for this user.
+    async getLatestProfile(userID: UserID|string): Promise<ProfileResult|null> {
+        let result = await this.getProfile(userID)
+        if (result === null) { return result }
+
+        // TODO: Walk the profile servers and find the most-recently-updated one.
+        return result
+    }
+
+}
+
+// When we load a profile, we don't know its signature until it's loaded.
+// Return the signature w/ the Item:
+export class ProfileResult {
+    item: Item
+    signature: Signature
 }
 
 export class Config {

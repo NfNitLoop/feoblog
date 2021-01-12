@@ -1,22 +1,20 @@
+<!-- TODO: rename "postPage", responsible for side-by-side view  -->
 <div id="postPage">
     <div class="postInput item">
 
-        <table class="form">
+        <table>
             <tr>
                 <th><label for="userID">User ID</label>:</th>
-                <td><input class="userID" type="text" name="userID" bind:value={userID}>
-                    {#if userIDError}
-                    <div class="error">{userIDError}</div>
-                    {/if}
+                <td><input class="userID" type="text" name="userID" value={userID.toString()} disabled>
                 </td>
             </tr>
             <tr>
                 <th>Display&nbsp;Name:</th>
-                <td><input type="text" bind:value={displayName} disabled={!validUserID}></td>
+                <td><input type="text" bind:value={displayName} disabled={!editable}></td>
             </tr>
             <tr>
                 <td colspan="2">
-                    <textarea bind:this={textbox} bind:value={profileContent} placeholder="Your profile here..." disabled={readyToSend || !validUserID}></textarea>
+                    <textarea bind:this={textbox} bind:value={profileContent} placeholder="Your profile here..." disabled={!editable}></textarea>
                 </td>
             </tr>
             <tr>
@@ -30,45 +28,7 @@
                             on:delete={() => removeFollow(index)}
                         />
                     {/each}
-                    <button on:click={addFollow} disabled={!validUserID}>Add</button>
-                </td>
-            </tr>
-            <tr>
-                <th><label for="signature">Signature</label>:</th>
-                <td><input type="text" name="signature" class="signature" bind:value={signature} disabled></td>
-            </tr>
-            <tr>
-                <th><label for="privateKey">Private Key</label>:</th>
-                <td>
-                    <input type="password" name="privateKey" bind:value={privateKey} disabled={!validUserID}>
-                    {#if privateKeyError}
-                    <div class="error">{privateKeyError}</div>
-                    {/if}
-
-                </td>
-            </tr>
-            {#if validPrivateKey && signErrors}
-            <tr>
-                <th></th>
-                <td class="error">
-                    {#each signErrors as error}
-                        {error}<br>
-                    {/each}
-                </td>
-            </tr>
-            {/if}
-            <tr>
-                <th></th>
-                <td>
-                    {#if readyToSend}
-                        <button name="unsign" on:click={unSign}>Edit</button>
-                    {:else}
-                        <button name="sign" on:click={sign} disabled={!validPrivateKey || !readyToSign}>Sign</button>
-                    {/if}
-                    <button name="submit" on:click={submit} disabled={!readyToSend}>Submit</button>
-                    {#if status}
-                        <div>{status}</div>
-                    {/if}
+                    <button on:click={addFollow} disabled={!editable}>Add</button>
                 </td>
             </tr>
         </table>
@@ -79,9 +39,7 @@
         {#if displayName}
             <h1 class="title">{ displayName }</h1>
         {/if}
-        {#if validUserID}
-            <div><span class="userID">@{userID}</span></div>
-        {/if}
+        <div><span class="userID">@{userID}</span></div>
         
         {@html markdownOut}
 
@@ -105,8 +63,53 @@
 
     </div>
 
+    <div class="item sendBox">
+        <table>
+            {#if validationErrors.length > 0}
+            <tr>
+                <th></th>
+                <td class="error">
+                    {#each validationErrors as error}
+                        {error}<br>
+                    {/each}
+                </td>
+            </tr>
+
+            {:else if !validSignature}
+            <tr>
+                <th><label for="privateKey">Private Key</label>:</th>
+                <td>
+                    <input type="password" name="privateKey" bind:value={privateKey} disabled={!editable}>
+                    {#if privateKeyError}
+                    <div class="error">{privateKeyError}</div>
+                    {/if}
+                </td>
+            </tr>
+            <tr>
+                <th></th>
+                <td><button name="sign" on:click={sign} disabled={!validPrivateKey}>Sign</button></td>
+            </tr>
+            {:else}
+            <tr>
+                <th><label for="signature">Signature</label>:</th>
+                <td><input type="text" name="signature" class="signature" bind:value={signature} disabled></td>
+            </tr>
+            <tr>
+                <th></th>
+                <td>
+                    <button name="submit" on:click={submit}>Submit</button>
+                    {#if status}
+                        <div>{status}</div>
+                    {/if}
+                </td>
+            </tr>
+            {/if}
+        </table>
+    </div>
+    
 
 </div>
+
 
 
 {#if debug}
@@ -121,15 +124,54 @@ bytes: {protoSize}
 {/if}
 
 <script lang="ts">
-import { onMount, tick } from 'svelte';
+import { onMount, tick } from 'svelte'
+import type { Writable } from "svelte/store"
 import bs58 from "bs58"
 import * as commonmark from "commonmark"
 import moment from "moment"
-import { Follow, Item, Post, Profile, UserID } from "../protos/feoblog"
+import { Follow, Item, Post, Profile, UserID } from "../../protos/feoblog"
 import * as nacl from "tweetnacl-ts"
 import bs58check from 'bs58check';
-import FollowBox from "./FollowBox.svelte"
-import { MAX_ITEM_SIZE, parseUserID, parseUserIDError } from '../ts/common';
+import FollowBox from "../FollowBox.svelte"
+import { MAX_ITEM_SIZE, parseUserID } from '../../ts/common'
+import { UserID as ClientUserID } from "../../ts/client"
+import type { AppState } from '../../ts/app';
+
+export let appState: Writable<AppState>
+let userID: ClientUserID
+$: userID = function() {
+    let userID = $appState.loggedInUser
+    if (userID) return userID
+    throw `Must be logged in.`
+}()
+
+enum PageState {
+    // Loading the latest profile.
+    Loading,
+    Editing,
+    Signed,
+    // Sent -> Editing
+}
+
+let pageState = PageState.Loading
+$: editable = (pageState == PageState.Editing)
+
+onMount(() => {
+    loadProfile()
+})
+
+async function loadProfile() {
+    if (!userID) { return }
+    let result = await $appState.client.getLatestProfile(userID)
+    if (result) {
+        let profile = result.item
+        loadFromProto(profile)
+        signature = result.signature.toString()
+    }
+    pageState = PageState.Editing
+    
+
+}
 
 const reader = new commonmark.Parser()
 const writer = new commonmark.HtmlRenderer({ safe: true})
@@ -163,14 +205,14 @@ onMount(() => {
 // Send link clicks to target=_blank to save the contents of the edit box:
 function interceptLinkClicks(event: Event) {
     let target = event.target as HTMLElement
-    let anchor: HTMLAnchorElement = undefined
+    let anchor: HTMLAnchorElement | null = null
     let tag = target.tagName
 
     if (tag == "A") {
         anchor = (target as HTMLAnchorElement)
     } else if (tag == "IMG") {
         let parent = target.parentElement
-        if (parent.tagName == "A") {
+        if (parent?.tagName == "A") {
             anchor = (parent as HTMLAnchorElement)
         }
     }
@@ -195,28 +237,6 @@ function expandTextarea(textarea) {
 }
 
 
-// <3 Moment in that it'll keep the time and offset together:
-// TODO: Only save when signed:
-let timestampMoment = moment()
-
-
-let userID = function() {
-    // Try to get it from the URL #?u=___
-    let url = new URL(window.location.toString())
-    let params = new URLSearchParams(url.hash.substr(1))
-    if (params.has("u")) {
-        return params.get("u")
-    }
-
-    return ""
-}()
-
-
-$: userIDError = parseUserIDError(userID)
-$: validUserID = !userIDError
-
-
-
 // A bridge between HTML and the Follow protobuf object.
 class FollowEntry {
     userID = ""
@@ -235,7 +255,8 @@ class FollowEntry {
             }),
         });
     }
-       
+    
+    // TODO: Upgrade to a UserID.fromString()
     userIDBytes(): Uint8Array {
         return parseUserID(this.userID)
     }
@@ -258,7 +279,7 @@ async function addFollow() {
 
 let privateKey = ""
 
-// TODO: Move parsing a private key to a separate function.
+// TODO: Move parsing a private key to a separate function and component.
 // Error to display about the private key:
 $: privateKeyError = function() {
     if (privateKey.length == 0) {
@@ -290,7 +311,7 @@ $: privateKeyError = function() {
     let keypair = nacl.sign_keyPair_fromSeed(buf);
     
     let pubKey = bs58.encode(keypair.publicKey)
-    if (pubKey != userID) {
+    if (pubKey != userID.toString()) {
         return "Private key does not match user ID."
     }
 
@@ -311,23 +332,19 @@ $: {
     }
 }
 
-function parseDate(str: string): moment.Moment {
-    let date: moment.Moment;
-    for (let i in DATE_FORMATS) {
-        // keep the parsed offset in the Moment so we can render/save it.
-        date = moment.parseZone(str, DATE_FORMATS[i], true)
-        if (date.isValid()) {
-            return date
-        }
-    }
-    return date;
-}
-
 $: markdownOut = function() {
     var parsed = reader.parse(profileContent);
     return writer.render(parsed);
 }()
 
+
+// <3 Moment in that it'll keep the time and offset together:
+// TODO: Only save when signed:
+let timestampMoment = moment()
+
+function updateTimestmap() {
+    timestampMoment = moment()
+}
 
 // Used for display in the rendered post.
 $: formattedDate = timestampMoment.format(DATE_FORMATS[0])
@@ -367,19 +384,33 @@ $: itemProto = function(): Item {
 
 }()
 
+// This is the inverse of $: itemProto above. Given an Item, load data from it.
+function loadFromProto(item: Item) {
+    let profile = item.profile
+    timestampMoment = moment.utc(item.timestamp_ms_utc).utcOffset(item.utc_offset_minutes)
+    displayName = profile.display_name
+    profileContent = profile.about
+
+    let _follows = new Array<FollowEntry>()
+    profile.follows.forEach((follow) => {
+        let f = new FollowEntry(ClientUserID.fromBytes(follow.user.bytes).toString(), follow.display_name)
+        _follows.push(f)
+    })
+
+    follows = _follows
+
+    // TODO: servers
+}
+
 $: itemProtoBytes = itemProto.serialize()
-$: protoSize = itemProtoBytes.length
-$: protoHex = debug ? bufferToHex(itemProtoBytes) : ""
+$: protoSize = itemProtoBytes?.length || 0
+$: protoHex = debug ? bufferToHex(itemProtoBytes || []) : ""
 
 $: itemJson = JSON.stringify(itemProto.toObject(), null, 1)
 
 // Errors that prevent signing:
-$: signErrors = function(): string[] {
+$: validationErrors = function(): string[] {
     let errs = new Array()
-
-    if (!validPrivateKey) {
-        errs.push("Invalid private key")
-    }
 
     let followErrors = new Set(
         follows.map(f => {
@@ -418,38 +449,16 @@ $: signErrors = function(): string[] {
     return errs
 }()
 
-$: readyToSign = signErrors.length == 0
-
-// Errors that prevent sending:
-$: sendErrors = function(): string[] {
-    let errs = new Array()
-    if (!userID) {
-        errs.push("Must sign the message")
-    }
-
-    if (protoSize > MAX_ITEM_SIZE) {
-        errs.push(`Item size is ${protoSize}/${MAX_ITEM_SIZE}`)
-    }
-
-
-    if (!validSignature) {
-        errs.push("Invalid Signature")
-    }
-
-    return errs
-}()
-
-// This profile is valid and signed and ready to send to the server:
-$: readyToSend = sendErrors.length == 0
+$: readyToSign = validationErrors.length == 0
 
 
 
 $: validSignature = function(): boolean {
-    if (!userID || !signature) {
+    if (!userID || !signature || !itemProtoBytes) {
         return false
     }
     try {
-        let pubKey = bs58.decode(userID)
+        let pubKey = userID.bytes
         let decodedSig = bs58.decode(signature)
         let ok = nacl.sign_detached_verify(itemProtoBytes, decodedSig, pubKey)
         return ok;
@@ -469,13 +478,15 @@ function bufferToHex (x: Iterable<number>) {
 // Create a signature, delete the password.
 async function sign() {
 
-    timestampMoment = moment()
+    updateTimestmap()
     await tick()
 
     if (privateKeyError) {
         console.error("Shouldn't be able to call sign w/ invalid private key.")
         return
     }
+
+    if (!itemProtoBytes) throw `No bytes to sign.`
    
     let buf = bs58check.decode(privateKey)
     let keypair = nacl.sign_keyPair_fromSeed(buf);
@@ -492,7 +503,7 @@ function unSign() {
 }
 
 async function submit() {
-    if (!readyToSend) {
+    if (!readyToSign || !validSignature) {
         console.error("Submit clicked when not valid");
         return;
     }
@@ -528,16 +539,18 @@ async function submit() {
 <style type="text/css">
     @media (min-width: 60em) {
         #postPage {
-            display: grid;
+            display: inline-grid;
             width: 100%;
+            /* a single items has max-width 55em. +1em grid gap */
+            max-width: 111em;
             grid-template-columns: 1fr 1fr;
-            /* max-height: 80vh; */
+            grid-gap: 1em;
+            padding: 1em;
         }
-        #postPage :first-child {
-            margin-right: 0px;
+        #postPage > * {
+            margin: 0px;
         }
     }
-
    
     input {
         width: 100%;
@@ -549,18 +562,17 @@ async function submit() {
         min-height: 20em;
         width: 100%;
     }
-
        
-    table.form {
+    table {
         width: 100%;
     }
-    table.form th {
+    table th {
         text-align: right;
         width: auto;
         min-width: 12ch;
         vertical-align: top;
     }
-    table.form td {
+    table td {
         width: 100%;
         vertical-align: top;
     }

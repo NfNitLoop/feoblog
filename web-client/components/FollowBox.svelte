@@ -4,7 +4,7 @@
             <th></th>
             <td class="delete">
                 {#if checked}
-                    <button on:click={() => dispatcher("delete")}>Delete</button>
+                    <Button on:click={() => dispatcher("delete")}>Unfollow</Button>
                 {/if}
                 <input type="checkbox" bind:checked>
             </td>
@@ -31,7 +31,7 @@
 
 import { createEventDispatcher } from "svelte";
 import { fade } from "svelte/transition"
-
+import Button from "./Button.svelte"
 import { parseUserIDError } from "../ts/common";
 
 export let userID = ""
