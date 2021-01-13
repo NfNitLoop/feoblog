@@ -38,7 +38,7 @@ let appState = writable(new app.AppState())
 
     
 let routes = {
-    "/": appPage("./IndexPageDefault.svelte"),
+    "/": appPage("./pages/HomePage.svelte"),
     "/u/:userID/i/:signature/": appPage("./ItemView.svelte"),
     "/post/": appPage("../post/post.svelte"),
     "/create_id/": appPage("./pages/CreateID.svelte"),

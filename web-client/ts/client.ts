@@ -1,4 +1,4 @@
-import { Item, Post } from "../protos/feoblog"
+import { Item, ItemList, Post } from "../protos/feoblog"
 import bs58 from "bs58"
 import * as nacl from "tweetnacl-ts"
 
@@ -116,6 +116,24 @@ export class Client {
 
         // TODO: Walk the profile servers and find the most-recently-updated one.
         return result
+    }
+
+    async getHomepageItems(before?: Number): Promise<ItemList> {
+        let url = `${this.base_url}/homepage/proto3`
+
+        if (before) {
+            url = `${url}?before=${before}`
+        }
+
+        let response = await fetch(url)
+        if (!response.ok) {
+            console.error("getHomePageItems response", response)
+            throw `Invalid response: ${response.status}: ${response.statusText}`
+        }
+
+        let buf = await response.arrayBuffer()
+        let bytes = new Uint8Array(buf)
+        return ItemList.deserialize(bytes)
     }
 
 }

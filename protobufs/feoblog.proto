@@ -29,6 +29,10 @@ message Item {
     // 
     // As a result, servers should not accept timestamps in the future (except
     // for maybe a small allowance due to clock drift.)
+    //
+    // Servers must validate that this value is specified.
+    // Due to protobuf3 default values, this means that this means the value
+    // can not be exactly 0.
     int64 timestamp_ms_utc = 1;
 
     // Optionally specify the user's timezone offset when they created this
@@ -144,12 +148,12 @@ message Follow {
 }
 
 message UserID {
-    // A user's public NaCL key/ID. Should be 32 bytes:
+    // A user's public NaCL key/ID. Must be 32 bytes:
     bytes bytes = 1;
 }
 
 message Signature {
-    // A NaCL signature. Should be 64 bytes:
+    // A NaCL signature. Must be 64 bytes:
     bytes bytes = 1;
 }
 
@@ -158,14 +162,19 @@ message Signature {
 // GET /u/{userID]/feed/items[?before=...] to list items in a user's feed.
 // The list is sorted in reverse chronological order.
 message ItemList {
-    // A list of items, in reverse chronological order.
-    repeated ItemID item_ids = 1;
+    // A list of items, in chronological order (newest first)
+    repeated ItemListEntry items = 1;
+
+    // If true, the server explicitly states there are no items after this list.
+    // (i.e.: the client can stop querying)
+    bool no_more_items = 2;
 }
 
-// The unique ID of an item.
-message ItemID {
+// The unique ID of an item is its (user_id,signature)
+// This type encapsulates that, plus some additional metadata which 
+message ItemListEntry {
     // user_id may be unspecified if it can be inferred from context.
-    // (ex: in an ItemList where a user_id is specified at the top level.)
+    // (ex: in an ItemList which lists posts for a specific userID)
     UserID user_id = 1;
 
     // REQUIRED.
@@ -176,4 +185,20 @@ message ItemID {
     // This is used for ordering Items, and to fetch more ItemIDs in the event
     // that this list is truncated/incomplete.   
     int64 timestamp_ms_utc = 3;
+
+    // Specify the type of this item.
+    // This allows clients to skip fetching item types they're not interested in
+    // for a particular view. (ex: profile updates and/or comments, etc.)
+    ItemType item_type = 4;
+}
+
+// This is redundant with the Item.item_type oneof. But it allows us to 
+// specify the type of an item in ItemLists.
+enum ItemType {
+    // Default value. Either the server didn't specify the type, or
+    // it was a type that the client can't deserialize.
+    UNKNOWN = 0;
+
+    POST = 1;
+    PROFILE = 2;
 }

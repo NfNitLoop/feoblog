@@ -12,8 +12,12 @@ export let signature: string|undefined
 // Support routing from svelte-spa-router.
 // 🙁 See: https://github.com/ItalyPaleAle/svelte-spa-router/issues/183
 export let params: any|undefined
-$: userID = params?.userID
-$: signature = params?.signature
+$: {
+    if (params) {
+        userID = params.userID
+        signature = params.signature
+   }
+} 
 
 let viewMode: "normal"|"markdown"|"data" = "normal"
 

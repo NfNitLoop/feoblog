@@ -28,11 +28,13 @@ use async_trait::async_trait;
 
 use protobuf::Message;
 
-use crate::{ServeCommand, backend::ItemDisplayRow, protos::Item_oneof_item_type};
+use crate::{ServeCommand, backend::ItemDisplayRow, protos::{ItemList, ItemListEntry, ItemType, Item_oneof_item_type}};
 use crate::backend::{self, Backend, Factory, UserID, Signature, ItemRow, Timestamp};
 use crate::protos::{Item, Post, ProtoValid};
 
 mod filters;
+
+const PROTO3_MIME: &'static str = "application/protobuf3";
 
 pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
 
@@ -100,7 +102,8 @@ struct AppData {
 
 fn routes(cfg: &mut web::ServiceConfig) {
     cfg
-        .route("/", get().to(index))
+        .route("/", get().to(view_homepage))
+        .route("/homepage/proto3", get().to(homepage_item_list))
 
         .route("/u/{user_id}/", get().to(get_user_items))
 
@@ -202,7 +205,7 @@ fn bound<T: Ord>(input: T, lower: T, upper: T) -> T {
 
 
 /// The root (`/`) page.
-async fn index(
+async fn view_homepage(
     data: Data<AppData>,
     Query(pagination): Query<Pagination>,
 ) -> Result<impl Responder, Error> {
@@ -274,6 +277,63 @@ async fn index(
     })
 }
 
+fn item_to_entry(item: &Item, user_id: &UserID, signature: &Signature) -> ItemListEntry {
+    let mut entry = ItemListEntry::new();
+    entry.set_timestamp_ms_utc(item.timestamp_ms_utc);
+    entry.set_signature({
+        let mut sig = crate::protos::Signature::new();
+        sig.set_bytes(signature.bytes().into());
+        sig
+    });
+    entry.set_user_id({
+        let mut uid = crate::protos::UserID::new();
+        uid.set_bytes(user_id.bytes().into());
+        uid
+    });
+    entry.set_item_type(
+        match item.item_type {
+            Some(Item_oneof_item_type::post(_)) => ItemType::POST,
+            Some(Item_oneof_item_type::profile(_)) => ItemType::PROFILE,
+            None => ItemType::UNKNOWN,
+        }
+    );
+
+    entry
+}
+
+// Get the protobuf ItemList for items on the homepage.
+async fn homepage_item_list(
+    data: Data<AppData>,
+    Query(pagination): Query<Pagination>,
+) -> Result<HttpResponse, Error> {
+
+    let mut paginator = Paginator::new(
+        pagination,
+        |row: ItemDisplayRow| -> Result<ItemListEntry,failure::Error> {
+            let mut item = Item::new();
+            item.merge_from_bytes(&row.item.item_bytes)?;
+            Ok(item_to_entry(&item, &row.item.user, &row.item.signature))
+        }, 
+        |entry: &ItemListEntry| { 
+            entry.get_item_type() == ItemType::POST
+        }
+    );
+    // We're only holding ItemListEntries in memory, so we can up this limit and save some round trips.
+    paginator.max_items = 1000;
+
+    let backend = data.backend_factory.open().compat()?;
+    backend.homepage_items(paginator.before(), &mut paginator.callback()).compat()?;
+
+    let mut list = ItemList::new();
+    list.no_more_items = !paginator.has_more;
+    list.items = protobuf::RepeatedField::from(paginator.items);
+    Ok(
+        HttpResponse::Ok()
+        .content_type(PROTO3_MIME)
+        .body(list.write_to_bytes()?)
+    )
+}
+
 #[derive(Deserialize)]
 pub(crate) struct Pagination {
     /// Time before which to show posts. Default is now.
@@ -291,7 +351,8 @@ where
  {
     pub items: Vec<T>,
     pub has_more: bool,
-    pub options: Pagination,
+    pub params: Pagination,
+    pub max_items: usize,
 
     mapper: Mapper,
     filter: Filter,
@@ -306,7 +367,7 @@ where
     Filter: Fn(&T) -> bool,
 {
     fn accept(&mut self, input: In) -> Result<bool, E> {
-        let max_len = self.options.count.map(|c| bound(c, 1, 100)).unwrap_or(20);
+        let max_len = self.params.count.map(|c| bound(c, 1, self.max_items)).unwrap_or(20);
         
         let item = (self.mapper)(input)?;
         if !(self.filter)(&item) {
@@ -329,10 +390,12 @@ where
     /// Creates a new paginator for collecting results from a Backend.
     /// mapper: Maps the row type passed to the callback to some other type.
     /// filter: Filters that type for inclusion in the paginated results.
-    fn new(options: Pagination, mapper: Mapper, filter: Filter) -> Self {
+    fn new(params: Pagination, mapper: Mapper, filter: Filter) -> Self {
         Self {
-            options,
+            params,
             items: vec![],
+            // Seems like a reasonable sane default for things that have to hold Item in memory:
+            max_items: 100,
             has_more: false,
             mapper,
             filter,
@@ -344,7 +407,7 @@ where
     /// An optional message about there being nothing/no more to display.
     fn message(&self) -> Option<String> {
         if self.items.is_empty() {
-            if self.options.before.is_none() {
+            if self.params.before.is_none() {
                 Some("Nothing to display".into())
             } else {
                 Some("No more items to display.".into())
@@ -352,6 +415,11 @@ where
         } else {
             None
         }
+    }
+
+    /// The time before which we should query for items.
+    fn before(&self) -> Timestamp {
+        self.params.before.map(|t| Timestamp{ unix_utc_ms: t}).unwrap_or_else(|| Timestamp::now())
     }
 }
 
@@ -368,7 +436,7 @@ where
         };
 
         let mut url = format!("{}?before={}", base_url, last.item.timestamp_ms_utc);
-        if let Some(count) = self.options.count {
+        if let Some(count) = self.params.count {
             write!(url, "&count={}", count).expect("write! to a string shouldn't panic.");
         }
 
@@ -393,7 +461,7 @@ async fn get_user_feed(
         }
     );
 
-    let max_time = paginator.options.before
+    let max_time = paginator.params.before
         .map(|t| Timestamp{ unix_utc_ms: t})
         .unwrap_or_else(|| Timestamp::now());
     let backend = data.backend_factory.open().compat()?;
@@ -689,7 +757,7 @@ async fn get_item(
     // for itself anyway.
     Ok(
         HttpResponse::Ok()
-        .content_type("application/protobuf3")
+        .content_type(PROTO3_MIME)
         .body(item.item_bytes)
     )
 
@@ -718,7 +786,7 @@ async fn get_profile_item(
     // for itself anyway.
     Ok(
         HttpResponse::Ok()
-        .content_type("application/protobuf3")
+        .content_type(PROTO3_MIME)
         .header("signature", item.signature.to_base58())
         .body(item.item_bytes)
     )
