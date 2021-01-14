@@ -1,4 +1,3 @@
-<!-- TODO: rename "postPage", responsible for side-by-side view  -->
 <div class="dualPaneEditor">
     <div class="item editPane">
         <h1><input type="text" bind:value={displayName} disabled={!editable} placeholder="(Profile Display Name)"></h1>
@@ -8,20 +7,14 @@
         <ExpandingTextarea bind:value={profileContent} placeholder="Your profile here..." disabled={!editable}/>
 
         <h2>Follows</h2>
-        <table>
-            <tr>
-                <td colspan="2">
-                    {#each follows as follow, index (follow)} 
-                        <FollowBox 
-                            bind:userID={follows[index].userID} 
-                            bind:displayName={follows[index].displayName}
-                            on:delete={() => removeFollow(index)}
-                        />
-                    {/each}
-                    <button on:click={addFollow} disabled={!editable}>Add</button>
-                </td>
-            </tr>
-        </table>
+        {#each follows as follow, index (follow)} 
+            <FollowBox 
+                bind:userID={follows[index].userID} 
+                bind:displayName={follows[index].displayName}
+                on:delete={() => removeFollow(index)}
+            />
+        {/each}
+        <Button on:click={addFollow} disabled={!editable}>New Follow</Button>
     </div>
 
     <ItemView
@@ -31,52 +24,37 @@
         linkMode="stay"
     />
 
-    <div class="item sendBox">
-        <table>
-            {#if validationErrors.length > 0}
-            <tr>
-                <th></th>
-                <td class="error">
-                    {#each validationErrors as error}
-                        {error}<br>
-                    {/each}
-                </td>
-            </tr>
-
-            {:else if !validSignature}
-            <tr>
-                <th><label for="privateKey">Private Key</label>:</th>
-                <td>
-                    <input type="password" name="privateKey" bind:value={privateKey} disabled={!editable}>
-                    {#if privateKeyError}
-                    <div class="error">{privateKeyError}</div>
-                    {/if}
-                </td>
-            </tr>
-            <tr>
-                <th></th>
-                <td><button name="sign" on:click={sign} disabled={!validPrivateKey}>Sign</button></td>
-            </tr>
-            {:else}
-            <tr>
-                <th>Signature</th>
-                <td><span class="signature" style="word-wrap: break-wo">{signature}</span></td>
-            </tr>
-            <tr>
-                <th></th>
-                <td>
-                    <button name="submit" on:click={submit}>Submit</button>
-                    {#if status}
-                        <div>{status}</div>
-                    {/if}
-                </td>
-            </tr>
+    <div class="item sendBox inputWhiteBox">
+        {#if validationErrors.length > 0}
+            <div class="error">
+                {#each validationErrors as error}
+                    {error}<br>
+                {/each}
+            </div>
+        
+        {:else if !validSignature}
+            <InputBox 
+                inputType="password"
+                label="Private Key"
+                bind:value={privateKey}
+                bind:errorMessage={privateKeyError}
+                disabled={!editable}
+            />
+            <Button on:click={sign} disabled={!validPrivateKey}>Sign</Button>
+        {:else}
+            <InputBox
+                label="Signature"
+                value={signature}
+                disabled={true}
+             />
+            <div class="buttons">
+                <Button on:click={submit}>Submit</Button>
+            </div>
+            {#if status}
+                <div>{status}</div>
             {/if}
-        </table>
+        {/if}
     </div>
-
-
-    
 
 </div>
 
@@ -99,6 +77,8 @@ import type { AppState } from '../../ts/app';
 import ItemView from '../ItemView.svelte'
 import ExpandingTextarea from '../ExpandingTextarea.svelte'
 import LinkIntercept from '../LinkIntercept.svelte';
+import Button from '../Button.svelte'
+import InputBox from '../InputBox.svelte';
 
 export let appState: Writable<AppState>
 let userID: ClientUserID
@@ -457,7 +437,7 @@ async function submit() {
 </script>
 
 <style>
-.sendBox table {
-    width: 100%;
+.buttons {
+    margin-top: 1em;
 }
 </style>

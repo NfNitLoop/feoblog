@@ -33,7 +33,7 @@ body {
     }
 }
 
-input[type="text"], textarea {
+input[type="text"], input[type="password"], textarea {
     width: 100%;
     border: 1px solid rgba(0, 0, 0, 0);
     font-family: inherit;
@@ -71,4 +71,30 @@ textarea {
 
 .protoPreview {
     overflow: hidden;
+}
+
+
+.input label{
+    font-weight: bold;
+}
+.input {
+    margin-bottom: 0.5em;
+}
+
+.input input[type="text"], .input input[type="password"] {
+    min-height: 30px;
+    padding: 0 5px;
+    border-radius: 3px;
+}
+
+.inputWhiteBox input {
+    background-color: #f5f5f5
+}
+
+.inputsGreyBox {
+    margin-bottom: 1em;
+    padding: 1em;
+    background-color: #f5f5f5;
+    border-radius: 10px;
+    box-shadow: 0px 5px 10px rgb(0, 0, 0, 0.2)
 }
