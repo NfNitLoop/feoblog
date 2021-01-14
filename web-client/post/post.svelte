@@ -61,17 +61,6 @@
 </div>
 
 
-{#if debug}
-<div class="protoPreview">
-    <pre>
-bytes: {protoSize}
-{itemJson}
-    </pre>
-
-    binary: <code>{ protoHex }</code>
-</div>
-{/if}
-
 <script lang="ts">
 import { onMount } from 'svelte';
 import bs58 from "bs58"

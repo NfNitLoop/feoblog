@@ -189,5 +189,6 @@ blockquote blockquote blockquote blockquote
     border-radius: 4px;
     background-color: #f5f5f5;
     padding-left: 0.25em;
-    padding-right: 0.25em;
+	padding-right: 0.25em;
+	word-wrap: anywhere;
 }

@@ -17,3 +17,58 @@ body {
         TODO: Stay visible at top. 
     */
 }
+
+@media (min-width: 70em) {
+    .dualPaneEditor {
+        display: inline-grid;
+        width: 100%;
+        /* an .item has max-width 55em. +1em grid gap */
+        max-width: 111em;
+        grid-template-columns: 1fr 1fr;
+        grid-gap: 1em;
+        padding: 1em;
+    }
+    .dualPaneEditor > * {
+        margin: 0px;
+    }
+}
+
+input[type="text"], textarea {
+    width: 100%;
+    border: 1px solid rgba(0, 0, 0, 0);
+    font-family: inherit;
+    font-size: inherit;
+}
+input:hover, input:focus, textarea:hover, textarea:focus {
+    border: 1px solid black;
+    transition: border 500ms ease-in-out;
+}
+
+
+textarea {
+    margin-top: 1em;
+    min-height: 20em;
+}
+   
+.editPane table {
+    width: 100%;
+}
+.editPane table th {
+    text-align: right;
+    width: auto;
+    min-width: 12ch;
+    vertical-align: top;
+}
+.editPane table td {
+    width: 100%;
+    vertical-align: top;
+}
+
+.error {
+    color: red;
+    font-weight: bold;
+}
+
+.protoPreview {
+    overflow: hidden;
+}

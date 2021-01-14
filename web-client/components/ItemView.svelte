@@ -1,13 +1,12 @@
 <script lang="ts">
 // View of a single item.
 import type { Writable } from "svelte/store"
-import { slide } from "svelte/transition"
 
 import { UserID as ClientUserID} from "../ts/client"
 import { markdownToHtml } from "../ts/common"
 import Timestamp from "./Timestamp.svelte"
 import Button from "./Button.svelte"
-import type { Item, UserID } from "../protos/feoblog"
+import type { Item } from "../protos/feoblog"
 import type { AppState } from "../ts/app"
 import UserIdView from "./UserIDView.svelte"
 
@@ -17,6 +16,12 @@ export let signature: string
 export let item: Item|null|undefined = undefined
 export let appState: Writable<AppState>
 export let showDetail = false
+
+// How should we handle clicks on links in this item view?
+// stay: Avoid navigating away from this page. External links open in a new window.
+// fix: Fix any links that would navigate out of the client. 
+//      ex: /u/x/ => #/u/x/
+export let linkMode: "fix" | "stay" | "ignore" = "fix"
 
 
 let itemPromise: Promise<Item|null>
@@ -32,6 +37,7 @@ $: {
 } 
 
 let viewMode: "normal"|"markdown"|"data" = "normal"
+
 
 $: {
     // Rerun getItem when any of these change:
@@ -50,10 +56,82 @@ function createComment() {
     console.log("TODO: createComment() unimplemented")
 }
 
+let validFollows: ValidFollow[] = []
+$: validFollows = function(){
+    if (!item?.profile?.follows) { return [] }
+    let valid: ValidFollow[] = []
+    for (let follow of item.profile.follows) {
+        try {
+            let id = ClientUserID.fromBytes(follow.user.bytes)
+            valid.push({
+                userID: id,
+                displayName: follow.display_name.trim() || id.toString(),
+            })
+        } catch (e) {
+            console.warn(`Error parsing follow for ${userID}`, e)
+        }
+    }
+    return valid
+}()
+
+class ValidFollow {
+    userID: ClientUserID
+    displayName: string
+}
+
+function interceptLinkClicks(event: Event) {
+
+    let target = event.target as HTMLElement
+    let anchor: HTMLAnchorElement|undefined = undefined
+    let tag = target.tagName
+
+    if (tag == "A") {
+        anchor = (target as HTMLAnchorElement)
+    } else if (tag == "IMG") {
+        let parent = target.parentElement
+        if (parent?.tagName == "A") {
+            anchor = (parent as HTMLAnchorElement)
+        }
+    }
+
+    if (!anchor) { return }
+
+    if (linkMode === "ignore") {
+        event.preventDefault()
+        console.log("linkMode==ignore, ignored click to", anchor)
+        return
+    }
+
+    // Note: can't use anchor.href, because that gets resolved to a full http://blah.com/wharrgarbl.
+    // We want to know if this is a relative link.
+    let href = anchor.getAttribute("href")
+    if (!href) return
+
+    let isRelative = href.startsWith("/") && !href.startsWith("//")
+    let isAppLink = href.startsWith("#/")
+
+    if (linkMode === "stay") {
+        if (isRelative || isAppLink) {
+            console.log("linkMode=='stay', stopping navigation", anchor)
+            event.preventDefault()
+            return
+        } else {
+            // Allow users to test external links.
+            anchor.target = "_blank"
+        }
+    }
+
+    // else: mode == fix
+    if (isRelative) {
+        anchor.href = `#${href}`
+        return
+    }
+}
+
 </script>   
 
 
-<div class="item">
+<div class="item" on:click={interceptLinkClicks}>
 {#await itemPromise}
     <p>Loading...
         <!-- 
@@ -91,6 +169,32 @@ function createComment() {
                 {#if viewMode != "data"}<Button on:click={() => viewMode = "data"}>View Data</Button>{/if}
             </div>
             {/if}
+        {:else if item.profile}
+            <h1 class="title">Profile: {item.profile.display_name}</h1>
+            <div class="userInfo">
+                <UserIdView userID={ClientUserID.fromString(userID)} resolve={false}/>
+            </div>
+            <Timestamp utc_ms={item.timestamp_ms_utc} minute_offset={item.utc_offset_minutes} />
+
+            {#if viewMode == "normal"}
+                {@html markdownToHtml(item.profile.about)}
+            {:else if viewMode == "markdown"}
+                Markdown source:
+                <code><pre>{item.profile.about}</pre></code>
+            {:else} 
+                JSON representation of Protobuf Item:
+                <code><pre>{JSON.stringify(item.toObject(), null, 4)}</pre></code>
+            {/if}
+
+            <h2>Follows</h2>
+            <ul>
+            {#each validFollows as follow}
+                <li><UserIdView userID={follow.userID} displayName={follow.displayName} resolve={false}/></li>
+            {:else}
+                <li>(None)</li>    
+            {/each}
+            </ul>
+            
         {:else}
             Unknown item type.
         {/if}

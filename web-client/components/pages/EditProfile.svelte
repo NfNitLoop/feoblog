@@ -1,26 +1,16 @@
 <!-- TODO: rename "postPage", responsible for side-by-side view  -->
-<div id="postPage">
-    <div class="postInput item">
+<div class="dualPaneEditor">
+    <div class="item editPane">
+        <h1><input type="text" bind:value={displayName} disabled={!editable} placeholder="(Profile Display Name)"></h1>
+        <div class="userInfo">
+            <span class="userID">@{userID}</span>
+        </div>
+        <ExpandingTextarea bind:value={profileContent} placeholder="Your profile here..." disabled={!editable}/>
 
+        <h2>Follows</h2>
         <table>
             <tr>
-                <th><label for="userID">User ID</label>:</th>
-                <td><input class="userID" type="text" name="userID" value={userID.toString()} disabled>
-                </td>
-            </tr>
-            <tr>
-                <th>Display&nbsp;Name:</th>
-                <td><input type="text" bind:value={displayName} disabled={!editable}></td>
-            </tr>
-            <tr>
                 <td colspan="2">
-                    <textarea bind:this={textbox} bind:value={profileContent} placeholder="Your profile here..." disabled={!editable}></textarea>
-                </td>
-            </tr>
-            <tr>
-                <td colspan="2">
-                    <hr>
-                    <h2>Following {follows.length} Users:</h2>
                     {#each follows as follow, index (follow)} 
                         <FollowBox 
                             bind:userID={follows[index].userID} 
@@ -34,34 +24,12 @@
         </table>
     </div>
 
-
-    <div class="postPreview item" bind:this={postPreviewDiv}>
-        {#if displayName}
-            <h1 class="title">{ displayName }</h1>
-        {/if}
-        <div><span class="userID">@{userID}</span></div>
-        
-        {@html markdownOut}
-
-        <hr>
-
-        {#if follows.length > 0}
-            <h2>Follows {follows.length} users</h2>
-            <ul>
-            {#each follows as follow}
-                {#if follow.displayName} 
-                    <li><a href="/u/{follow.userID}">{follow.displayName}</a></li>    
-                {:else}
-                    <li><a href="/u/{follow.userID}" class="userID">@{follow.userID}</a></li>    
-
-                {/if}
-            {/each}
-            </ul>
-        {/if}
-
-        <div class="timestamp">Last updated: { formattedDate }</div>
-
-    </div>
+    <ItemView
+        userID={userID.toString()}
+        signature="unknown"
+        item={itemProto}
+        linkMode="stay"
+    />
 
     <div class="item sendBox">
         <table>
@@ -91,8 +59,8 @@
             </tr>
             {:else}
             <tr>
-                <th><label for="signature">Signature</label>:</th>
-                <td><input type="text" name="signature" class="signature" bind:value={signature} disabled></td>
+                <th>Signature</th>
+                <td><span class="signature" style="word-wrap: break-wo">{signature}</span></td>
             </tr>
             <tr>
                 <th></th>
@@ -106,22 +74,14 @@
             {/if}
         </table>
     </div>
+
+
     
 
 </div>
 
 
 
-{#if debug}
-<div class="protoPreview">
-    <pre>
-bytes: {protoSize}
-{itemJson}
-    </pre>
-
-    binary: <code>{ protoHex }</code>
-</div>
-{/if}
 
 <script lang="ts">
 import { onMount, tick } from 'svelte'
@@ -136,6 +96,9 @@ import FollowBox from "../FollowBox.svelte"
 import { MAX_ITEM_SIZE, parseUserID } from '../../ts/common'
 import { UserID as ClientUserID } from "../../ts/client"
 import type { AppState } from '../../ts/app';
+import ItemView from '../ItemView.svelte'
+import ExpandingTextarea from '../ExpandingTextarea.svelte'
+import LinkIntercept from '../LinkIntercept.svelte';
 
 export let appState: Writable<AppState>
 let userID: ClientUserID
@@ -188,53 +151,9 @@ const DATE_FORMATS = [
 
 let displayName = ""
 let profileContent = ""
-let textbox
-let postPreviewDiv: HTMLElement
 let status = ""
-onMount(() => {
-    // <textarea>:
-    textbox.focus()
-    textbox.selectionStart = 0
-    textbox.selectionEnd = textbox.value.length
-    
 
-    postPreviewDiv.onclick = interceptLinkClicks
-})
 
-// TODO: Make this a reusable widget.
-// Send link clicks to target=_blank to save the contents of the edit box:
-function interceptLinkClicks(event: Event) {
-    let target = event.target as HTMLElement
-    let anchor: HTMLAnchorElement | null = null
-    let tag = target.tagName
-
-    if (tag == "A") {
-        anchor = (target as HTMLAnchorElement)
-    } else if (tag == "IMG") {
-        let parent = target.parentElement
-        if (parent?.tagName == "A") {
-            anchor = (parent as HTMLAnchorElement)
-        }
-    }
-
-    if (!anchor) { return }
-    anchor.target = "_blank"
-}
-
-$: {
-    profileContent // on change:
-    // TODO: Make a reusable expanding textarea widget.
-    expandTextarea(textbox)
-}
-
-function expandTextarea(textarea) {
-    if (!textarea) { return } // not mounted yet
-    
-    if (textarea.scrollHeight > textarea.clientHeight) {
-        let borderHeight = textarea.offsetHeight - textarea.clientHeight
-        textarea.style.height = textarea.scrollHeight + borderHeight;
-    }
-}
 
 
 // A bridge between HTML and the Follow protobuf object.
@@ -347,6 +266,7 @@ function updateTimestmap() {
 }
 
 // Used for display in the rendered post.
+// TODO: Deprecate Moment.
 $: formattedDate = timestampMoment.format(DATE_FORMATS[0])
 
 // Note, is not necessarily a valid Item to send.
@@ -536,55 +456,8 @@ async function submit() {
 
 </script>
 
-<style type="text/css">
-    @media (min-width: 60em) {
-        #postPage {
-            display: inline-grid;
-            width: 100%;
-            /* a single items has max-width 55em. +1em grid gap */
-            max-width: 111em;
-            grid-template-columns: 1fr 1fr;
-            grid-gap: 1em;
-            padding: 1em;
-        }
-        #postPage > * {
-            margin: 0px;
-        }
-    }
-   
-    input {
-        width: 100%;
-    }
-
-    textarea {
-        margin-top: 1em;
-        border: 0px;
-        min-height: 20em;
-        width: 100%;
-    }
-       
-    table {
-        width: 100%;
-    }
-    table th {
-        text-align: right;
-        width: auto;
-        min-width: 12ch;
-        vertical-align: top;
-    }
-    table td {
-        width: 100%;
-        vertical-align: top;
-    }
-    
-    .error {
-        color: red;
-        font-weight: bold;
-    }
-    
-    .protoPreview {
-        overflow: hidden;
-    }
-    
-    </style>
-    
+<style>
+.sendBox table {
+    width: 100%;
+}
+</style>

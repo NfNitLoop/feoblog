@@ -29,6 +29,8 @@
 <script lang="ts">
 import { createEventDispatcher } from "svelte";
 
+// TODO:
+// export let disabled = false
 
 /*
  * emits a "click" event
