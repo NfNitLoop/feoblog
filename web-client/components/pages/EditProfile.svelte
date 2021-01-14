@@ -357,15 +357,24 @@ $: validSignature = function(): boolean {
     if (!userID || !signature || !itemProtoBytes) {
         return false
     }
+
+    let isValid = false
     try {
         let pubKey = userID.bytes
         let decodedSig = bs58.decode(signature)
-        let ok = nacl.sign_detached_verify(itemProtoBytes, decodedSig, pubKey)
-        return ok;
+        isValid = nacl.sign_detached_verify(itemProtoBytes, decodedSig, pubKey)
     } catch (error) {
         console.error("Error validating signature:", error)
-        return false
     }
+
+    // Re-validating a signature on every keypress is *expensive*.
+    // If we've started editing and this signature is no longer valid, delete it so
+    // that we can short-circuit (above)
+    if (!isValid) {
+        signature = ""
+    }
+
+    return isValid
 }()
 
 
