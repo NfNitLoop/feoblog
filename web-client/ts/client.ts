@@ -153,6 +153,9 @@ export class Config {
 
 export class UserID {
     readonly bytes: Uint8Array
+    // These almost always get turned into strings
+    // Just save one to save from repeated allocations:
+    private asString: string
 
     toString(): string {
         return bs58.encode(this.bytes)
@@ -170,10 +173,11 @@ export class UserID {
             throw "UserID not valid base58"
         }
     
-        return UserID.fromBytes(buf)
+        UserID.validateBytes(buf)
+        return new UserID(buf, userID)
     }
 
-    static fromBytes(bytes: Uint8Array): UserID {
+    private static validateBytes(bytes: Uint8Array) {
         if (bytes.length < USER_ID_BYTES) {
             throw "UserID too short"
         }
@@ -185,14 +189,17 @@ export class UserID {
         if (bytes.length > USER_ID_BYTES) {
             throw "UserID too long."
         }
-    
-        return new UserID(bytes)
     }
 
-    private constructor(bytes: Uint8Array) {
+    static fromBytes(bytes: Uint8Array): UserID {
+        UserID.validateBytes(bytes)
+        return new UserID(bytes, bs58.encode(bytes))
+    }
+
+    private constructor(bytes: Uint8Array, asString: string) {
         this.bytes = bytes
+        this.asString = asString
     }
-
 }
 
 export class Signature {

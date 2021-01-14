@@ -18,11 +18,14 @@ export class AppState
     private _savedLogins: SavedLogin[] = []
     private _client: Client
 
+    private profileService: ProfileService
+
     constructor() {
-        this.loadSavedLogins()
         this._client = new Client({
             base_url: ""
         })
+        this.profileService = new ProfileService(null, this._client)
+        this.loadSavedLogins()
     }
 
     get client(): Client {
@@ -96,6 +99,16 @@ export class AppState
         this.writeSavedLogins()
     }
 
+    // Calculate the preferred display name for a given user ID. 
+    // Display names are calculated in this way:
+    // * If the ID is the logged-in user, use their profile display_name.
+    // * If the ID is followed by the logged-in user, and they specify a display_name, use that.
+    // * If the ID has a profile that we can fetch from this server, use that.
+    // * Otherwise, return null, this user has no preferred name.
+    async getPreferredName(userID: UserID): Promise<string|null> {
+        return await this.profileService.lookup(userID)
+    }
+
     private writeSavedLogins() {
         try {
             let json = JSON.stringify(this._savedLogins)
@@ -109,6 +122,7 @@ export class AppState
         this.loadSavedLogins()
     }
 
+    // Load saved login IDs and (re)init logged-in state.
     private loadSavedLogins() {
         try {
             let json = window.localStorage.getItem("savedLogins")
@@ -120,13 +134,107 @@ export class AppState
             // TODO: Some validation here?
             this._savedLogins = logins
 
+            this.initLoggedIn()
+
         } catch (exception) {
             console.error("Couldn't load saved logins", exception)
         }
     }
 
+    // initialize sate for a logged-in user:
+    private initLoggedIn() {
+        this.profileService.userID = this.loggedInUser
+    }
+}
+
+// TODO: Rename to NameService
+// Used to resolve UserIDs to displayNames.
+// See notes on AppState.getPreferredName()
+class ProfileService
+{
+    private client: Client
+    private _userID: UserID|null
+
+    // Cache of displayNames the logged-in user has specified in their
+    // profile.
+    private userCache: Promise<Map<string,string>>
+
+    // Cache of users names as specified by their own profiles
+    // TODO: 
+    // * Replace with an LRU or something so this doesn't grow forever?
+    private globalCache: Map<string, Promise<string|null>> = new Map()
+
+    constructor(loggedInUser: UserID|null, client: Client) {
+        this.client = client
+        this.userID = loggedInUser
+    }
+
+    set userID(userID: UserID|null) {
+        this._userID = userID
+        this.userCache = this.getUserCache(userID)
+    }
+
+    async lookup(userID: UserID): Promise<string|null> {
+        let uc = await this.userCache
+
+        let key = userID.toString()
+        let name = uc.get(key)
+        if (name) {
+            return name
+        }
+
+        let promise = this.globalCache.get(key)
+        if (!promise) {
+            promise = this.getDisplayName(userID)
+            this.globalCache.set(key, promise)
+        }
+
+        return await promise
+    }
+
+    private async getDisplayName(userID: UserID): Promise<string|null> {
+        let response = await this.client.getProfile(userID)
+        if (!response) return null
+        return response.item.profile.display_name.trim() || null
+    }
+
+    private async getUserCache(userID: UserID|null): Promise<Map<string,string>> {
+        if (userID === null) {
+            return new Map()
+        }
+
+        // TODO: try & log
+        let result
+        try {
+            result = await this.client.getProfile(userID)
+        } catch (e) {
+            console.error(`NameService: Error fetching user profile ${userID}`, e)
+            return new Map()
+        }
+        if (result === null || !result.item.profile) {
+            // Couldn't find a profile for this user.
+            console.warn(`NameService: Couldn't find a profile for logged-in user: ${userID}`)
+            return new Map()
+        }
+        let profile = result.item.profile
+
+        let map = new Map()
+        for (let follow of profile.follows) {
+            if (follow.display_name) {
+                let id = UserID.fromBytes(follow.user.bytes)
+                map.set(id.toString(), follow.display_name)
+            }
+        }
+
+        if (profile.display_name) {
+            map.set(userID.toString(), profile.display_name )
+        }
+
+        return map
+    }
 
 }
+
 
 // Login information we save in local browser storage.
 // Needs to be JSON serializable/deserializable 

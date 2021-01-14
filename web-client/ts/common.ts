@@ -53,3 +53,19 @@ export function markdownToHtml(markdown: string): string {
     let parsed = cmReader.parse(markdown)
     return cmWriter.render(parsed)
 }
+
+// Applies `filter` to up to `count` items before it begins yielding them.
+// Useful for prefetching things in parallel with promises.
+export function* prefetch<In, Out>(items: Iterable<In>, count: Number, filter: (In)=> Out): Generator<Out, void, undefined> {
+    let outs: Out[] = []
+    for (let item of items) {
+        outs.push(filter(item))
+        while (outs.length > count) {
+            yield (outs.shift() as Out)
+        }
+    }
+
+    while (outs.length > 0) {
+        yield (outs.shift() as Out)
+    }
+}

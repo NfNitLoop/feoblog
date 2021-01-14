@@ -5,7 +5,6 @@
             <a href="#/">Home</a>
             {#if !$appState.loggedIn}
                 <a href="#/login">Log in</a>
-                <a href="#/create_id">Create an ID</a>
             {:else}
                 <div>{$appState.userName || "(unknown user)"}</div>
                 <a href="#/login">Change User</a>
