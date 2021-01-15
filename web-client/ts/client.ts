@@ -46,6 +46,13 @@ export class Client {
         let buf = await response.arrayBuffer()
         let bytes = new Uint8Array(buf)
 
+        // Note: This is a bit expensive when we're bulk-loading items.
+        // But, if we don't check them when we load them from the server, what's the
+        // point of having the signatures?
+        // We could refactor things to allow signatures to be optionally checked, but 
+        // when would we want to display non-valid data?
+        // We could (ab?)use WebWorkers to do validation in a separate thread. That would allow
+        // us to `await` the verification without tying up the main thread.
         if (!signature.isValid(userID, bytes)) {
             throw `Invalid signature for ${url}`
         }
