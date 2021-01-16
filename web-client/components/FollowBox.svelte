@@ -1,4 +1,4 @@
-<div class="inputsGreyBox" in:fade out:fade>
+<div class="inputsGreyBox">
     <InputBox
         label="User ID"
         validationCallback={parseUserIDError}

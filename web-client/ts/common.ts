@@ -69,3 +69,56 @@ export function* prefetch<In, Out>(items: Iterable<In>, count: Number, filter: (
         yield (outs.shift() as Out)
     }
 }
+
+export async function* prefetchAsync<In, Out>(items: AsyncIterable<In>, count: Number, filter: (In)=> Out): AsyncGenerator<Out, void, undefined> {
+    let outs: Out[] = []
+    for await (let item of items) {
+        outs.push(filter(item))
+        while (outs.length > count) {
+            yield (outs.shift() as Out)
+        }
+    }
+
+    while (outs.length > 0) {
+        yield (outs.shift() as Out)
+    }
+}
+
+// A small subset of the Console interface
+export interface Logger {
+    debug(...data: any[]): void;
+    error(...data: any[]): void;
+    info(...data: any[]): void;
+    log(...data: any[]): void;
+    warn(...data: any[]): void;
+}
+
+export class ConsoleLogger implements Logger {
+
+    error(...data: any[]): void {
+        console.error(...data)
+
+    }
+    warn(...data: any[]): void {
+        console.warn(...data)
+    }
+
+    // without this, only warn & error show:
+    private debugEnabled = false
+
+    debug(...data: any[]): void {
+        if (this.debugEnabled) console.debug(...data)
+    }
+    info(...data: any[]): void {
+        if (this.debugEnabled) console.info(...data)
+    }
+    log(...data: any[]): void {
+        // I tend to treat this like a debug statement, so:
+        if (this.debugEnabled) console.log(...data)
+    }
+
+    withDebug(): ConsoleLogger {
+        this.debugEnabled = true
+        return this
+    }
+}

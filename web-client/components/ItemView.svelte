@@ -18,10 +18,13 @@ export let appState: Writable<AppState>
 export let showDetail = false
 
 // How should we handle clicks on links in this item view?
-// stay: Avoid navigating away from this page. External links open in a new window.
-// fix: Fix any links that would navigate out of the client. 
-//      ex: /u/x/ => #/u/x/
-export let linkMode: "fix" | "stay" | "ignore" = "fix"
+// newWindow: All links open in a new window.
+// fix: 
+//     Fix any links that would unnecessarily navigate out of the client. 
+//     ex: /u/x/ => #/u/x/
+//     But leaves external links alone.
+//   
+export let linkMode: "fix" | "newWindow" | "ignore" = "fix"
 
 
 let itemPromise: Promise<Item|null>
@@ -110,21 +113,14 @@ function interceptLinkClicks(event: Event) {
     let isRelative = href.startsWith("/") && !href.startsWith("//")
     let isAppLink = href.startsWith("#/")
 
-    if (linkMode === "stay") {
-        if (isRelative || isAppLink) {
-            console.log("linkMode=='stay', stopping navigation", anchor)
-            event.preventDefault()
-            return
-        } else {
-            // Allow users to test external links.
-            anchor.target = "_blank"
-        }
-    }
 
-    // else: mode == fix
     if (isRelative) {
         anchor.href = `#${href}`
         return
+    }
+
+    if (linkMode === "newWindow") {
+        anchor.target = "_blank"
     }
 }
 
@@ -152,7 +148,7 @@ function interceptLinkClicks(event: Event) {
             <Timestamp utc_ms={item.timestamp_ms_utc} minute_offset={item.utc_offset_minutes} href={`#/u/${userID}/i/${signature}/`} />
             
             {#if viewMode == "normal"}
-                {@html markdownToHtml(item.post.body)}
+                {@html markdownToHtml(item.post.body || "")}
             {:else if viewMode == "markdown"}
                 Markdown source:
                 <code><pre>{item.post.body}</pre></code>

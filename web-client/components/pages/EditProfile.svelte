@@ -21,7 +21,7 @@
         userID={userID.toString()}
         signature="unknown"
         item={itemProto}
-        linkMode="stay"
+        linkMode="newWindow"
     />
 
     <div class="item sendBox inputWhiteBox">
@@ -88,6 +88,7 @@ $: userID = function() {
     throw `Must be logged in.`
 }()
 
+// TODO: Get rid of this, it's mostly unused.
 enum PageState {
     // Loading the latest profile.
     Loading,
@@ -371,7 +372,7 @@ $: validSignature = function(): boolean {
     // If we've started editing and this signature is no longer valid, delete it so
     // that we can short-circuit (above)
     if (!isValid) {
-        signature = ""
+        unSign()
     }
 
     return isValid
@@ -411,6 +412,7 @@ function unSign() {
     signature = ""
 }
 
+// TODO: Move to Client.
 async function submit() {
     if (!readyToSign || !validSignature) {
         console.error("Submit clicked when not valid");
