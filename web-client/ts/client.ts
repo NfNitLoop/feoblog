@@ -57,8 +57,6 @@ export class Client {
             throw `Invalid signature for ${url}`
         }
 
-        await new Promise((r) => setTimeout(r, 500))
-
         return Item.deserialize(bytes)
     }
 
