@@ -54,34 +54,27 @@ export function markdownToHtml(markdown: string): string {
     return cmWriter.render(parsed)
 }
 
-// Applies `filter` to up to `count` items before it begins yielding them.
+// Applies `asyncFilter` to up to `count` items before it begins yielding them.
 // Useful for prefetching things in parallel with promises.
-export function* prefetch<In, Out>(items: Iterable<In>, count: Number, filter: (In)=> Out): Generator<Out, void, undefined> {
-    let outs: Out[] = []
-    for (let item of items) {
-        outs.push(filter(item))
+export async function* prefetch<T, Out>(items: AsyncIterable<T>, count: Number, asyncFilter: (t: T) => Promise<Out>): AsyncGenerator<Out> {
+    let outs: Promise<Out>[] = []
+
+    for await (let item of items) {
+        outs.push(asyncFilter(item))
         while (outs.length > count) {
-            yield (outs.shift() as Out)
+            yield assertExists(outs.shift())
         }
     }
 
     while (outs.length > 0) {
-        yield (outs.shift() as Out)
+        yield assertExists(outs.shift())
     }
 }
 
-export async function* prefetchAsync<In, Out>(items: AsyncIterable<In>, count: Number, filter: (In)=> Out): AsyncGenerator<Out, void, undefined> {
-    let outs: Out[] = []
-    for await (let item of items) {
-        outs.push(filter(item))
-        while (outs.length > count) {
-            yield (outs.shift() as Out)
-        }
-    }
-
-    while (outs.length > 0) {
-        yield (outs.shift() as Out)
-    }
+// TypeScript doesn't know that we've done our own bounds checking on things like Array.shift()
+// Assert that we have:
+function assertExists<T>(value: T|undefined): T {
+    return value as T
 }
 
 // A small subset of the Console interface

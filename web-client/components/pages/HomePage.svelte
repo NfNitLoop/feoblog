@@ -1,8 +1,8 @@
 <!-- Displays the homepage feed in the client. -->
 {#each items as entry, index (entry.signature)}
     <ItemView 
-        userID={entry.userID}
-        signature={entry.signature}
+        userID={entry.userID.toString()}
+        signature={entry.signature.toString()}
         item={entry.item}
         {appState}
     />
@@ -18,7 +18,7 @@ import type { Writable } from "svelte/store";
 import type { Item, ItemList, ItemListEntry } from "../../protos/feoblog";
 import type { AppState } from "../../ts/app";
 import { UserID, Signature } from "../../ts/client";
-import { ConsoleLogger, prefetch, prefetchAsync } from "../../ts/common";
+import { ConsoleLogger, prefetch } from "../../ts/common";
 
 import ItemView from "../ItemView.svelte"
 import VisibilityCheck from "../VisibilityCheck.svelte";
@@ -73,66 +73,38 @@ async function displayMoreItems() {
 async function* getDisplayItems(): AsyncGenerator<DisplayItem> {
 
     // Prefetch for faster loading:
-    function prefetchEntry(entry: ItemListEntry):  PrefetchItem {
-        let userID = UserID.fromBytes(entry.user_id.bytes)
-        let signature = Signature.fromBytes(entry.signature.bytes)
-        return {
-            item: $appState.client.getItem(userID, signature),
-            userID,
-            signature,
-        }
-    }
+    let entries = prefetch($appState.client.getHomepageItems(), 4, fetchDisplayItem)
 
-    let entries = prefetchAsync(getEntries(), 4, prefetchEntry)
-    for await (let pfItem of entries) {
-        let {item: itemPromise, signature, userID} = pfItem
-        
-        try {
-            let item = await itemPromise
-            if (item === null) throw "No such item"
-
-            yield {
-                item,
-                signature: signature.toString(),
-                userID: userID.toString(),
-            }
-        } catch (exception) {
-            log.error("Error loading Item:", userID, signature, exception)
-        }
+    for await (let item of entries) {
+        // We've already logged nulls.
+        // TODO: Maybe display some placeholder instead?
+        if (item !== null) yield item
     }
 }
 
-async function* getEntries(): AsyncGenerator<ItemListEntry> {
-    for await (let itemList of getHomepageItems()) {
-        log.log("Got ItemList")
-        for (let entry of itemList.items) {
-            yield entry
-        }
-    }
-}
-
-async function* getHomepageItems(): AsyncGenerator<ItemList> {
-    let before: number|undefined = undefined
+async function fetchDisplayItem(entry: ItemListEntry): Promise<DisplayItem|null> {
+    let userID = UserID.fromBytes(entry.user_id.bytes)
+    let signature = Signature.fromBytes(entry.signature.bytes)
+    let item: Item|null 
     try {
-        let list = await $appState.client.getHomepageItems(before)
-
-        if (list.items.length == 0) {
-            // There are no more items.
-            return
-        }
-
-        yield list
-        
-        if (list.no_more_items) {
-            return
-        }
-
-        before = list.items[list.items.length - 1].timestamp_ms_utc
+        item = await $appState.client.getItem(userID, signature)
     } catch (e) {
-        log.error("Error calling client.getHomepageItems", e)
-        return
+        log.error("Error loading Item:", userID, signature, e)
+        return null
+    }
+
+    if (item === null) {
+        // TODO: Display some placeholder?
+        // It does seem like an error, the server told us about the item, but doesn't have it?
+        log.error("No such item", userID, signature)
+        return null
+    }
+
+    return {
+        item,
+        signature: signature.toString(),
+        userID: userID.toString(),
     }
 }
-
 
 </script>

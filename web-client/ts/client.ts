@@ -1,4 +1,4 @@
-import { Item, ItemList, Post } from "../protos/feoblog"
+import { Item, ItemList, ItemListEntry, Post } from "../protos/feoblog"
 import bs58 from "bs58"
 import * as nacl from "tweetnacl-ts"
 
@@ -56,6 +56,8 @@ export class Client {
         if (!signature.isValid(userID, bytes)) {
             throw `Invalid signature for ${url}`
         }
+
+        await new Promise((r) => setTimeout(r, 500))
 
         return Item.deserialize(bytes)
     }
@@ -125,12 +127,12 @@ export class Client {
         return result
     }
 
-    async getHomepageItems(before?: Number): Promise<ItemList> {
-        let url = `${this.base_url}/homepage/proto3`
+    private async getHomepageItemsList(before?: Number): Promise<ItemList> {
 
-        if (before) {
-            url = `${url}?before=${before}`
-        }
+        let params = new URLSearchParams()
+        if (before) params.append("before", `${before}`)
+
+        let url = `${this.base_url}/homepage/proto3?${params}`
 
         let response = await fetch(url)
         if (!response.ok) {
@@ -143,6 +145,26 @@ export class Client {
         return ItemList.deserialize(bytes)
     }
 
+    async * getHomepageItems(): AsyncGenerator<ItemListEntry> {
+        let before: number|undefined = undefined
+        while (true) {
+
+            let list: ItemList = await this.getHomepageItemsList(before)
+
+            if (list.items.length == 0) {
+                // There are no more items.
+                return
+            }
+    
+            for (let entry of list.items) yield entry
+            
+            if (list.no_more_items) {
+                return
+            }
+    
+            before = list.items[list.items.length - 1].timestamp_ms_utc
+        }
+    }
 }
 
 // When we load a profile, we don't know its signature until it's loaded.
