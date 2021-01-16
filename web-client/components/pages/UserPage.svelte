@@ -1,4 +1,11 @@
-<!-- Displays the homepage feed in the client. -->
+<!--
+    Shows posts by a single user.
+-->
+<!--
+    <div class="item">
+        <h1>Posts for {userID}</h1>
+    </div>
+-->
 {#each items as entry, index (entry.signature)}
     <ItemView 
         userID={entry.userID.toString()}
@@ -6,12 +13,14 @@
         item={entry.item}
         {appState}
     />
+{:else}
+    <div class="item">No posts found for user <UserIDView {appState} {userID}/></div>
 {/each}
 
 <VisibilityCheck on:itemVisible={displayMoreItems} bind:visible={endIsVisible}/>
 
 <script lang="ts">
-import { listen, tick } from "svelte/internal";
+import { tick } from "svelte/internal";
 
 import type { Writable } from "svelte/store";
 
@@ -22,20 +31,27 @@ import { ConsoleLogger, prefetch } from "../../ts/common";
 
 import ItemView from "../ItemView.svelte"
 import VisibilityCheck from "../VisibilityCheck.svelte";
+import UserIDView from "../UserIDView.svelte"
 
 export let appState: Writable<AppState>
 
 let items: DisplayItem[] = []
 let lazyItems: AsyncIterator<DisplayItem> = getDisplayItems()
 let endIsVisible: boolean
-
 let log = new ConsoleLogger()
+
+export let params: {
+    userID: string
+}
+
+$: userID = UserID.fromString(params.userID)
 
 class DisplayItem {
     item: Item
     userID: string
     signature: string
 }
+
 
 // Whenever we change lazyItems:
 $: displayInitialItems(lazyItems)
@@ -67,12 +83,18 @@ async function displayMoreItems() {
 async function* getDisplayItems(): AsyncGenerator<DisplayItem> {
 
     // Prefetch for faster loading:
-    let entries = prefetch($appState.client.getHomepageItems(), 4, fetchDisplayItem)
+    let entries = prefetch($appState.client.getUserItems(userID), 4, fetchDisplayItem)
 
     for await (let item of entries) {
         // We've already logged nulls.
         // TODO: Maybe display some placeholder instead?
-        if (item !== null) yield item
+        if (item === null) continue
+
+        // For now, we don't display profile updates, because they can be verbose/redundant.
+        // TODO: Display some short placeholder that lets people know of a profile update?
+        if (item.item.profile) continue
+        
+        yield item
     }
 }
 

@@ -51,7 +51,7 @@ export class Client {
         // point of having the signatures?
         // We could refactor things to allow signatures to be optionally checked, but 
         // when would we want to display non-valid data?
-        // We could (ab?)use WebWorkers to do validation in a separate thread. That would allow
+        // TODO: We could (ab?)use WebWorkers to do validation in a separate thread. That would allow
         // us to `await` the verification without tying up the main thread.
         if (!signature.isValid(userID, bytes)) {
             throw `Invalid signature for ${url}`
@@ -125,29 +125,11 @@ export class Client {
         return result
     }
 
-    private async getHomepageItemsList(before?: Number): Promise<ItemList> {
-
-        let params = new URLSearchParams()
-        if (before) params.append("before", `${before}`)
-
-        let url = `${this.base_url}/homepage/proto3?${params}`
-
-        let response = await fetch(url)
-        if (!response.ok) {
-            console.error("getHomePageItems response", response)
-            throw `Invalid response: ${response.status}: ${response.statusText}`
-        }
-
-        let buf = await response.arrayBuffer()
-        let bytes = new Uint8Array(buf)
-        return ItemList.deserialize(bytes)
-    }
-
     async * getHomepageItems(): AsyncGenerator<ItemListEntry> {
         let before: number|undefined = undefined
         while (true) {
 
-            let list: ItemList = await this.getHomepageItemsList(before)
+            let list: ItemList = await this.getItemList("/homepage/proto3", {before})
 
             if (list.items.length == 0) {
                 // There are no more items.
@@ -162,6 +144,75 @@ export class Client {
     
             before = list.items[list.items.length - 1].timestamp_ms_utc
         }
+    }
+
+    async * getUserFeedItems(userID: UserID): AsyncGenerator<ItemListEntry> {
+        let before: number|undefined = undefined
+        while (true) {
+
+            let list: ItemList = await this.getItemList(`/u/${userID}/feed/proto3`, {before})
+
+            if (list.items.length == 0) {
+                // There are no more items.
+                return
+            }
+    
+            for (let entry of list.items) yield entry
+            
+            if (list.no_more_items) {
+                return
+            }
+    
+            before = list.items[list.items.length - 1].timestamp_ms_utc
+        }
+    }
+
+    // TODO: getUserItems, getUserFeedItems, getHomepageItems, could share more code. They're basically all
+    // paginating through an ItemList endpoint.
+    async * getUserItems(userID: UserID): AsyncGenerator<ItemListEntry> {
+        let before: number|undefined = undefined
+        while (true) {
+
+            let list: ItemList = await this.getItemList(`/u/${userID}/proto3`, {before})
+
+            if (list.items.length == 0) {
+                // There are no more items.
+                return
+            }
+    
+            for (let entry of list.items) yield entry
+            
+            if (list.no_more_items) {
+                return
+            }
+    
+            before = list.items[list.items.length - 1].timestamp_ms_utc
+        }
+    }
+
+    // itemsPath: relative path to the thing that yields an ItemsList, ex: /homepage/proto3
+    // params: Any HTTP GET params we might send to that path for pagination.
+    private async getItemList(itemsPath: string, params?: Record<string,string|number|undefined>): Promise<ItemList> {
+
+        let url = this.base_url + itemsPath
+        if (params) {
+            let sp = new URLSearchParams()
+            for (let [key, value] of Object.entries(params)) {
+                if (value === undefined) continue
+                sp.set(key, value.toString())
+            }
+            url = `${url}?${sp}`
+        }
+
+        let response = await fetch(url)
+        if (!response.ok) {
+            console.error(`non-OK response from ${url}`, response)
+            throw `Invalid response: ${response.status}: ${response.statusText}`
+        }
+
+        let buf = await response.arrayBuffer()
+        let bytes = new Uint8Array(buf)
+        return ItemList.deserialize(bytes)
     }
 }
 

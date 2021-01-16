@@ -9,7 +9,7 @@
                 <div>{$appState.userName || "(unknown user)"}</div>
                 <a href="#/login">Change User</a>
                 <a href="#/my_profile">My Profile</a>
-                <a href="#/feed">My Feed</a>
+                <a href="#/u/{$appState.loggedInUser}/feed">My Feed</a>
                 <a href="#/post">New Post</a>
                 <a href="#/sync">Sync</a>
             {/if}
@@ -24,6 +24,7 @@
 </div>
 
 <script context="module" lang="ts">
+    import type { RouteDefinition } from "svelte-spa-router"
     import Router from "svelte-spa-router"
 
     import NotFoundPage from "./NotFoundPage.svelte"
@@ -35,16 +36,27 @@ import {wrap} from "svelte-spa-router/wrap"
 import { writable } from "svelte/store";
 let appState = writable(new app.AppState())
 
-    
-let routes = {
-    "/": appPage("./pages/HomePage.svelte"),
-    "/u/:userID/i/:signature/": appPage("./ItemView.svelte"),
-    "/post/": appPage("../post/post.svelte"),
-    "/create_id/": appPage("./pages/CreateID.svelte"),
-    "/login": appPage('./pages/Login.svelte'),
-    "/my_profile": appPage("./pages/EditProfile.svelte"),
-    "*": NotFoundPage,
-}
+$: routes = function() {
+    let routes: RouteDefinition = {
+        "/": appPage("./pages/HomePage.svelte"),
+        "/u/:userID/": appPage("./pages/UserPage.svelte"),
+        "/u/:userID/feed": appPage("./pages/FeedPage.svelte"),
+        "/u/:userID/i/:signature/": appPage("./ItemView.svelte"),
+        "/login": appPage('./pages/Login.svelte'),
+    }
+    console.log("loggedIn", $appState.loggedIn)
+    if ($appState.loggedIn) {
+        Object.assign(routes, {
+            "/post": appPage("../post/post.svelte"),
+            "/my_profile": appPage("./pages/EditProfile.svelte"),
+        })
+    }
+
+    routes["*"] = NotFoundPage
+    console.log("routes", routes)
+    return routes
+}()
+
 
 // Dynamically load a page of the app, and also pass through a reference to appState.
 function appPage(templatePath: string) {

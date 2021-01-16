@@ -47,7 +47,7 @@ $: {
     itemPromise = getItem(userID, signature); item
 }
 
-async function getItem(userID, signature) {
+async function getItem(userID: string, signature: string) {
     if (item !== undefined) {
         // User has provided their own, don't load one:
         return item

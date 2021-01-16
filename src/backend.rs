@@ -42,7 +42,7 @@ pub trait Backend
         callback: &'a mut dyn FnMut(ItemRow) -> Result<bool, Error>,
     ) -> Result<(), Error>;
 
-    /// Find the most recent items that should be displayed on the user's feed page.
+    /// Find the most recent items from users followed by the given user ID. Includes the users's own items too.
     fn user_feed_items<'a>(
         &self,
         user_id: &UserID,

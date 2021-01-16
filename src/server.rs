@@ -106,6 +106,7 @@ fn routes(cfg: &mut web::ServiceConfig) {
         .route("/homepage/proto3", get().to(homepage_item_list))
 
         .route("/u/{user_id}/", get().to(get_user_items))
+        .route("/u/{user_id}/proto3", get().to(user_item_list))
 
         .route("/u/{userID}/i/{signature}/", get().to(show_item))
         .route("/u/{userID}/i/{signature}/proto3", put().to(put_item))
@@ -115,6 +116,7 @@ fn routes(cfg: &mut web::ServiceConfig) {
         .route("/u/{user_id}/profile/", get().to(show_profile))
         .route("/u/{user_id}/profile/proto3", get().to(get_profile_item))
         .route("/u/{user_id}/feed/", get().to(get_user_feed))
+        .route("/u/{user_id}/feed/proto3", get().to(feed_item_list))
 
     ;
     statics(cfg);
@@ -323,6 +325,76 @@ async fn homepage_item_list(
 
     let backend = data.backend_factory.open().compat()?;
     backend.homepage_items(paginator.before(), &mut paginator.callback()).compat()?;
+
+    let mut list = ItemList::new();
+    list.no_more_items = !paginator.has_more;
+    list.items = protobuf::RepeatedField::from(paginator.items);
+    Ok(
+        HttpResponse::Ok()
+        .content_type(PROTO3_MIME)
+        .body(list.write_to_bytes()?)
+    )
+}
+
+async fn feed_item_list(
+    data: Data<AppData>,
+    Path((user_id,)): Path<(UserID,)>,
+    Query(pagination): Query<Pagination>,
+) -> Result<HttpResponse, Error> {
+    let mut paginator = Paginator::new(
+        pagination,
+        |row: ItemDisplayRow| -> Result<ItemListEntry,failure::Error> {
+            let mut item = Item::new();
+            item.merge_from_bytes(&row.item.item_bytes)?;
+            Ok(item_to_entry(&item, &row.item.user, &row.item.signature))
+        }, 
+        |_: &ItemListEntry| { true } // include all items
+    );
+    // We're only holding ItemListEntries in memory, so we can up this limit and
+    // save some round trips.
+    paginator.max_items = 1000;
+
+    let backend = data.backend_factory.open().compat()?;
+
+    // Note: user_feed_items is doing a little bit of extra work to fetch
+    // display_name, which we then throw away. We *could* make a more efficient
+    // version that we use for just this case, but eh, reuse is nice.
+    backend.user_feed_items(&user_id, paginator.before(), &mut paginator.callback()).compat()?;
+
+    let mut list = ItemList::new();
+    list.no_more_items = !paginator.has_more;
+    list.items = protobuf::RepeatedField::from(paginator.items);
+    Ok(
+        HttpResponse::Ok()
+        .content_type(PROTO3_MIME)
+        .body(list.write_to_bytes()?)
+    )
+}
+
+async fn user_item_list(
+    data: Data<AppData>,
+    Path((user_id,)): Path<(UserID,)>,
+    Query(pagination): Query<Pagination>,
+) -> Result<HttpResponse, Error> {
+    let mut paginator = Paginator::new(
+        pagination,
+        |row: ItemRow| -> Result<ItemListEntry,failure::Error> {
+            let mut item = Item::new();
+            item.merge_from_bytes(&row.item_bytes)?;
+            Ok(item_to_entry(&item, &row.user, &row.signature))
+        }, 
+        |_| { true } // include all items
+    );
+    // We're only holding ItemListEntries in memory, so we can up this limit and
+    // save some round trips.
+    paginator.max_items = 1000;
+
+    let backend = data.backend_factory.open().compat()?;
+
+    // Note: user_feed_items is doing a little bit of extra work to fetch
+    // display_name, which we then throw away. We *could* make a more efficient
+    // version that we use for just this case, but eh, reuse is nice.
+    backend.user_items(&user_id, paginator.before(), &mut paginator.callback()).compat()?;
 
     let mut list = ItemList::new();
     list.no_more_items = !paginator.has_more;
