@@ -14,13 +14,13 @@ $: {
     expandTextarea(element)
 }
 
-function expandTextarea(textarea) {
+function expandTextarea(textarea: HTMLElement) {
     if (!textarea) { return } // not mounted yet
     
     // Only grows:
     if (textarea.scrollHeight > textarea.clientHeight) {
         let borderHeight = textarea.offsetHeight - textarea.clientHeight
-        textarea.style.height = textarea.scrollHeight + borderHeight;
+        textarea.style.height = (textarea.scrollHeight + borderHeight).toString()
     }
 }
 

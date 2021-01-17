@@ -48,12 +48,12 @@ $: routes = function() {
     if ($appState.loggedIn) {
         Object.assign(routes, {
             "/post": appPage("../post/post.svelte"),
-            "/my_profile": appPage("./pages/EditProfile.svelte"),
+            "/my_profile": appPage("./pages/EditProfilePage.svelte"),
         })
     }
 
+    // Must be last:
     routes["*"] = NotFoundPage
-    console.log("routes", routes)
     return routes
 }()
 

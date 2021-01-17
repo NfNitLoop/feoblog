@@ -25,7 +25,7 @@ export let validationCallback: (value: string) => string
 export let errorMessage = ""
 
 $: checkValue(value)
-function checkValue(value) {
+function checkValue(value: string) {
     if (!validationCallback) { return }
     try {
         errorMessage = validationCallback(value)

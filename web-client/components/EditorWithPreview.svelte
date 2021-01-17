@@ -1,10 +1,10 @@
 <div class="dualPaneEditor">
     <div class="item editPane">
-        <h1><input type="text" bind:value={displayName} disabled={!editable} placeholder="(Profile Display Name)"></h1>
+        <h1><input type="text" bind:value={displayName} placeholder="(Profile Display Name)"></h1>
         <div class="userInfo">
             <span class="userID">@{userID}</span>
         </div>
-        <ExpandingTextarea bind:value={profileContent} placeholder="Your profile here..." disabled={!editable}/>
+        <ExpandingTextarea bind:value={profileContent} placeholder="Your profile here..."/>
 
         <h2>Follows</h2>
         {#each follows as follow, index (follow)} 
@@ -14,7 +14,7 @@
                 on:delete={() => removeFollow(index)}
             />
         {/each}
-        <Button on:click={addFollow} disabled={!editable}>New Follow</Button>
+        <Button on:click={addFollow}>New Follow</Button>
     </div>
 
     <ItemView
@@ -38,7 +38,6 @@
                 label="Private Key"
                 bind:value={privateKey}
                 bind:errorMessage={privateKeyError}
-                disabled={!editable}
             />
             <Button on:click={sign} disabled={!validPrivateKey}>Sign</Button>
         {:else}
@@ -65,22 +64,37 @@
 import { onMount, tick } from 'svelte'
 import type { Writable } from "svelte/store"
 import bs58 from "bs58"
-import * as commonmark from "commonmark"
 import moment from "moment"
-import { Follow, Item, Post, Profile, UserID } from "../../protos/feoblog"
+import { Follow, Item, Post, Profile, UserID } from "../protos/feoblog"
 import * as nacl from "tweetnacl-ts"
 import bs58check from 'bs58check';
-import FollowBox from "../FollowBox.svelte"
-import { MAX_ITEM_SIZE, parseUserID } from '../../ts/common'
-import { UserID as ClientUserID } from "../../ts/client"
-import type { AppState } from '../../ts/app';
-import ItemView from '../ItemView.svelte'
-import ExpandingTextarea from '../ExpandingTextarea.svelte'
-import LinkIntercept from '../LinkIntercept.svelte';
-import Button from '../Button.svelte'
-import InputBox from '../InputBox.svelte';
+import FollowBox from "./FollowBox.svelte"
+import { MAX_ITEM_SIZE, parseUserID } from '../ts/common'
+import { UserID as ClientUserID } from "../ts/client"
+import type { AppState } from '../ts/app';
+import ItemView from './ItemView.svelte'
+import ExpandingTextarea from './ExpandingTextarea.svelte'
+import Button from './Button.svelte'
+import InputBox from './InputBox.svelte';
 
 export let appState: Writable<AppState>
+
+// What kind of thing are we editing?
+// I imagine I'll want to make a "reply" type here too.
+// There will probably be a separate, inline editor for "comment" types since they'll be simpler.
+export let mode: "post"|"profile" = "post"
+
+// Can provide an initial item for editing.
+export let initialItem: Item|undefined = undefined
+
+// May be provided externally if we were provided an item
+// TODO: TBH, the fact that this works w/ an initialItem: Item above is just an
+// artifact of our serializer having a deterministic output. That may not be the case
+// and we may want to pass itemBytes here if we want to verify the signature of profiles
+// we load.  Though, maybe that's just not worth it.
+export let signature = ""
+
+
 let userID: ClientUserID
 $: userID = function() {
     let userID = $appState.loggedInUser
@@ -88,37 +102,7 @@ $: userID = function() {
     throw `Must be logged in.`
 }()
 
-// TODO: Get rid of this, it's mostly unused.
-enum PageState {
-    // Loading the latest profile.
-    Loading,
-    Editing,
-    Signed,
-    // Sent -> Editing
-}
 
-let pageState = PageState.Loading
-$: editable = (pageState == PageState.Editing)
-
-onMount(() => {
-    loadProfile()
-})
-
-async function loadProfile() {
-    if (!userID) { return }
-    let result = await $appState.client.getLatestProfile(userID)
-    if (result) {
-        let profile = result.item
-        loadFromProto(profile)
-        signature = result.signature.toString()
-    }
-    pageState = PageState.Editing
-    
-
-}
-
-const reader = new commonmark.Parser()
-const writer = new commonmark.HtmlRenderer({ safe: true})
 
 // Strictly parse one of these non-ambiguous timestamps. (MUST include time zone.)
 const DATE_FORMATS = [
@@ -221,7 +205,6 @@ $: privateKeyError = function() {
 // We have a key which could be used to sign.
 $: validPrivateKey = privateKey.length > 0 && privateKeyError == ""
 
-let signature = ""
 
 let debug = false
 $: {
@@ -231,11 +214,6 @@ $: {
         debug = false
     }
 }
-
-$: markdownOut = function() {
-    var parsed = reader.parse(profileContent);
-    return writer.render(parsed);
-}()
 
 
 // <3 Moment in that it'll keep the time and offset together:
@@ -285,6 +263,7 @@ $: itemProto = function(): Item {
 
 }()
 
+// TODO: Move this to a ProfileEditor component.
 // This is the inverse of $: itemProto above. Given an Item, load data from it.
 function loadFromProto(item: Item) {
     let profile = item.profile
@@ -303,11 +282,13 @@ function loadFromProto(item: Item) {
     // TODO: servers
 }
 
+if (initialItem) {
+    loadFromProto(initialItem)
+}
+
 $: itemProtoBytes = itemProto.serialize()
 $: protoSize = itemProtoBytes?.length || 0
-$: protoHex = debug ? bufferToHex(itemProtoBytes || []) : ""
 
-$: itemJson = JSON.stringify(itemProto.toObject(), null, 1)
 
 // Errors that prevent signing:
 $: validationErrors = function(): string[] {
@@ -378,12 +359,6 @@ $: validSignature = function(): boolean {
     return isValid
 }()
 
-
-function bufferToHex (x: Iterable<number>) {
-    return [...new Uint8Array (x)]
-        .map (b => b.toString(16).padStart(2, "0"))
-        .join (" ");
-}
 
 // Create a signature, delete the password.
 async function sign() {
