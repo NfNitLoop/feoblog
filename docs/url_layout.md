@@ -15,6 +15,13 @@ The root of the server may display any type of user interface the implementation
 desires. It may be a stream of latest posts on the server, or of a single
 user's posts, if the server is the home of a single user.
 
+`/homepage/proto3`
+------------------
+
+Returns a protobuf `ItemList` type listing items that should be shown on the server's home page.
+
+Should accept a `before` parameter, which allows paginating through results.
+
 `/u/<userID>/`
 ------------
 
@@ -25,6 +32,13 @@ links to the full posts is up to the implementaiton.
 You may also display information about a user, such as their preferred name(s),
 number/size of posts, "home server", etc., either inline or as links.
 
+`/u/<userID>/proto3`
+------------
+
+Returns a protobuf `ItemList` of all items the server has for a user. (This is unlike the `/u/<userID>/` which may filter items
+that it shows.)
+
+Should accept a `before` parameter, which allows paginating through results.
 
 `/u/<userID>/i/<signature>/`
 ------------------------
@@ -56,6 +70,8 @@ and is signed by the `userID` and `signature` provided in the URL.
 `/u/<userID>/i/<signature>/files/*`
 ------------------------------
 
+Note: Not yet implemented.
+
 Some post types may allow the user to attach files. For example, a blog post
 may contain photos which the user wants to display inline.
 
@@ -70,3 +86,30 @@ Clients/servers may PUT files to these locations after the raw Protobuf data has
 been published (at `/<userID>/<signature>/proto3`). The server must verify
 that the posted data matches the corresponding hash and size as specified in the
 Protobuf data. (TODO: Not yet implemented.)
+
+`/u/<userID>/feed/`
+-------------------
+
+Renders a view of posts from users that this user follows, according to their latest profile. The user's own posts may
+be included here 
+
+`/u/<userID>/feed/proto3`
+-------------------------
+
+Returns a protobuf `ItemList` of all items from users followed by `userID`, including `userID`.
+
+Should accept a `before` parameter, which allows paginating through results.
+
+
+`/u/<userID>/profile/`
+-------------------
+
+Renders a view of the user's latest `Profile`.
+
+`/u/<userID>/profile/proto3`
+-------------------------
+
+Returns the `Item` that includes the user's latest profile. 
+
+MUST include a `signature` HTTP response header which contains the base58-encoded signature for the item. This allows clients to verify
+that the profile information is authentic.
