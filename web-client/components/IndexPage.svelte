@@ -2,16 +2,17 @@
 <div class="nav-layout-container">
     <div class="nav-container">
         <div class="nav">
-            <a href="#/">Home</a>
             {#if !$appState.loggedIn}
-                <a href="#/login">Log in</a>
+                <a use:active href="#/">Home</a>
+                <a use:active href="#/login">Log in</a>
             {:else}
                 <div>{$appState.userName || "(unknown user)"}</div>
-                <a href="#/login">Change User</a>
-                <a href="#/my_profile">My Profile</a>
-                <a href="#/u/{$appState.loggedInUser}/feed">My Feed</a>
-                <a href="#/post">New Post</a>
-                <a href="#/sync">Sync</a>
+                <a use:active href="#/u/{$appState.loggedInUser}/feed">My Feed</a>
+                <a use:active href="#/my_profile">My Profile</a>
+                <a use:active href="#/post">New Post</a>
+                <a use:active href="#/sync">Sync</a>
+                <a use:active href="#/login">Change User</a>
+                <a use:active href="#/">Home</a>
             {/if}
         </div>
 
@@ -25,6 +26,7 @@
 
 <script context="module" lang="ts">
     import type { RouteDefinition } from "svelte-spa-router"
+    import active from "svelte-spa-router/active"
     import Router from "svelte-spa-router"
 
     import NotFoundPage from "./NotFoundPage.svelte"
@@ -41,6 +43,7 @@ $: routes = function() {
         "/": appPage("./pages/HomePage.svelte"),
         "/u/:userID/": appPage("./pages/UserPage.svelte"),
         "/u/:userID/feed": appPage("./pages/FeedPage.svelte"),
+        "/u/:userID/profile": appPage("./pages/ProfilePage.svelte"),
         "/u/:userID/i/:signature/": appPage("./ItemView.svelte"),
         "/login": appPage('./pages/Login.svelte'),
     }
@@ -84,3 +87,8 @@ $: {
 
 </script>
 
+<style>
+    .active {
+        color: black;
+    }
+</style>

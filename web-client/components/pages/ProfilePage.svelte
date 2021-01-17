@@ -8,21 +8,13 @@
 {:then loaded} 
     {#if loaded.error}
         <div class="item error">{loaded.error}</div>
-    {:else if !loaded.profile && !createNewOK}
-        <div class="item">
-            <p>Could not find an existing profile.</p>
-            <Button on:click={createNew}>Create New Profile</Button>
-        </div>
     {:else if !loaded.profile}
-        <EditorWithPreview
-            {appState}
-            mode="profile"
-        />
+        <div class="item error">This state should be unreachable</div>
     {:else}
-        <EditorWithPreview 
+        <ItemView 
             {appState}
-            mode="profile"
-            initialItem={loaded.profile.item}
+            item={loaded.profile.item}
+            userID={userID.toString()}
             signature={loaded.profile.signature.toString()}
         />
     {/if}
@@ -37,22 +29,17 @@
 import type { Writable } from "svelte/store";
 
 import type { AppState } from "../../ts/app";
-import type { ProfileResult, UserID } from "../../ts/client";
-import Button from "../Button.svelte";
-import EditorWithPreview from "../EditorWithPreview.svelte"
+import { ProfileResult, UserID } from "../../ts/client";
+import ItemView from "../ItemView.svelte";
 
 export let appState: Writable<AppState>
-
-$: userID = $appState.loggedInUser
+export let params: {
+    userID: string
+}
+let userID = UserID.fromString(params.userID)
 
 let loadedProfile: Promise<LoadedProfile>
 $: loadedProfile = loadProfile(userID)
-
-let createNewOK = false
-
-function createNew() {
-    createNewOK = true
-}
 
 type LoadedProfile = {
     profile?: ProfileResult
@@ -64,9 +51,8 @@ async function loadProfile(userID: UserID|null): Promise<LoadedProfile> {
         error: "Must be logged in."
     }
 
-    // TODO: Exhaustive search for latest profile.
-    // Warn if we only got a profile from a non-exhaustive search.
-    let result = await $appState.client.getLatestProfile(userID)
+    // Note: non-exhaustive search
+    let result = await $appState.client.getProfile(userID)
 
     if (result) return {
         profile: result

@@ -17,15 +17,19 @@
  */
 
 import { createEventDispatcher } from "svelte";
+import { push as navigateTo } from "svelte-spa-router"
 
 export let disabled = false
 // Does this button require a second click?
 export let requiresConfirmation = false
 
+// Optionally specify an href to make this act like a link.
+export let href = ""
+
 // This button requires confirmation, and is currently asking for confirmation
 let confirmationMode = false
 
-let minClickDeltaMs = 300
+const minClickDeltaMs = 300
 let firstClick = 0
 
 let dispatcher = createEventDispatcher()
@@ -50,7 +54,11 @@ function clicked(event: MouseEvent) {
             // This click was too soon, could be accidental.
             return
         }
+    }
 
+    if (href) {
+        navigateTo(href)
+        return
     }
 
     confirmationMode = false

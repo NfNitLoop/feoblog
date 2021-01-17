@@ -1,11 +1,15 @@
 <!--
     Shows posts by a single user.
 -->
-<!--
-    <div class="item">
-        <h1>Posts for {userID}</h1>
+
+<div class="item">
+    <h1>Posts by:</h1>
+    <div class="userInfo">
+        <UserIDView {appState} {userID}/>
     </div>
--->
+    <Button href={`#/u/${userID}/profile`}>View Profile</Button>
+</div>
+
 {#each items as entry, index (entry.signature)}
     <ItemView 
         userID={entry.userID.toString()}
@@ -30,6 +34,7 @@ import { UserID, Signature } from "../../ts/client";
 import { ConsoleLogger, prefetch } from "../../ts/common";
 
 import ItemView from "../ItemView.svelte"
+import Button from "../Button.svelte"
 import VisibilityCheck from "../VisibilityCheck.svelte";
 import UserIDView from "../UserIDView.svelte"
 
