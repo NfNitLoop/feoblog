@@ -64,6 +64,10 @@ function onMouseLeave() {
 </script>
 
 <style>
+.buttonPosition {
+    display: inline-block;
+}
+
 .button {
     border-radius: 3px;
     margin: 2px;

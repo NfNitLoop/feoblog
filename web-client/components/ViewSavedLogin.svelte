@@ -3,13 +3,14 @@
  * Shows a saved login, allows editing and switching IDs
  *
  * emits events:
- * changed({savedLogin: SavedLogin}) when values here are changed (and valid)
+ * change({savedLogin: SavedLogin}) when values here are changed (and valid)
  * logIn({savedLogin: SavedLogin}) when the user clicks the "Log In" button.
  * logOut({savedLogin: SavedLogin}) when the user clicks the "Log Out" button.
  */
 
 import type { SavedLogin } from "../ts/app";
 import { createEventDispatcher } from "svelte";
+import Button from "./Button.svelte"
 
 export let savedLogin: SavedLogin
 export let isLoggedIn = false
@@ -30,7 +31,7 @@ $: itemStyle = function(){
     return `border: 5px solid ${color};`
 }()
 
-function validColor(color): boolean {
+function validColor(color: string): boolean {
     return (
         /^#[0-9a-f]{3}$/i.test(color) 
         || /^#[0-9a-f]{6}$/i.test(color) 
@@ -47,7 +48,7 @@ function remove() {
     dispatch("remove", eventData())
 }
 
-function onChange(...ignored) {
+function onChange(...ignored: any) {
     if (bgColor && !validColor(bgColor)) return
     dispatch("change", eventData())
 }
@@ -94,8 +95,8 @@ class EventData {
         <tr>
             <td></td>
             <td>
-                {#if !isLoggedIn}<button on:click|preventDefault={logIn}>Log In</button>{/if}
-                <button on:click|preventDefault={remove}>Remove</button>
+                {#if !isLoggedIn}<Button on:click={logIn}>Log In</Button>{/if}
+                <Button on:click={remove} requiresConfirmation>Remove</Button>
             </td>
         </tr>
     </table>
