@@ -2,14 +2,20 @@
     {#if mode === "profile"}
         <EditProfile 
             {appState} 
-            bind:validationErrors
             {initialItem}
+            bind:validationErrors
+            bind:item
+        />
+    {:else} <!-- mode === "post" -->
+        <EditPost
+            bind:validationErrors
             bind:item
         />
     {/if}
     
     <!-- Preview: -->
     <ItemView
+        {appState}
         userID={userID.toString()}
         signature="unknown"
         {item}
@@ -18,9 +24,9 @@
 
     <!-- Sign & Send -->
     <div class="item sendBox inputWhiteBox">
-        {#if validationErrors.length > 0}
+        {#if errors.length > 0}
             <div class="error">
-                {#each validationErrors as error}
+                {#each errors as error}
                     {error}<br>
                 {/each}
             </div>
@@ -52,13 +58,13 @@
 
 
 <script lang="ts">
-import { tick } from 'svelte'
 import type { Writable } from "svelte/store"
 import bs58 from "bs58"
-import moment from "moment"
 import { Item } from "../protos/feoblog"
 import * as nacl from "tweetnacl-ts"
-import bs58check from 'bs58check';
+import bs58check from 'bs58check'
+import { DateTime } from "luxon"
+
 import { MAX_ITEM_SIZE } from '../ts/common'
 import type { UserID as ClientUserID } from "../ts/client"
 import type { AppState } from '../ts/app';
@@ -66,6 +72,7 @@ import ItemView from './ItemView.svelte'
 import Button from './Button.svelte'
 import InputBox from './InputBox.svelte';
 import EditProfile from './EditProfile.svelte';
+import EditPost from './EditPost.svelte';
 
 export let appState: Writable<AppState>
 
@@ -105,7 +112,15 @@ $: errors = function() {
     if (protoSize > MAX_ITEM_SIZE) {
         errors.push(`Item is ${protoSize} bytes but max size is ${MAX_ITEM_SIZE}`)
     }
-    // TODO: Timestamp must be set.
+    if (!item.timestamp_ms_utc) {
+        errors.push(`A timestamp is required`)
+    }
+
+    let now = DateTime.local().valueOf()
+    if (item.timestamp_ms_utc > now.valueOf()) {
+        // Technically, servers allow some leniency here, but, eh:
+        errors.push("Date must not be in the future.")
+    }
 
     return errors
 }()
@@ -157,18 +172,6 @@ $: privateKeyError = function() {
 
 // We have a key which could be used to sign.
 $: validPrivateKey = privateKey.length > 0 && privateKeyError == ""
-
-
-
-// <3 Moment in that it'll keep the time and offset together:
-// TODO: Only save when signed:
-let timestampMoment = moment()
-
-function updateTimestmap() {
-    timestampMoment = moment()
-}
-
-
 $: itemProtoBytes = item.serialize()
 $: protoSize = itemProtoBytes?.length || 0
 

@@ -44,10 +44,9 @@ $: routes = function() {
         "/u/:userID/i/:signature/": appPage("./ItemView.svelte"),
         "/login": appPage('./pages/Login.svelte'),
     }
-    console.log("loggedIn", $appState.loggedIn)
     if ($appState.loggedIn) {
         Object.assign(routes, {
-            "/post": appPage("../post/post.svelte"),
+            "/post": appPage("./pages/PostPage.svelte"),
             "/my_profile": appPage("./pages/EditProfilePage.svelte"),
         })
     }
