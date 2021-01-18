@@ -58,9 +58,12 @@ post.
 `/u/<userID>/i/<signature>/proto3`
 --------------------------------
 
-This endpoint should serve the binary Protobuf data for a single post by a user.
+This endpoint should serve the binary Protobuf Item for a single post by a user.
 Other clients must be able to fetch this data so that they can verify the
 signature over that data was indeed made by the given userID.
+
+To allow web-based clients to fetch this, make sure to add the appropriate CORS
+HTTP headers to the response.
 
 Other clients/servers may also send an HTTP PUT to this endpoint to upload new
 data. The server may decide whether to accept or reject the data. If the

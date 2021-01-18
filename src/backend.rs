@@ -72,15 +72,11 @@ pub trait Backend
     /// Get the Item(Row) that represents the user's most recently saved profile, if it exists.
     fn user_profile(&self, user_id: &UserID) -> Result<Option<ItemRow>, Error>;
 
-    /// Is this user ID known to this instance?
+    /// Is this user ID known to this server?
     ///
     /// This is true if any of these are true:
     /// * The user is a "server user" (given direct permission to post to this server)
-    /// * The user is followed by a "server user".
-    /// * There is content by that user on this server at all.
-    ///
-    /// This is a very permissive check, because even if we don't allow a user to post in general, we should allow
-    /// them to post their latest profile (w/o attachments) to provide server links and ID revocation.
+    /// * The user is followed by a "server user". (We want their content so we can create a feed.)
     fn user_known(&self, user_id: &UserID) -> Result<bool, Error>;
 
     /// Check whether a user has remaiing quota/permissions to upload a particular item.
@@ -279,7 +275,6 @@ pub struct ServerUser {
     pub on_homepage: bool,
 }
 
-
 #[derive(Copy, Clone)]
 pub struct Timestamp {
     /// UNIX time, at UTC, in milliseconds:
@@ -311,17 +306,15 @@ impl Timestamp {
 pub enum QuotaDenyReason {
     /// The user already has enough items newer than this one such that posting this one would exceed the quota.
     /// 
+    // TODO: Use this.
+    #[allow(dead_code)]
     NewerItemsExceedQuota {
         /// The maximum bytes of Items this user can store on the server.
         max_bytes: u64,
     },
 
-    /// The only Item type we accept for this user is Profile updates, and this is not a profile update.
-    OnlyProfileUpdatesAllowed,
-
-    /// We only accept Profile updates for this user, and a newer one already exists.
-    /// (We may accept older profiles for "server users" and followed users to allow item syncing.)
-    NewerProfileExists,
+    /// This user is not known to the server, so not allowed to post.
+    UnknownUser,
 
     /// We already have a profile that proves that this userID has been revoked.
     ProfileRevoked,
@@ -332,10 +325,8 @@ impl std::fmt::Display for QuotaDenyReason {
         match self {
             Self::NewerItemsExceedQuota { max_bytes } => 
                 write!(f, "Newer items exceed {} byte quota.", max_bytes),
-            Self::OnlyProfileUpdatesAllowed =>
-                write!(f, "Only profile updates are allowed for this user ID."),
-            Self::NewerProfileExists =>
-                write!(f, "Only profile updates are allowed for this user ID, and a newer profile already exists."),
+            Self::UnknownUser => 
+                write!(f, "This user is not known to the server."),
             Self::ProfileRevoked => 
                 write!(f, "This user ID has been revoked."),
         }

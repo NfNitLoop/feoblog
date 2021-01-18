@@ -659,10 +659,13 @@ impl backend::Backend for Connection
     fn user_known(&self, user_id: &UserID) -> Result<bool, Error> {
         let mut query = self.conn.prepare("
             SELECT
-                EXISTS(SELECT user_id FROM profile where user_id = :user_id)
-                OR EXISTS(SELECT user_id FROM item where user_id = :user_id)
-                OR EXISTS(SELECT user_id FROM server_user WHERE user_id = :user_id)
-                OR EXISTS(SELECT followed_user_id FROM follow WHERE followed_user_id = :user_id)
+                EXISTS(SELECT user_id FROM server_user WHERE user_id = :user_id)
+                OR EXISTS(
+                    SELECT followed_user_id
+                    FROM follow AS f
+                    INNER JOIN server_user AS su ON (f.source_user_id = su.user_id)
+                    WHERE followed_user_id = :user_id
+                )
         ")?;
 
         let mut result = query.query_named(&[
@@ -703,25 +706,8 @@ impl backend::Backend for Connection
         }
 
         // TODO: When "pinning" is implemented, allow posting items which are pinned by server users and their follows.
+        // TODO: I've since decided that "pinning" might be prone to abuse. I should write up my thoughts there.
 
-        // If you're not a server user, or followed by one, we only allow you to update your profile.
-        if !item.has_profile() {
-            return Ok(Some(QuotaDenyReason::OnlyProfileUpdatesAllowed));
-        }
-
-        let existing_profile = self.user_profile(user_id)?;
-        if let Some(existing_profile) = existing_profile {
-            let mut previous_item = Item::new();
-            previous_item.merge_from_bytes(existing_profile.item_bytes.as_slice())?;
-            
-            if previous_item.timestamp_ms_utc >= item.timestamp_ms_utc {
-                return Ok(Some(QuotaDenyReason::NewerProfileExists));
-            }
-            
-            // TODO: Check whether the previous profile was revoked, once revocation is implemented.
-        }
-
-        // No reason to deny based on quota:
-        Ok(None)
+        Ok(Some(QuotaDenyReason::UnknownUser))
     }
 }
