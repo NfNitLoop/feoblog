@@ -4,20 +4,30 @@
 </div>
 
 <div class="item">
-    <h1>One profile</h1>
+    <h1>Bootstrap Profiles</h1>
 
-    <p>Synchronize one profile to this server. Useful if you or someone you follow does not yet have a profile saved on this server.</p>
+    <p>If you're moving to this server from another, the first step is to copy your profile, and the profiles of those you follow.
+        Each profile contains a list of servers where that userID's posts can be found, and will be used for a full sync.
+    </p>
 
     <InputBox 
-        label="Remote Profile URL"
-        placeholder="https://feoblog.example.com/u/<userID>"
-        validationCallback={checkProfileURL}
-        bind:errorMessage={profileURLError}
-        bind:value={profileURL}
+        label="Server URL"
+        placeholder="https://feoblog.example.com"
+        validationCallback={checkServerURL}
+        disabled={$profileTask.isRunning}
+        bind:errorMessage={serverURLError}
+        bind:value={serverURL}
+    />
+    <UserIdInput
+        label="User ID"
+        placeholder="Default: current user's ID"
+        disabled={$profileTask.isRunning}
+        bind:valid={bootstrapUserIDValid}
+        bind:value={bootstrapUserID}
     />
     <Button
-        disabled={profileURLError.length > 0 || profileURL.length == 0 || $profileTask.isRunning}
-        on:click={syncOneProfile}
+        disabled={!haveValidServerURL || (bootstrapUserID.length > 0 && !bootstrapUserIDValid) || $profileTask.isRunning}
+        on:click={bootstrapProfiles}
     >Sync</Button>
 
     {#if $profileTask.logs.length > 0}
@@ -40,11 +50,13 @@
 import { DateTime } from "luxon";
 import type { Writable } from "svelte/store"
 import { writable } from "svelte/store"
+import type { Profile } from "../../protos/feoblog";
 
 import type { AppState } from "../../ts/app"
 import { Client, UserID } from "../../ts/client"
 import Button from "../Button.svelte"
 import InputBox from "../InputBox.svelte"
+import UserIdInput from "../UserIDInput.svelte";
 
 export let appState: Writable<AppState>
 
@@ -55,29 +67,23 @@ $: userID = function() {
     return id
 }()
 
-let profileURL = ""
-let profileURLError = ""
 
-const profileURLPattern = /^(https?:\/\/[^/]+)\/u\/([^/]+)\/?$/
-function checkProfileURL(url: string): string {
+const serverURLPattern = /^(https?:\/\/[^/]+)\/?$/
+let serverURL = ""
+let serverURLError = ""
+$: haveValidServerURL = (serverURL != "") && serverURLError === ""
+
+let bootstrapUserID = ""
+let bootstrapUserIDValid = false
+
+function checkServerURL(url: string): string {
     if (url === "") {
         return "" // Don't show error in the empty case.
     }
 
-    let match = profileURLPattern.exec(url)
+    let match = serverURLPattern.exec(url)
     if (match === null) {
         return "Invalid URL format"
-    }
-
-    if (match.length != 3) {
-        return `Expected 3 matches, found ${match.length}`
-    }
-
-    try {
-        let id = match[2]
-        UserID.fromString(id)
-    } catch (e) {
-        return `Invalid userID: ${e}`
     }
 
     return ""
@@ -159,61 +165,87 @@ type LogEntry = {
 
 let profileTask = writable(new TaskTracker())
 
-function syncOneProfile() {
+function bootstrapProfiles() {
     let tracker = new TaskTracker()
     tracker.store = profileTask
 
-    tracker.run(() => syncOneProfileTask(tracker))
+    tracker.run(() => bootstrapProfilesTask(tracker))
 }
 
-async function syncOneProfileTask(tracker: TaskTracker) {
+async function bootstrapProfilesTask(tracker: TaskTracker) {
     
-// let userProfile: Promise<Profile|null> 
-// $: userProfile = loadUserProfile(userID)
-// async function loadUserProfile(userID: UserID): Promise<Profile|null> {
-//     // Note: NOT necessarily the latest profile, we'll do exhaustive searches
-//     // as part of sync.
-//     let result = await $appState.client.getProfile(userID)
-//     if (!result) return null
-//     return result.item.profile
-// }
-    let match = profileURLPattern.exec(profileURL)
-    if (!match) throw "Invalid profile URL?"
-
     let local = $appState.client
+
+    let match = serverURLPattern.exec(serverURL)
+    if (!match) throw "Invalid profile URL?"
+    let remoteURL = match[1]
     let remote = new Client({
-        base_url: match[1]
+        base_url: remoteURL
     })
 
-    let userID = UserID.fromString(match[2])
-    tracker.log(`Updating profile from ${profileURL}`)
+    let uid = userID // default
+    if (bootstrapUserID) {
+        uid = UserID.fromString(bootstrapUserID)
+    }
+    
+    tracker.log(`Syncing from ${serverURL}`)
+    tracker.log(`Updating profile ${uid}`)
+    let profile = await syncOneProfile(tracker, local, remote, uid)
+
+    if (profile.follows.length == 0) return
+
+    tracker.log("Syncing followed profiles")
+    // Convert UIDs up front, and error quickly if there's an invalid one:
+    let follows = profile.follows.map((f) => {
+        return {
+            name: f.display_name,
+            userID: UserID.fromBytes(f.user.bytes),
+        }
+    })
+
+    // This could be done in parallel, logging will need to handle that better.
+    for (let {name, userID} of follows) {
+        tracker.log(`Syncing follow "${name}" (${userID})`)
+        try {
+            await syncOneProfile(tracker, local, remote, userID)
+        } catch (e) {
+            console.error("fetching profile", e)
+            tracker.error(`${e}`)
+        }
+    }
+}
+
+// Syncs one profile from remote to local.
+// Throws an exception if there was an error.
+// returns the newest Profile involved in the sync.
+async function syncOneProfile(tracker: TaskTracker, local: Client, remote: Client, userID: UserID): Promise<Profile> {
 
     // Make requests in parallel:
     let remoteRequest = remote.getProfile(userID)
     let localRequest = local.getProfile(userID)
 
     let remoteProfile = await remoteRequest
-    if (remoteProfile == null) throw `Can't find profile for ${profileURL}`
-    tracker.log(`Fetched remote profile`)
+    if (remoteProfile == null) throw `Can't find remote profile for ${userID}`
 
     let localProfile = await localRequest
-    tracker.log(`Fetched local profile`)
 
     if (localProfile !== null) {
         if (localProfile.signature.toString() == remoteProfile.signature.toString()) {
             tracker.log("Profiles are identical")
-            return
+            return localProfile.item.profile
         }
          
         if (localProfile.item.timestamp_ms_utc >= remoteProfile.item.timestamp_ms_utc) {
             tracker.log("Remote profile is not newer than local profile.")
-            return
+            return localProfile.item.profile
         }
     }
 
     tracker.log("Saving profile locally")
     await local.putItem(userID, remoteProfile.signature, remoteProfile.bytes)
     tracker.log("Saved")
+
+    return remoteProfile.item.profile
 }
 
 </script>

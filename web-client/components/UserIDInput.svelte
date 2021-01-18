@@ -1,47 +1,35 @@
-<div>
-    <input type="text" class="userID" class:error {placeholder} bind:value {disabled}/>
-    {#if error}
-        <p class="errorMessage">{errorMessage}</p>
-    {/if}
-</div>
+<!--
+    TODO: Use InputBox?
+-->
+<InputBox
+    {label} {placeholder} {disabled}
+    validationCallback={checkValue}
+    bind:errorMessage
+    bind:value    
+/>
 
 <script lang="ts">
 import { UserID } from "../ts/client";
+import InputBox from "./InputBox.svelte";
 
 
 export let placeholder = "user ID"
 export let value = ""
 export let disabled = false
-
+export let label = "UserID"
 export let valid = false
 
-$: error = errorMessage !== ""
-$: errorMessage = function() {
+let errorMessage = ""
+$: valid = errorMessage === "" && value !== ""
+
+
+function checkValue(value: string): string{
     if (value === "") {
         return ""
     }
-
-    try {
-        UserID.fromString(value)
-    } catch (exception) {
-        return `Error: ${exception}`
-    }
-
+    UserID.fromString(value) // throws a string
     return ""
-}()
-$: valid = !error && (value !== "")
+}
+
 </script>
 
-<style>
-    input.userID {
-        width: 30em;
-    }
-    .error {
-        border: 2px solid darkred;
-    }
-    .errorMessage {
-        color: darkred;
-        font-weight: bold;
-        margin: 0px;
-    }
-</style>

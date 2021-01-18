@@ -79,6 +79,10 @@ export class Client {
                 method: "PUT",
                 body: bytes,
             })
+            if (!response.ok) {
+                throw `Error uploading Item: ${response.status} ${response.statusText}`
+            }
+
         } catch (e) {
             console.error("PUT exception:", e)
             throw e

@@ -10,7 +10,7 @@ use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData, net::TcpListener};
 use futures_core::stream::Stream;
 use futures_util::StreamExt;
 
-use actix_web::{dev::HttpResponseBuilder, http::header, web::Query};
+use actix_web::{dev::{HttpResponseBuilder, ServiceRequest}, http::header, middleware::DefaultHeaders, web::Query};
 use actix_web::web::{
     self,
     get,
@@ -136,15 +136,27 @@ fn routes(cfg: &mut web::ServiceConfig) {
         .route("/homepage/proto3", get().to(homepage_item_list))
 
         .route("/u/{user_id}/", get().to(get_user_items))
-        .route("/u/{user_id}/proto3", get().to(user_item_list))
+        .service(
+            web::resource("/u/{user_id}/proto3")
+            .route(get().to(user_item_list))
+            .wrap(cors_ok_headers())
+        )
 
         .route("/u/{userID}/i/{signature}/", get().to(show_item))
-        .route("/u/{userID}/i/{signature}/proto3", put().to(put_item))
-        .route("/u/{userID}/i/{signature}/proto3", get().to(get_item))
-
+        .service(
+            web::resource("/u/{userID}/i/{signature}/proto3")
+            .route(get().to(get_item))
+            .route(put().to(put_item))
+            // TODO: handle the OPTIONS CORS preflight
+            .wrap(cors_ok_headers())
+        )
 
         .route("/u/{user_id}/profile/", get().to(show_profile))
-        .route("/u/{user_id}/profile/proto3", get().to(get_profile_item))
+        .service(
+            web::resource("/u/{user_id}/profile/proto3")
+            .route(get().to(get_profile_item))
+            .wrap(cors_ok_headers())
+        )
         .route("/u/{user_id}/feed/", get().to(get_user_feed))
         .route("/u/{user_id}/feed/proto3", get().to(feed_item_list))
 
@@ -367,20 +379,22 @@ async fn homepage_item_list(
 // Start building a response w/ proto3 binary data.
 fn proto_ok() -> HttpResponseBuilder {
     let mut builder = HttpResponse::Ok();
-
     builder.content_type("application/protobuf3");
-
-    // All proto3 endpoints should be queryable by anyone.
-    // The server keeps no private information
-    builder.set_header("Access-Control-Allow-Origin", "*");
-
-    // Clients may want to check content-length in particular, but
-    // I can think of no reason to deny any, and * is shorter.
-    // Note, though https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Expose-Headers
-    // says that Content-Length is exposed by default, that is not my experience in Firefox 84.0.2
-    builder.set_header("Access-Control-Expose-Headers", "*");
-
     builder
+}
+
+// // CORS headers must be present for *all* responses, including 404, 500, etc.
+// // Applying it to each case individiaully may be error-prone, so here's a filter to do so for us.
+// fn cors_allow<SF, Serv>(req: ServiceRequest, serv: &mut SF::Service) 
+// where SF: ServiceFactory,
+//       Serv: SF::Service
+// {
+//     let mut fut = serv.call(req);
+// }
+fn cors_ok_headers() -> DefaultHeaders {
+    DefaultHeaders::new()
+    .header("Access-Control-Allow-Origin", "*")
+    .header("Access-Control-Expose-Headers", "*")
 }
 
 async fn feed_item_list(

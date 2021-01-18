@@ -8,8 +8,8 @@
 
 <div class="item">
 <form>
-    Log in as:
-    <br><UserIDInput bind:value={userID} bind:valid={validUserID}/>
+    
+    <UserIDInput label="Log in as" bind:value={userID} bind:valid={validUserID}/>
     <br><Button on:click={logIn} disabled={!validUserID}>Log in</Button>
 </form>
 
