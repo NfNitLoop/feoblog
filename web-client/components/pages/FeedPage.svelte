@@ -9,6 +9,13 @@
         item={entry.item}
         {appState}
     />
+{:else}
+    {#if !moreItems}
+    <div class="item">
+        Nothing to see here. You may need to <a href="#/my_profile">edit your profile</a>
+        to follow people, or <a href="#/post">write your first post</a>.
+    </div>
+    {/if}
 {/each}
 
 <VisibilityCheck on:itemVisible={displayMoreItems} bind:visible={endIsVisible}/>
@@ -32,6 +39,9 @@ let items: DisplayItem[] = []
 let lazyItems: AsyncIterator<DisplayItem> = getDisplayItems()
 let endIsVisible: boolean
 let log = new ConsoleLogger()
+
+// Assume there are more items to lazily load until we find otherwise:
+let moreItems = true
 
 export let params: {
     userID: string
@@ -58,7 +68,7 @@ async function displayMoreItems() {
 
         let n = await lazyItems.next()
         if (n.done) {
-            log.debug("DisplayMoreItems: no more to display")
+            moreItems = false
             return
         }
 

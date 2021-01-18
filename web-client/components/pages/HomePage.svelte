@@ -6,12 +6,29 @@
         item={entry.item}
         {appState}
     />
+{:else}
+    {#if !moreItems}
+        {#if $appState.loggedInUser }
+        <div class="item">
+            Nothing to see here yet. Do you want to <a href="#/post">write a post</a>?
+
+            <p>If you see your posts on <a href="#/u/{$appState.loggedInUser}/feed">your feed</a> but not here, 
+            make sure you flag your userID with <code>--homepage</code> like this:
+
+            <code><pre>blog user add {$appState.loggedInUser} --homepage</pre></code>
+        </div>
+        {:else}
+        <div class="item">
+            Nothing to see here yet. Do you want to <a href="#/login">log in</a> and write a post?
+        </div>
+        {/if}
+    {/if}
 {/each}
 
 <VisibilityCheck on:itemVisible={displayMoreItems} bind:visible={endIsVisible}/>
 
 <script lang="ts">
-import { listen, tick } from "svelte/internal";
+import { tick } from "svelte/internal";
 
 import type { Writable } from "svelte/store";
 
@@ -31,6 +48,9 @@ let endIsVisible: boolean
 
 let log = new ConsoleLogger()
 
+// Assume there are more items to lazily load until we find otherwise:
+let moreItems = true
+
 class DisplayItem {
     item: Item
     userID: string
@@ -49,7 +69,7 @@ async function displayMoreItems() {
 
         let n = await lazyItems.next()
         if (n.done) {
-            log.debug("DisplayMoreItems: no more to display")
+            moreItems = false
             return
         }
 
