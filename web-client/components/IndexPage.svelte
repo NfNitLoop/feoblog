@@ -51,6 +51,7 @@ $: routes = function() {
         Object.assign(routes, {
             "/post": appPage("./pages/PostPage.svelte"),
             "/my_profile": appPage("./pages/EditProfilePage.svelte"),
+            "/sync": appPage("./pages/SyncPage.svelte")
         })
     }
 

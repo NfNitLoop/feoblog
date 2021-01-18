@@ -20,7 +20,7 @@ export let inputType: "text"|"password" = "text"
 export let placeholder = label
 
 // Callback to validate the type of the
-export let validationCallback: (value: string) => string
+export let validationCallback: undefined|((value: string) => string)
 
 export let errorMessage = ""
 
@@ -33,7 +33,8 @@ function checkValue(value: string) {
         if (typeof e === "string") {
             errorMessage = e
         } else {
-            console.error("Error in handler InputBox.validationCallback", e)
+            errorMessage = "Error in handler InputBox.validationCallback"
+            console.error(errorMessage, e)
         }
     }
 }

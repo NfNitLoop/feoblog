@@ -10,7 +10,7 @@ use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData, net::TcpListener};
 use futures_core::stream::Stream;
 use futures_util::StreamExt;
 
-use actix_web::{http::header, web::Query};
+use actix_web::{dev::HttpResponseBuilder, http::header, web::Query};
 use actix_web::web::{
     self,
     get,
@@ -41,7 +41,6 @@ use crate::protos::{Item, Post, ProtoValid};
 
 mod filters;
 
-const PROTO3_MIME: &'static str = "application/protobuf3";
 
 pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
 
@@ -361,10 +360,27 @@ async fn homepage_item_list(
     list.no_more_items = !paginator.has_more;
     list.items = protobuf::RepeatedField::from(paginator.items);
     Ok(
-        HttpResponse::Ok()
-        .content_type(PROTO3_MIME)
-        .body(list.write_to_bytes()?)
+        proto_ok().body(list.write_to_bytes()?)
     )
+}
+
+// Start building a response w/ proto3 binary data.
+fn proto_ok() -> HttpResponseBuilder {
+    let mut builder = HttpResponse::Ok();
+
+    builder.content_type("application/protobuf3");
+
+    // All proto3 endpoints should be queryable by anyone.
+    // The server keeps no private information
+    builder.set_header("Access-Control-Allow-Origin", "*");
+
+    // Clients may want to check content-length in particular, but
+    // I can think of no reason to deny any, and * is shorter.
+    // Note, though https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Expose-Headers
+    // says that Content-Length is exposed by default, that is not my experience in Firefox 84.0.2
+    builder.set_header("Access-Control-Expose-Headers", "*");
+
+    builder
 }
 
 async fn feed_item_list(
@@ -396,8 +412,7 @@ async fn feed_item_list(
     list.no_more_items = !paginator.has_more;
     list.items = protobuf::RepeatedField::from(paginator.items);
     Ok(
-        HttpResponse::Ok()
-        .content_type(PROTO3_MIME)
+        proto_ok()
         .body(list.write_to_bytes()?)
     )
 }
@@ -431,8 +446,7 @@ async fn user_item_list(
     list.no_more_items = !paginator.has_more;
     list.items = protobuf::RepeatedField::from(paginator.items);
     Ok(
-        HttpResponse::Ok()
-        .content_type(PROTO3_MIME)
+        proto_ok()
         .body(list.write_to_bytes()?)
     )
 }
@@ -859,9 +873,7 @@ async fn get_item(
     // protobuf bytes via this endpoint, it's probably going to be so that it can verify the bytes
     // for itself anyway.
     Ok(
-        HttpResponse::Ok()
-        .content_type(PROTO3_MIME)
-        .body(item.item_bytes)
+        proto_ok().body(item.item_bytes)
     )
 
 }
@@ -888,8 +900,7 @@ async fn get_profile_item(
     // protobuf bytes via this endpoint, it's probably going to be so that it can verify the bytes
     // for itself anyway.
     Ok(
-        HttpResponse::Ok()
-        .content_type(PROTO3_MIME)
+        proto_ok()
         .header("signature", item.signature.to_base58())
         .body(item.item_bytes)
     )

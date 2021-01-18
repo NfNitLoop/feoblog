@@ -14,6 +14,13 @@ export class Client {
     // Load an Item from the server, if it exists.
     // Validates the signature of the Item before returning it.
     async getItem(userID: UserID|string, signature: Signature|string): Promise<Item|null> {
+        let bytes = await this.getItemBytes(userID, signature)
+        if (bytes === null) return null
+        return Item.deserialize(bytes)
+    }
+
+    // Like getItem(), but returns the item bytes so that the signature remains valid over the bytes.
+    async getItemBytes(userID: UserID|string, signature: Signature|string): Promise<Uint8Array|null> {
         
         // Perform validation of these before sending:
         if (typeof userID === "string") {
@@ -57,7 +64,25 @@ export class Client {
             throw `Invalid signature for ${url}`
         }
 
-        return Item.deserialize(bytes)
+        return bytes
+    }
+
+    // Write an item to the server.
+    // This assumes you have provided a valid userID & signature for the given bytes.
+    async putItem(userID: UserID, signature: Signature, bytes: Uint8Array) {
+    
+        let url = `${this.base_url}/u/${userID}/i/${signature}/proto3`
+        
+        let response: Response
+        try {
+            response = await fetch(url, {
+                method: "PUT",
+                body: bytes,
+            })
+        } catch (e) {
+            console.error("PUT exception:", e)
+            throw e
+        }    
     }
 
     // Like getItem, but just gets the latest profile that a server knows about for a given user ID.
@@ -81,6 +106,7 @@ export class Client {
         }
         let lengthHeader = response.headers.get("content-length")
         if (lengthHeader === null) {
+            console.log("response:", response)
             throw `The server didn't return a length for ${url}`
         }
         let length = parseInt(lengthHeader)
@@ -113,7 +139,7 @@ export class Client {
         if (item.profile === null) {
             throw `Server returned n Item for ${url} that is not a Profile.`
         }
-        return {item, signature}
+        return {item, signature, bytes}
     }
 
     // Load the latest profile from any server that hosts profiles for this user.
@@ -221,6 +247,7 @@ export class Client {
 export class ProfileResult {
     item: Item
     signature: Signature
+    bytes: Uint8Array
 }
 
 export class Config {
