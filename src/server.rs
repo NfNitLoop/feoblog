@@ -1,4 +1,11 @@
-use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData};
+use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData, net::TcpListener};
+
+// TODO: This module is getting long.
+// Split it out into parts:
+// * Parts that render static HTML pages
+// * Parts that return/accept Protobuf3 data required for clients.
+// * Static file handling logic.
+// * etc?
 
 use futures_core::stream::Stream;
 use futures_util::StreamExt;
@@ -67,13 +74,17 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
     }
 
     let mut server = HttpServer::new(app_factory); 
+    
     for bind in &binds {
-        server = server.bind(bind)?;
+        let socket = open_socket(bind).with_context(|_| {
+            format!("Error binding to address/port: {}", bind)
+        })?;
+        server = server.listen(socket)?;
     }
 
     if open {
         // TODO: This opens up a (AFAICT) blocking CLI browser on Linux. Boo. Don't do that.
-        // TODO: Handle wildcard addresses (0.0.0.0, ::0) and open them via localhost.
+        // TODO: Handle wildcard addresses (0.0.0.0, ::0) and --open them via localhost.
         let url = format!("http://{}/", binds[0]);
         let opened = webbrowser::open(&url);
         if !opened.is_ok() {
@@ -89,6 +100,26 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
     system.block_on(server.run())?;
    
     Ok(())
+}
+
+// Work around https://github.com/actix/actix-web/issues/1913
+fn open_socket(bind: &str) -> Result<TcpListener, failure::Error> {
+    use socket2::{Domain, Protocol, Socket, Type};
+    use std::net::SocketAddr;
+    
+    // Eh, this is what actix was using:
+    let backlog = 1024;
+    
+    let addr = bind.parse()?;
+    let domain = match addr {
+        SocketAddr::V4(_) => Domain::ipv4(),
+        SocketAddr::V6(_) => Domain::ipv6(),
+    };
+    let socket = Socket::new(domain, Type::stream(), Some(Protocol::tcp()))?;
+    socket.bind(&addr.into())?;
+    socket.listen(backlog)?;
+
+    Ok(socket.into_tcp_listener())
 }
 
 /// Data available for our whole application.

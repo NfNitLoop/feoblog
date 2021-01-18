@@ -14,4 +14,6 @@ fn main() {
     // use std::env;
     // let out_dir = env::var("OUT_DIR").unwrap();
     // println!("cargo:warning=OUT_DIR={}", out_dir);
+
+    // TODO: Build web-client first? I guess I've been manually doing this so far.
 }

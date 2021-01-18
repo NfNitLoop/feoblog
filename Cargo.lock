@@ -522,6 +522,7 @@ dependencies = [
  "rust-base58",
  "rust-embed",
  "serde",
+ "socket2",
  "sodiumoxide",
  "structopt",
  "time",
