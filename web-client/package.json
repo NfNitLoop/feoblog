@@ -29,7 +29,7 @@
     "typescript": "^3.9.7"
   },
   "scripts": {
-    "snowpack": "snowpack",
+    "build": "snowpack build",
     "test": "echo \"Error: no test specified\" && exit 1",
     "watch": "snowpack build --watch"
   },

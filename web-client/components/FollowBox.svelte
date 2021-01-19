@@ -20,18 +20,14 @@
 <script lang="ts">
 
 import { createEventDispatcher } from "svelte";
-import { fade } from "svelte/transition"
 import Button from "./Button.svelte"
 import { parseUserIDError } from "../ts/common";
 import InputBox from "./InputBox.svelte";
 
 export let userID = ""
 export let displayName = ""
-let checked = false
 
 let dispatcher = createEventDispatcher()
-
-$: idError = parseUserIDError(userID)
 
 </script>
 

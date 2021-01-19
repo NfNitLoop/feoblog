@@ -497,39 +497,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "blog"
-version = "0.1.0"
-dependencies = [
- "actix-web",
- "actix-web-codegen",
- "askama",
- "askama_actix",
- "async-trait",
- "bs58",
- "env_logger",
- "failure",
- "futures",
- "futures-core",
- "futures-util",
- "mime_guess",
- "multihash",
- "protobuf",
- "protoc-rust",
- "pulldown-cmark",
- "r2d2",
- "r2d2_sqlite",
- "rusqlite",
- "rust-base58",
- "rust-embed",
- "serde",
- "socket2",
- "sodiumoxide",
- "structopt",
- "time",
- "webbrowser",
-]
-
-[[package]]
 name = "brotli-sys"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -816,6 +783,39 @@ name = "fallible-streaming-iterator"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
+
+[[package]]
+name = "feoblog"
+version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "actix-web-codegen",
+ "askama",
+ "askama_actix",
+ "async-trait",
+ "bs58",
+ "env_logger",
+ "failure",
+ "futures",
+ "futures-core",
+ "futures-util",
+ "mime_guess",
+ "multihash",
+ "protobuf",
+ "protoc-rust",
+ "pulldown-cmark",
+ "r2d2",
+ "r2d2_sqlite",
+ "rusqlite",
+ "rust-base58",
+ "rust-embed",
+ "serde",
+ "socket2",
+ "sodiumoxide",
+ "structopt",
+ "time",
+ "webbrowser",
+]
 
 [[package]]
 name = "flate2"
