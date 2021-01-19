@@ -42,8 +42,12 @@
 </div>
 
 <div class="item">
-    <h1>Publish my posts</h1>
+    <h1>Publish My Posts</h1>
     <p>Copy your posts (and profile updates, etc.) from this server to all servers listed in your profile</p>
+
+    <Button on:click={publishMyPosts}>Sync</Button>
+
+    <TaskTrackerView tracker={publishMyPostsTracker}/>
 </div>
 
 
@@ -178,7 +182,7 @@ function syncMyFeed() {
 async function syncMyFeedTask(tracker: TaskTracker) {
     let local = $appState.client
     
-    let profile = await syncItems({tracker, local, userID})
+    let profile = await syncUserItems({tracker, local, userID})
     let myServers = serversFromProfile(profile)
 
     tracker.log("Syncing follows' items")
@@ -186,7 +190,7 @@ async function syncMyFeedTask(tracker: TaskTracker) {
         // Sync items from each of my follows.
         try {
             let uid = UserID.fromBytes(follow.user.bytes)
-            await syncItems({tracker, local, userID: uid, extraServers: myServers})
+            await syncUserItems({tracker, local, userID: uid, extraServers: myServers})
         } catch (e) {
             tracker.error(e)
         }
@@ -206,9 +210,11 @@ type SyncOptions = {
     serversOverride?: boolean
 }
 
-async function syncItems({tracker, local, userID, extraServers}: SyncOptions): Promise<Profile> {
+async function syncUserItems({tracker, local, userID, extraServers}: SyncOptions): Promise<Profile> {
     tracker.log(`Syncing items for ${userID}`)
     let response = await local.getProfile(userID)
+
+    // TODO: Hmm, I suppose now that we take `extraServers` we could just try to sync from those.
     if (!response) throw `${userID} has no profile`
     let profile = response.item.profile
 
@@ -224,34 +230,30 @@ async function syncItems({tracker, local, userID, extraServers}: SyncOptions): P
     }
 
     // TODO: Put some optional limit on how far back we sync. 
-    // For now, we'll load the IDs of all known local items.
-    // Note, we'll use a string because objects use identity comparisons, not equality.
-    let localSignatures: Set<string> = new Set()
-    for await (let listEntry of local.getUserItems(userID)) {
-        let sig = Signature.fromBytes(listEntry.signature.bytes)
-        localSignatures.add(sig.toString())
-    }
+    let localSignatures = await loadAllSignatures(local, userID)
 
     for (let server of servers) {
-        tracker.log(`Syncing from ${server}`)
-        let remote = new Client({base_url: server})
+        try {
+            tracker.log(`Syncing from ${server}`)
+            let remote = new Client({base_url: server})
 
-        for await (let listEntry of remote.getUserItems(userID)) {
-            let sig = Signature.fromBytes(listEntry.signature.bytes)
-            if (localSignatures.has(sig.toString())) continue // already here, no need to sync.
+            for await (let listEntry of remote.getUserItems(userID)) {
+                let signature = Signature.fromBytes(listEntry.signature.bytes)
+                if (localSignatures.has(signature.toString())) continue
+                syncUserItem({
+                    userID,
+                    signature,
+                    to: local,
+                    from: remote,
+                    tracker,
+                })
 
-            tracker.log(`Copying ${sig}`)
-            let bytes = await remote.getItemBytes(userID, sig)
-            if (!bytes) {
-                tracker.warn("404 (not found) from remote server")
-                continue
+                localSignatures.add(signature.toString())
             }
-            await local.putItem(userID, sig, bytes)
-            
-            // If we sync more servers later, don't need to re-sync this:
-            localSignatures.add(sig.toString())
-
-            // TODO: Eventually, also sync file contents.
+        } catch (e) {
+            // One server failing shouldn't stop us from syncing from others.
+            tracker.error(`${e}`)
+            tracker.warn("Skipping this server")
         }
 
     }
@@ -259,17 +261,110 @@ async function syncItems({tracker, local, userID, extraServers}: SyncOptions): P
     return profile
 }
 
-function serversFromProfile(profile: Profile, tracker = new TaskTracker()) {
+// TODO: In the future, we can do some more efficient loading. Since getUserItems() returns 
+// items in tiemstamp order, we can do a merge-ish comparison as we walk the local/remote lists to
+// more efficiently diff them.
+//
+// For now, we'll load the IDs of all known items and just use the Set(s) to diff.
+async function loadAllSignatures(client: Client, userID: UserID): Promise<Set<string>> {
+    // Note, we'll use a string because objects use identity comparisons, not equality.
+    let sigs = new Set<string>()
+
+    for await (let listEntry of client.getUserItems(userID)) {
+        let sig = Signature.fromBytes(listEntry.signature.bytes)
+        sigs.add(sig.toString())
+    }
+    return sigs
+}
+
+type SyncUserItemParams = {
+    to: Client
+    from: Client
+    tracker: TaskTracker
+    userID: UserID
+    signature: Signature
+}
+
+async function syncUserItem({userID, signature, to, from, tracker}: SyncUserItemParams) {
+
+    tracker.log(`Copying ${signature}`)
+    let bytes = await from.getItemBytes(userID, signature)
+    if (!bytes) {
+        // This would be weird, since the remote server just listed the item for us.
+        // But I guess it shouldn't block syncing further items?
+        tracker.warn("404 (not found) from `from` server")
+        return
+    }
+
+    // Throws & exits if we couldn't put an item.
+    // One possible reason is that the user is not "known" to the server, so the server
+    // won't hold items for that user.  Another is that the user has reached their quota.
+    await to.putItem(userID, signature, bytes)
+
+    // TODO: Once implemented, also sync file contents.
+}
+
+// Return onl valid servers from a Profile.
+// Optionally tracker.warn() about broken ones.
+function serversFromProfile(profile: Profile, tracker = new TaskTracker()): Set<string> {
     return new Set(
         profile.servers.map(s => s.url).filter(url => {
             let error = validateServerURL(url)
             if (error) {
-                tracker.warn(`${error}: ${url}`)
+                tracker.warn(`Skipping invalid server URL. ${error}: ${url}`)
                 return false
             }
             return true
         })
     )
 }
+
+let publishMyPostsTracker = writable(new TaskTracker())
+
+function publishMyPosts() {
+    let tracker = new TaskTracker()
+    tracker.store = publishMyPostsTracker
+
+    tracker.run(() => publishMyPostsTask(tracker))
+}
+
+async function publishMyPostsTask(tracker: TaskTracker) {
+    let local = $appState.client
+    let result = await local.getProfile(userID)
+    if (!result) throw `Current user does not have a local profile.`
+
+    let profile = result.item.profile
+    let servers = serversFromProfile(profile)
+    if (servers.size === 0) {
+        throw `User profile doesn't specify any servers.`
+    }
+
+    // Loading full list once, because we may need it N times below:
+    // TODO: as above, we could limit this to some shorter timespan by default.
+    let localSigs = await loadAllSignatures(local, userID)
+
+    for (let server of servers) {
+        try {
+            let remote = new Client({base_url: server})
+            // Loading full list because I'm lazy. If we had timestamps in localSigs, we could iterate:
+            let remoteSigs = await loadAllSignatures(remote, userID)
+            for (let sig of localSigs) {
+                if (remoteSigs.has(sig)) continue
+                await syncUserItem({
+                    userID,
+                    signature: Signature.fromString(sig),
+                    from: local,
+                    to: remote,
+                    tracker
+                })
+            }
+
+        } catch (e) {
+            tracker.error(`${e}`)
+            tracker.warn("Skipping this server")
+        }
+    }
+}
+
 
 </script>

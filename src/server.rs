@@ -10,7 +10,7 @@ use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData, net::TcpListener};
 use futures_core::stream::Stream;
 use futures_util::StreamExt;
 
-use actix_web::{dev::{HttpResponseBuilder, ServiceRequest}, http::header, middleware::DefaultHeaders, web::Query};
+use actix_web::{dev::HttpResponseBuilder, http::Method, middleware::DefaultHeaders, web::Query};
 use actix_web::web::{
     self,
     get,
@@ -147,7 +147,7 @@ fn routes(cfg: &mut web::ServiceConfig) {
             web::resource("/u/{userID}/i/{signature}/proto3")
             .route(get().to(get_item))
             .route(put().to(put_item))
-            // TODO: handle the OPTIONS CORS preflight
+            .route(route().method(Method::OPTIONS).to(cors_preflight_allow))
             .wrap(cors_ok_headers())
         )
 
@@ -395,6 +395,20 @@ fn cors_ok_headers() -> DefaultHeaders {
     DefaultHeaders::new()
     .header("Access-Control-Allow-Origin", "*")
     .header("Access-Control-Expose-Headers", "*")
+
+    // Number of seconds a browser can cache the cors allows.
+    // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Max-Age
+    // FF caps this at 24 hours, and is the most permissive there, so that's what we'll use.
+    // Does this mean that my Cache-Control max-age is truncated to this value? That would be sad.
+    .header("Access-Control-Max-Age", "86400")
+}
+
+// Before browsers will post data to a server, they make a CORS OPTIONS request to see if that's OK.
+// This responds to that request to let the client know this request is allowed.
+async fn cors_preflight_allow() -> HttpResponse {
+    HttpResponse::NoContent()
+        .header("Access-Control-Allow-Methods", "OPTIONS, GET, PUT")
+        .body("")
 }
 
 async fn feed_item_list(
@@ -498,7 +512,7 @@ where
     Filter: Fn(&T) -> bool,
 {
     fn accept(&mut self, input: In) -> Result<bool, E> {
-        let max_len = self.params.count.map(|c| bound(c, 1, self.max_items)).unwrap_or(20);
+        let max_len = self.params.count.map(|c| bound(c, 1, self.max_items)).unwrap_or(self.max_items);
         
         let item = (self.mapper)(input)?;
         if !(self.filter)(&item) {
@@ -870,7 +884,18 @@ async fn get_item(
     data: Data<AppData>,
     path: Path<(UserID, Signature,)>,
 ) -> Result<HttpResponse, Error> {
+
+    // TODO: Check whether Access-Control-Max-Age effectively truncates our Cache-Control max-age.
+    // If it does, we'll likely get more hits to this resource than necessary.
+    // But, according to https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching,
+    // browsers will send an If-None-Match header if they're updating caches. Does that apply to
+    // expired Access-Control caches too? If so, we could just check for the presence of that tag
+    // and return the "This content hasn't updated" response w/o having to touch the DB.
+    // We'd also probably need to *send* an etag w/ the resposne to allow browsers to do this.
+    // And all this needs a bit of testing.
     
+    // TODO: Limit items we return to "known users", in case we unfollowed someone due to sketchy content.
+
     let (user_id, signature) = path.into_inner();
     let backend = data.backend_factory.open().compat()?;
     let item = backend.user_item(&user_id, &signature).compat()?;
@@ -887,7 +912,12 @@ async fn get_item(
     // protobuf bytes via this endpoint, it's probably going to be so that it can verify the bytes
     // for itself anyway.
     Ok(
-        proto_ok().body(item.item_bytes)
+        proto_ok()
+        // Once an Item is stored, it is immutable. Cache forever.
+        // "aggressive caching" according to https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+        // 31536000 = 365 days, as seconds
+        .header("Cache-Control", "public, max-age=31536000, immutable")
+        .body(item.item_bytes)
     )
 
 }
