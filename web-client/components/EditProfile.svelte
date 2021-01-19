@@ -18,7 +18,19 @@
     {/each}
     <Button on:click={addFollow}>New Follow</Button>
 
-    <!-- TODO: Servers -->
+
+    <h2>Servers</h2>
+    {#each servers as server, index (server)}
+        <div class="inputsGreyBox">
+        <InputBox
+            label="Server"
+            placeholder="https://feoblog.example.com"
+            validationCallback={validateServerURL}
+            bind:value={servers[index].url}
+        />
+        </div>
+    {/each}
+
 </div>
 
 
@@ -26,14 +38,15 @@
 import ExpandingTextarea from "./ExpandingTextarea.svelte"
 import FollowBox from "./FollowBox.svelte"
 import Button from "./Button.svelte"
-import { Follow, Item, Profile, UserID } from "../protos/feoblog";
+import { Follow, Item, Profile, Server, UserID } from "../protos/feoblog";
 import type { AppState } from "../ts/app";
 import type { Writable } from "svelte/store";
 import { UserID as ClientUserID } from "../ts/client";
-import { parseUserID } from "../ts/common";
+import { parseUserID, validateServerURL } from "../ts/common";
 import { tick } from "svelte";
 import moment from "moment";
 import bs58 from "bs58";
+import InputBox from "./InputBox.svelte";
 
 export let appState: Writable<AppState>
 // Exported so that EditorWithPreview can preview, serialize, & send it for us.
@@ -74,6 +87,15 @@ $: validationErrors = function(): string[] {
             errs.push(`${count} follows for userID ${uid}`)
         }
 
+    }
+
+    for (let {url} of servers) {
+        if (url.length == 0) continue
+        let error = validateServerURL(url)
+        if (error) {
+            errs.push(error)
+            break // all server errors are the same basically.
+        }
     }
 
     return errs
@@ -132,7 +154,19 @@ class FollowEntry {
     }
 }
 
-// TODO: Move this to a ProfileEditor component.
+// We use an object here because it can be used as a Svelte #each key.
+let servers: {url:string}[] = [{url: ""}]
+$: {
+    let emptyURLs = servers.filter(s => s.url.length == 0).length
+    // Avoid an infinite loop. 😅
+    if (emptyURLs != 1) {
+        servers = [
+            ...servers.filter(s => s.url.length > 0),
+            {url: ""}
+        ]
+    }
+}
+
 // This is the inverse of $: itemProto above. Given an Item, load data from it.
 function loadFromProto(item: Item) {
     console.log("load from Proto")
@@ -148,7 +182,7 @@ function loadFromProto(item: Item) {
 
     follows = _follows
 
-    // TODO: servers
+    servers = profile.servers.map((s) => { return {url: s.url} })
 }
 
 if (initialItem) {
@@ -186,7 +220,10 @@ $: item = function(): Item {
         }))
     })
 
-    // TODO: servers.
+    for (let {url} of servers) {
+        if (url === "") continue
+        profile.servers.push(new Server({url}))
+    }
 
     return item
 }()

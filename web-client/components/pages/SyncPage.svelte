@@ -13,7 +13,7 @@
     <InputBox 
         label="Server URL"
         placeholder="https://feoblog.example.com"
-        validationCallback={checkServerURL}
+        validationCallback={validateServerURL}
         disabled={$profileTask.isRunning}
         bind:errorMessage={serverURLError}
         bind:value={serverURL}
@@ -30,19 +30,20 @@
         on:click={bootstrapProfiles}
     >Sync</Button>
 
-    {#if $profileTask.logs.length > 0}
-    <ul>
-        {#each $profileTask.logs as entry}
-            {#if entry.isError}
-                <li class=error>{entry.message}</li>
-            {:else if entry.isWarning}
-                <li>⚠ {entry.message}</li>
-            {:else}
-                <li>{entry.message}</li>
-            {/if}
-        {/each}
-    </ul>
-    {/if}
+    <TaskTrackerView tracker={profileTask}/>
+</div>
+
+<div class="item">
+    <h1>Sync My Feed</h1>
+    <p>Copies your own posts, and posts of those you follow, from any remote servers (listed in profiles) to this one.</p>
+    <Button on:click={syncMyFeed}>Sync</Button>
+
+    <TaskTrackerView tracker={syncMyFeedTracker}/>
+</div>
+
+<div class="item">
+    <h1>Publish my posts</h1>
+    <p>Copy your posts (and profile updates, etc.) from this server to all servers listed in your profile</p>
 </div>
 
 
@@ -50,12 +51,14 @@
 import { DateTime } from "luxon";
 import type { Writable } from "svelte/store"
 import { writable } from "svelte/store"
-import type { Profile } from "../../protos/feoblog";
+import type { ItemListEntry, Profile } from "../../protos/feoblog";
 
 import type { AppState } from "../../ts/app"
-import { Client, UserID } from "../../ts/client"
+import { Client, Signature, UserID } from "../../ts/client"
+import { TaskTracker, validateServerURL } from "../../ts/common";
 import Button from "../Button.svelte"
 import InputBox from "../InputBox.svelte"
+import TaskTrackerView from "../TaskTrackerView.svelte";
 import UserIdInput from "../UserIDInput.svelte";
 
 export let appState: Writable<AppState>
@@ -68,7 +71,6 @@ $: userID = function() {
 }()
 
 
-const serverURLPattern = /^(https?:\/\/[^/]+)\/?$/
 let serverURL = ""
 let serverURLError = ""
 $: haveValidServerURL = (serverURL != "") && serverURLError === ""
@@ -76,94 +78,12 @@ $: haveValidServerURL = (serverURL != "") && serverURLError === ""
 let bootstrapUserID = ""
 let bootstrapUserIDValid = false
 
-function checkServerURL(url: string): string {
-    if (url === "") {
-        return "" // Don't show error in the empty case.
-    }
-
-    let match = serverURLPattern.exec(url)
-    if (match === null) {
-        return "Invalid URL format"
-    }
-
-    return ""
-}
 
 
-// Tracks the progress of some long-running async task.
-class TaskTracker 
-{
-    // A store that will geet updated every time this object changes
-    store: Writable<TaskTracker>|null = null
- 
-    _isRunning = false
-    get isRunning() { return this._isRunning }
 
-    _logs: LogEntry[] = []
-    get logs(): ReadonlyArray<LogEntry> {
-        return this._logs
-    }
-
-    async run(asyncTask: () => Promise<void>): Promise<void> {
-        this.clear()
-        this._isRunning = true
-        this.log("Begin") // calls notify()
-        try {
-            await asyncTask()
-        } catch (e) {
-            this.error(`Task threw an exception: ${e}`)
-        }
-        this._isRunning = false
-        this.log("Done") // calls notify()
-    }
-
-    private notify() {
-        if (this.store) this.store.set(this)
-    }
-
-    clear() {
-        this._logs = []
-        this.notify()
-    }
-
-    private writeLog(log: LogEntry) {
-        this._logs.push(log)
-        this.notify()
-    }
-
-    error(message: string) {
-        this.writeLog({
-            message,
-            isError: true,
-            timestamp: DateTime.local().valueOf()
-        })
-    }
-
-    log(message: string) {
-        this.writeLog({
-            message,
-            timestamp: DateTime.local().valueOf()
-        })
-    }
-
-    warn(message: string) {
-        this.writeLog({
-            message,
-            isWarning: true,
-            timestamp: DateTime.local().valueOf()
-        })
-    }
-}
-
-
-type LogEntry = {
-    timestamp: number
-    message: string
-    isError?: boolean
-    isWarning?: boolean
-}
 
 let profileTask = writable(new TaskTracker())
+let syncMyFeedTracker = writable(new TaskTracker())
 
 function bootstrapProfiles() {
     let tracker = new TaskTracker()
@@ -176,9 +96,8 @@ async function bootstrapProfilesTask(tracker: TaskTracker) {
     
     let local = $appState.client
 
-    let match = serverURLPattern.exec(serverURL)
-    if (!match) throw "Invalid profile URL?"
-    let remoteURL = match[1]
+    if (validateServerURL(serverURL)) throw `Invalid server URL`
+    let remoteURL = serverURL
     let remote = new Client({
         base_url: remoteURL
     })
@@ -246,6 +165,111 @@ async function syncOneProfile(tracker: TaskTracker, local: Client, remote: Clien
     tracker.log("Saved")
 
     return remoteProfile.item.profile
+}
+
+function syncMyFeed() {
+    let tracker = new TaskTracker()
+    tracker.store = syncMyFeedTracker
+
+    tracker.run(() => syncMyFeedTask(tracker))
+
+}
+
+async function syncMyFeedTask(tracker: TaskTracker) {
+    let local = $appState.client
+    
+    let profile = await syncItems({tracker, local, userID})
+    let myServers = serversFromProfile(profile)
+
+    tracker.log("Syncing follows' items")
+    for (let follow of profile.follows) {
+        // Sync items from each of my follows.
+        try {
+            let uid = UserID.fromBytes(follow.user.bytes)
+            await syncItems({tracker, local, userID: uid, extraServers: myServers})
+        } catch (e) {
+            tracker.error(e)
+        }
+    }
+}
+
+type SyncOptions = {
+    tracker: TaskTracker
+    local: Client
+    userID: UserID
+
+    // Additional servers to fetch from.
+    // Helps when your friends forgot to specify their server, but you're homed there.
+    extraServers?: Set<string>
+
+    // If true, `extraServers` completely replaces (instead of extends) the list provided by `userID`'s profile
+    serversOverride?: boolean
+}
+
+async function syncItems({tracker, local, userID, extraServers}: SyncOptions): Promise<Profile> {
+    tracker.log(`Syncing items for ${userID}`)
+    let response = await local.getProfile(userID)
+    if (!response) throw `${userID} has no profile`
+    let profile = response.item.profile
+
+    // Use a set to avoid hitting the same server multiple times:
+    let servers = serversFromProfile(profile, tracker)
+    if (extraServers) {
+        for (let s of extraServers) servers.add(s)
+    }
+    
+    if (servers.size === 0) {
+        tracker.log("User profile has 0 servers.")
+        return profile
+    }
+
+    // TODO: Put some optional limit on how far back we sync. 
+    // For now, we'll load the IDs of all known local items.
+    // Note, we'll use a string because objects use identity comparisons, not equality.
+    let localSignatures: Set<string> = new Set()
+    for await (let listEntry of local.getUserItems(userID)) {
+        let sig = Signature.fromBytes(listEntry.signature.bytes)
+        localSignatures.add(sig.toString())
+    }
+
+    for (let server of servers) {
+        tracker.log(`Syncing from ${server}`)
+        let remote = new Client({base_url: server})
+
+        for await (let listEntry of remote.getUserItems(userID)) {
+            let sig = Signature.fromBytes(listEntry.signature.bytes)
+            if (localSignatures.has(sig.toString())) continue // already here, no need to sync.
+
+            tracker.log(`Copying ${sig}`)
+            let bytes = await remote.getItemBytes(userID, sig)
+            if (!bytes) {
+                tracker.warn("404 (not found) from remote server")
+                continue
+            }
+            await local.putItem(userID, sig, bytes)
+            
+            // If we sync more servers later, don't need to re-sync this:
+            localSignatures.add(sig.toString())
+
+            // TODO: Eventually, also sync file contents.
+        }
+
+    }
+
+    return profile
+}
+
+function serversFromProfile(profile: Profile, tracker = new TaskTracker()) {
+    return new Set(
+        profile.servers.map(s => s.url).filter(url => {
+            let error = validateServerURL(url)
+            if (error) {
+                tracker.warn(`${error}: ${url}`)
+                return false
+            }
+            return true
+        })
+    )
 }
 
 </script>

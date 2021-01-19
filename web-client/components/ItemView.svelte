@@ -190,6 +190,16 @@ function interceptLinkClicks(event: Event) {
                 <li>(None)</li>    
             {/each}
             </ul>
+
+            <h2>Servers</h2>
+            <ul>
+                {#each item.profile.servers as server (server)}
+                    <!-- NOT hyperlinking this for now, in case someone tries to inject a javascript: link. -->
+                    <li><code>{server.url}</code></li>
+                {:else}
+                    <li>(None)</li>
+                {/each}
+            </ul>
             
         {:else}
             Unknown item type.

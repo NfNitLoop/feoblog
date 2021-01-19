@@ -2,6 +2,8 @@
 
 import bs58 from "bs58"
 import * as commonmark from "commonmark"
+import { DateTime } from "luxon";
+import type { Writable } from "svelte/store";
 
 const USER_ID_BYTES = 32;
 const PASSWORD_BYTES = USER_ID_BYTES + 4 // 4 bytes b58 checksum.
@@ -114,4 +116,94 @@ export class ConsoleLogger implements Logger {
         this.debugEnabled = true
         return this
     }
+}
+
+
+// Tracks the progress of some long-running async task.
+export class TaskTracker 
+{
+    // A store that will get updated every time this object changes
+    store: Writable<TaskTracker>|null = null
+ 
+    _isRunning = false
+    get isRunning() { return this._isRunning }
+
+    _logs: LogEntry[] = []
+    get logs(): ReadonlyArray<LogEntry> {
+        return this._logs
+    }
+
+    async run(asyncTask: () => Promise<void>): Promise<void> {
+        this.clear()
+        this._isRunning = true
+        this.log("Begin") // calls notify()
+        try {
+            await asyncTask()
+        } catch (e) {
+            this.error(`Task threw an exception: ${e}`)
+        }
+        this._isRunning = false
+        this.log("Done") // calls notify()
+    }
+
+    private notify() {
+        if (this.store) this.store.set(this)
+    }
+
+    clear() {
+        this._logs = []
+        this.notify()
+    }
+
+    private writeLog(log: LogEntry) {
+        this._logs.push(log)
+        this.notify()
+    }
+
+    error(message: string) {
+        this.writeLog({
+            message,
+            isError: true,
+            timestamp: DateTime.local().valueOf()
+        })
+    }
+
+    log(message: string) {
+        this.writeLog({
+            message,
+            timestamp: DateTime.local().valueOf()
+        })
+    }
+
+    warn(message: string) {
+        this.writeLog({
+            message,
+            isWarning: true,
+            timestamp: DateTime.local().valueOf()
+        })
+    }
+}
+
+
+type LogEntry = {
+    timestamp: number
+    message: string
+    isError?: boolean
+    isWarning?: boolean
+}
+
+
+const serverURLPattern = /^(https?:\/\/[^/ ]+)$/
+// Returns a non-empty error string if `url` is not a valid server URL.
+export function validateServerURL(url: string): string {
+    if (url === "") {
+        return "" // Don't show error in the empty case.
+    }
+
+    let match = serverURLPattern.exec(url)
+    if (match === null) {
+        return "Invalid server URL format"
+    }
+
+    return ""
 }
