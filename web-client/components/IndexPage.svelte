@@ -38,7 +38,7 @@ import {wrap} from "svelte-spa-router/wrap"
 import { writable } from "svelte/store";
 let appState = writable(new app.AppState())
 
-$: routes = function() {
+let routes = function() {
     let routes: RouteDefinition = {
         "/": appPage("./pages/HomePage.svelte"),
         "/u/:userID/": appPage("./pages/UserPage.svelte"),
@@ -47,13 +47,16 @@ $: routes = function() {
         "/u/:userID/i/:signature/": appPage("./ItemView.svelte"),
         "/login": appPage('./pages/Login.svelte'),
     }
-    if ($appState.loggedIn) {
-        Object.assign(routes, {
-            "/post": appPage("./pages/PostPage.svelte"),
-            "/my_profile": appPage("./pages/EditProfilePage.svelte"),
-            "/sync": appPage("./pages/SyncPage.svelte")
-        })
-    }
+
+    // I tried dynamically updating `routes` based on $appState.loggedIn, 
+    // but it seems like <Router> might not update its routes when they change.
+    // We'll just unconditionally include these routes. We hide them from nav
+    // when they're not applicable.
+    Object.assign(routes, {
+        "/post": appPage("./pages/PostPage.svelte"),
+        "/my_profile": appPage("./pages/EditProfilePage.svelte"),
+        "/sync": appPage("./pages/SyncPage.svelte")
+    })
 
     // Must be last:
     routes["*"] = NotFoundPage
