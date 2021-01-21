@@ -1,7 +1,13 @@
 {# Show a single post by a user. #}
 {% extends "page.html" %}
 
-{% block title %}{{ display_name }} (TODO: Title){% endblock %}
+{% block title %}
+{%- if title.len() > 0 -%}
+    {{ display_name}}: {{ title }}
+{%- else -%}
+    {{ display_name }}
+{%- endif -%}
+{% endblock %}
 
 {% block body %}
 
