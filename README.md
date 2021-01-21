@@ -54,7 +54,7 @@ can read them knowing that they haven't been modified.
 For servers/clients on the web, there are [standard URLs][URL Layout] for getting and
 sending `Item`s.
 
-### Other featuers ###
+### Other features ###
 
  * Uses a safe subset of CommonMark markdown for posts.
  * Can easily run a server locally
@@ -68,16 +68,16 @@ sending `Item`s.
  * File attachments
  * Revoking user IDs (i.e.: "Delete my account.")
 
- ### Unplaned features ###
+ ### Unplanned features ###
 
-There are certain features that I do not plan to implment, because I think they
-are deterimental in social networks.
+There are certain features that I do not plan to implement, because I think they
+are detrimental in social networks.
 
  * Likes, or counts for likes, replies, or follows. These are easy to game and
    people assign too much meaning to them.
- * Edits or deletes. Content you post is crytpographically signed and visible
+ * Edits or deletes. Content you post is cryptographically signed and visible
    forever, unless you revoke your userID.
- * Reblogging. I belive there should be a higher barrier to sharing others'
+ * Reblogging. I believe there should be a higher barrier to sharing others'
    content. You'll need to comment, post, or "Reply" post to share content to
    your followers.
 
