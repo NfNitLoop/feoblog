@@ -111,16 +111,14 @@ function interceptLinkClicks(event: Event) {
     if (!href) return
 
     let isRelative = href.startsWith("/") && !href.startsWith("//")
-    let isAppLink = href.startsWith("#/")
 
+    // Must come first
+    if (linkMode === "newWindow") {
+        anchor.target = "_blank"
+    }
 
     if (isRelative) {
         anchor.href = `#${href}`
-        return
-    }
-
-    if (linkMode === "newWindow") {
-        anchor.target = "_blank"
     }
 }
 
