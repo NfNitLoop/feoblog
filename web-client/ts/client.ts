@@ -69,7 +69,7 @@ export class Client {
 
     // Write an item to the server.
     // This assumes you have provided a valid userID & signature for the given bytes.
-    async putItem(userID: UserID, signature: Signature, bytes: Uint8Array) {
+    async putItem(userID: UserID, signature: Signature, bytes: Uint8Array): Promise<Response> {
     
         let url = `${this.base_url}/u/${userID}/i/${signature}/proto3`
         
@@ -86,7 +86,9 @@ export class Client {
         } catch (e) {
             console.error("PUT exception:", e)
             throw e
-        }    
+        }
+
+        return response
     }
 
     // Like getItem, but just gets the latest profile that a server knows about for a given user ID.

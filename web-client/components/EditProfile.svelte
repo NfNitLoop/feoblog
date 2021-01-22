@@ -169,7 +169,6 @@ $: {
 
 // This is the inverse of $: itemProto above. Given an Item, load data from it.
 function loadFromProto(item: Item) {
-    console.log("load from Proto")
     let profile = item.profile
     displayName = profile.display_name
     profileContent = profile.about

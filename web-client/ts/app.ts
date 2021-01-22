@@ -145,6 +145,12 @@ export class AppState
     private initLoggedIn() {
         this.profileService.userID = this.loggedInUser
     }
+
+    // Notify AppState that the currently logged-in user's profile was (possibly)
+    // changed.  Allows reloading of the names cache.
+    public userProfileChanged() {
+        this.profileService.userID = this.loggedInUser
+    }
 }
 
 // TODO: Rename to NameService

@@ -60,13 +60,15 @@
 <script lang="ts">
 import type { Writable } from "svelte/store"
 import bs58 from "bs58"
-import { Item } from "../protos/feoblog"
+import { Item, Signature } from "../protos/feoblog"
 import * as nacl from "tweetnacl-ts"
 import bs58check from 'bs58check'
 import { DateTime } from "luxon"
+import { push as navigateTo } from "svelte-spa-router"
+
 
 import { MAX_ITEM_SIZE } from '../ts/common'
-import type { UserID as ClientUserID } from "../ts/client"
+import { UserID as ClientUserID, Signature as ClientSignature } from "../ts/client"
 import type { AppState } from '../ts/app';
 import ItemView from './ItemView.svelte'
 import Button from './Button.svelte'
@@ -228,29 +230,32 @@ function unSign() {
 async function submit() {
     if ( (errors.length > 0) || !validSignature) {
         console.error("Submit clicked when not valid");
-        return;
+        return
     }
 
-    let url = `/u/${userID}/i/${signature}/proto3`
-    let bytes = itemProtoBytes;
+    if (!itemProtoBytes) {
+        console.error("Refusing to send 0 bytes")
+        return
+    }
+
+    let sig = ClientSignature.fromString(signature)
+
     status = "Making request"
-    
-    let response: Response
+
     try {
-        response = await fetch(url, {
-            method: "PUT",
-            body: bytes,
-        })
+        $appState.client.putItem(userID, sig, itemProtoBytes)
     } catch (e) {
         console.error("PUT exception:", e)
         status = `PUT exception: ${e}`
         return 
     }
 
+    // Response was OK.
+    if (mode === "profile") {
+        $appState.userProfileChanged()
+    }
 
-    let code = response.status
-    let message = await response.text()
-    status = `${code}: ${message}`
+    navigateTo(`#/u/${userID}/i/${sig}/`)
 }
 
 </script>
