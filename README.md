@@ -135,6 +135,8 @@ To build a "release"/self-contained version of Feoblog:
 Getting Started
 ===============
 
+If you don't want to set up your server right away, check out the [Demo on YouTube](https://youtu.be/LJMhiNUuCqI)!
+
 Run the server
 --------------
 
