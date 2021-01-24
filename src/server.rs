@@ -764,7 +764,7 @@ async fn put_item(
         return Ok(
             HttpResponse::Forbidden()
             .content_type(PLAINTEXT)
-            .body("Unknown user ID".to_string())
+            .body("Unknown user ID")
         )
     }
     
@@ -781,6 +781,14 @@ async fn put_item(
     let mut item: Item = Item::new();
     item.merge_from_bytes(&bytes)?;
     item.validate()?;
+
+    if item.timestamp_ms_utc > Timestamp::now().unix_utc_ms {
+        return Ok(
+            HttpResponse::BadRequest()
+            .content_type(PLAINTEXT)
+            .body("The Item's timestamp is in the future")
+        )
+    }
 
     if let Some(deny_reason) = backend.quota_check_item(&user, &bytes, &item).compat()? {
         return Ok(
