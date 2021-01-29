@@ -235,15 +235,28 @@ async function syncUserItems({tracker, local, userID, extraServers}: SyncOptions
             let remote = new Client({base_url: server})
 
             for await (let listEntry of remote.getUserItems(userID)) {
-                let signature = Signature.fromBytes(listEntry.signature.bytes)
+                let signature 
+                try {
+                    signature = Signature.fromBytes(listEntry.signature.bytes)
+                } catch (e) {
+                    tracker.error(`Invalid signature from server: ${listEntry.signature.bytes}`)
+                    continue
+                }
                 if (localSignatures.has(signature.toString())) continue
-                syncUserItem({
-                    userID,
-                    signature,
-                    to: local,
-                    from: remote,
-                    tracker,
-                })
+
+                try {
+                    await syncUserItem({
+                        userID,
+                        signature,
+                        to: local,
+                        from: remote,
+                        tracker,
+                    })
+                } catch (e) {
+                    tracker.error(`Error saving item: ${e}`)
+                    tracker.warn("This may mean that the user can not post to the server, or has exceeded their quota. Skipping")
+                    return profile
+                }
 
                 localSignatures.add(signature.toString())
             }

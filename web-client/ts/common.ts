@@ -285,6 +285,7 @@ class Timer {
             return `${secs.toFixed(0)} seconds`
         }
 
+        secs = Math.round(secs)
         let minutes = Math.floor(secs / 60)
         secs = secs % 60
         return `${minutes}m${secs}s`
