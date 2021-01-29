@@ -14,31 +14,31 @@
         label="Server URL"
         placeholder="https://feoblog.example.com"
         validationCallback={validateServerURL}
-        disabled={$profileTask.isRunning}
+        disabled={profileTask.isRunning}
         bind:errorMessage={serverURLError}
         bind:value={serverURL}
     />
     <UserIdInput
         label="User ID"
         placeholder="Default: current user's ID"
-        disabled={$profileTask.isRunning}
+        disabled={profileTask.isRunning}
         bind:valid={bootstrapUserIDValid}
         bind:value={bootstrapUserID}
     />
     <Button
-        disabled={!haveValidServerURL || (bootstrapUserID.length > 0 && !bootstrapUserIDValid) || $profileTask.isRunning}
+        disabled={!haveValidServerURL || (bootstrapUserID.length > 0 && !bootstrapUserIDValid) || profileTask.isRunning}
         on:click={bootstrapProfiles}
     >Sync</Button>
 
-    <TaskTrackerView tracker={profileTask}/>
+    <TaskTrackerView bind:tracker={profileTask}/>
 </div>
 
 <div class="item">
     <h1>Sync My Feed</h1>
     <p>Copies your own posts, and posts of those you follow, from any remote servers (listed in profiles) to this one.</p>
-    <Button on:click={syncMyFeed}>Sync</Button>
+    <Button on:click={syncMyFeed} disabled={syncMyFeedTracker.isRunning}>Sync</Button>
 
-    <TaskTrackerView tracker={syncMyFeedTracker}/>
+    <TaskTrackerView bind:tracker={syncMyFeedTracker}/>
 </div>
 
 <div class="item">
@@ -47,7 +47,7 @@
 
     <Button on:click={publishMyPosts}>Sync</Button>
 
-    <TaskTrackerView tracker={publishMyPostsTracker}/>
+    <TaskTrackerView bind:tracker={publishMyPostsTracker}/>
 </div>
 
 
@@ -83,17 +83,11 @@ let bootstrapUserID = ""
 let bootstrapUserIDValid = false
 
 
-
-
-
-let profileTask = writable(new TaskTracker())
-let syncMyFeedTracker = writable(new TaskTracker())
+let profileTask = new TaskTracker()
+let syncMyFeedTracker = new TaskTracker()
 
 function bootstrapProfiles() {
-    let tracker = new TaskTracker()
-    tracker.store = profileTask
-
-    tracker.run(() => bootstrapProfilesTask(tracker))
+    profileTask.run("Copying profiles", bootstrapProfilesTask)
 }
 
 async function bootstrapProfilesTask(tracker: TaskTracker) {
@@ -172,29 +166,33 @@ async function syncOneProfile(tracker: TaskTracker, local: Client, remote: Clien
 }
 
 function syncMyFeed() {
-    let tracker = new TaskTracker()
-    tracker.store = syncMyFeedTracker
-
-    tracker.run(() => syncMyFeedTask(tracker))
-
+    syncMyFeedTracker.run("Syncing my feed", syncMyFeedTask)
 }
 
 async function syncMyFeedTask(tracker: TaskTracker) {
     let local = $appState.client
     
-    let profile = await syncUserItems({tracker, local, userID})
+    let profile = await tracker.runSubtask("Syncing current user's items", (subTracker) => {
+        return syncUserItems({tracker: subTracker, local, userID})
+    })
+
     let myServers = serversFromProfile(profile)
 
-    tracker.log("Syncing follows' items")
-    for (let follow of profile.follows) {
-        // Sync items from each of my follows.
-        try {
-            let uid = UserID.fromBytes(follow.user.bytes)
-            await syncUserItems({tracker, local, userID: uid, extraServers: myServers})
-        } catch (e) {
-            tracker.error(e)
+    await tracker.runSubtask("Syncing follows' items", async (subtask) => {
+        for (let follow of profile.follows) {
+            // Sync items from each of my follows.
+            try {
+                let uid = UserID.fromBytes(follow.user.bytes)
+                await subtask.runSubtask(`Syncing items for ${uid} "${follow.display_name}"`, (t) => {
+                    return syncUserItems({tracker: t, local, userID: uid, extraServers: myServers})
+                })
+            } catch (e) {
+                // Syncing one user's items shouldn't fail others:
+                tracker.error(e)
+            }
         }
-    }
+    })
+
 }
 
 type SyncOptions = {
@@ -211,7 +209,6 @@ type SyncOptions = {
 }
 
 async function syncUserItems({tracker, local, userID, extraServers}: SyncOptions): Promise<Profile> {
-    tracker.log(`Syncing items for ${userID}`)
     let response = await local.getProfile(userID)
 
     // TODO: Hmm, I suppose now that we take `extraServers` we could just try to sync from those.
@@ -319,13 +316,10 @@ function serversFromProfile(profile: Profile, tracker = new TaskTracker()): Set<
     )
 }
 
-let publishMyPostsTracker = writable(new TaskTracker())
+let publishMyPostsTracker = new TaskTracker()
 
 function publishMyPosts() {
-    let tracker = new TaskTracker()
-    tracker.store = publishMyPostsTracker
-
-    tracker.run(() => publishMyPostsTask(tracker))
+    publishMyPostsTracker.run("Publish my posts", publishMyPostsTask)
 }
 
 async function publishMyPostsTask(tracker: TaskTracker) {

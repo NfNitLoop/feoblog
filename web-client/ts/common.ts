@@ -124,34 +124,93 @@ export class TaskTracker
 {
     // A store that will get updated every time this object changes
     store: Writable<TaskTracker>|null = null
+
+    // A parent we may need to notify of changes.
+    private parent: TaskTracker|undefined
  
-    _isRunning = false
+    private _isRunning = false
     get isRunning() { return this._isRunning }
 
-    _logs: LogEntry[] = []
+    private _logs: LogEntry[] = []
     get logs(): ReadonlyArray<LogEntry> {
         return this._logs
     }
 
-    async run(asyncTask: () => Promise<void>): Promise<void> {
+    private _errorCount = 0
+    private _warnCount = 0
+    get errorCount() { return this._errorCount }
+    get warnCount() { return this._warnCount }
+
+    private _hasRun = false
+    // Has this ever been run()?  (Might still be running!)
+    get hasRun(): boolean {
+        return this._hasRun
+    }
+
+
+    name = "(Unnamed)"
+
+    async run<T>(taskName: string, asyncTask: (tracker: TaskTracker) => Promise<T>): Promise<T> {
         this.clear()
+        this.name = taskName
         this._isRunning = true
-        this.log("Begin") // calls notify()
+        this._hasRun = true
+        this.notify()
+
+        let timer = new Timer()
         try {
-            await asyncTask()
+            return await asyncTask(this)
         } catch (e) {
+            console.error("Error in TaskTracker.run():", e)
             this.error(`Task threw an exception: ${e}`)
+            throw e
+        } finally {
+            this._isRunning = false
+            this.log(`Finished after ${timer}. Errors: ${this.errorCount} Warnings: ${this.warnCount}`) // calls notify()
         }
-        this._isRunning = false
-        this.log("Done") // calls notify()
+    }
+
+    async runSubtask<T>(taskName: string, asyncTask: (tracker: TaskTracker) => Promise<T>): Promise<T> {
+        if (!this.isRunning) {
+            throw "Cannot run a subtask while the main task is not running."
+        }
+
+        let subtask = new TaskTracker()
+        subtask.parent = this
+        let entry: LogEntry = {
+            message: taskName,
+            timestamp: DateTime.local().valueOf(),
+            subtask,
+        }
+        this.writeLog(entry)
+        
+        try {
+            return await subtask.run(taskName, asyncTask)
+        } finally {
+            if (subtask.errorCount > 0) {
+                entry.isError = true
+            } else if (subtask.warnCount) {
+                entry.isWarning = true
+            }
+    
+            this._errorCount += subtask.errorCount
+            this._warnCount += subtask.warnCount    
+        }
     }
 
     private notify() {
         if (this.store) this.store.set(this)
+        if (this.parent) this.parent.notify()
     }
 
     clear() {
+        if (this._isRunning) {
+            throw "Can't clear while running!"
+        }
         this._logs = []
+        this._errorCount = 0
+        this._warnCount = 0
+        this._hasRun = false
         this.notify()
     }
 
@@ -166,13 +225,15 @@ export class TaskTracker
             isError: true,
             timestamp: DateTime.local().valueOf()
         })
+        this._errorCount += 1
     }
 
     log(message: string) {
-        this.writeLog({
+        let log = {
             message,
             timestamp: DateTime.local().valueOf()
-        })
+        }
+        this.writeLog(log)
     }
 
     warn(message: string) {
@@ -181,15 +242,61 @@ export class TaskTracker
             isWarning: true,
             timestamp: DateTime.local().valueOf()
         })
+        this._warnCount += 1
     }
+
 }
 
+// Quick way to show elapsed time.
+class Timer {
+    startTime: number
+    endTime: number|undefined
+
+    constructor() {
+        this.startTime = DateTime.local().valueOf()
+    }
+
+    stop() {
+        this.endTime = DateTime.local().valueOf()
+    }
+
+    get deltaMS() {
+        if (this.endTime) {
+            return this.endTime - this.startTime 
+        }
+        return DateTime.local().valueOf() - this.startTime
+    }
+
+    toString() {
+        let delta = this.deltaMS
+        if (delta < 500) {
+            // ex: 137ms
+            return `${delta}ms`
+        } 
+        
+        let secs = delta / 1000
+        
+        if (secs < 10) {
+            // ex: 8.3 seconds.
+            return `${secs.toFixed(1)} seconds`
+        }
+
+        if (secs < 70) {
+            return `${secs.toFixed(0)} seconds`
+        }
+
+        let minutes = Math.floor(secs / 60)
+        secs = secs % 60
+        return `${minutes}m${secs}s`
+    }
+}
 
 type LogEntry = {
     timestamp: number
     message: string
     isError?: boolean
     isWarning?: boolean
+    subtask?: TaskTracker
 }
 
 
