@@ -6,7 +6,12 @@
         "moduleResolution": "node",
         "experimentalDecorators": true,
         "strictNullChecks": true,
-        "noImplicitAny": true
+        "noImplicitAny": true,
+        "lib": [
+            "dom",
+            "es2020",
+            "webworker"
+        ]
     },
     "exclude": [
         "build",
