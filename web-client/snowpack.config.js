@@ -14,9 +14,22 @@ module.exports = {
 
     installOptions: {
         // bs58 -> safe-buffers -> buffer, needs polyfill:
-        polyfillNode: true
+        polyfillNode: true,
+        rollup: {
+            plugins: [
+                require('rollup-plugin-copy')({
+                    targets: [
+                        // Copy an unmodified version of this so it'll work in a web worker:
+                        // (Snowpack likes to module-ify things, and most browsers don't support modules in web workers.)
+                        {src: "node_modules/tweetnacl/nacl-fast.min.js", dest: "build/ts/naclWorker/", rename: "tweetnacl.js"},
+                    ]
+                })
+            ]
+        }
+
     },
     plugins: [
+        // TODO: https://www.npmjs.com/package/snowpack-plugin-hash looks nice.
 
         // Use protoc-gen-ts to compile .proto files:
         [
@@ -45,17 +58,6 @@ module.exports = {
                 "output": "stream"
             }
         ],
-        [ 
-            // Firefox and Safari do not support modules in web workers, so
-            // backport this to a legacy file:
-            // https://www.npmjs.com/package/legacy-bundle-snowpack-plugin
-            'legacy-bundle-snowpack-plugin',
-            {
-                // relative to the build/ directory
-                filePath: "ts/naclWorker/worker.js"
-            },
-        ],
-
     ],
     buildOptions: {
         clean: true,

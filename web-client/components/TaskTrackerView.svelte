@@ -60,8 +60,7 @@ div.taskTracker {
 
 .taskName.isRunning::after {
     content: " ...";
-    /* TODO: Is this making the browser slow? */
-    /* animation: pulse 200ms linear 0s infinite alternate; */
+    animation: pulse 500ms linear 0s infinite alternate;
 }
 
 .taskName.error::after {
