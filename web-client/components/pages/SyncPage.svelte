@@ -3,40 +3,23 @@
     <p>Synchronize your posts (and your feed) from/to multiple servers</p>
 </div>
 
-<div class="item">
-    <h1>Bootstrap Profiles</h1>
-
-    <p>If you're moving to this server from another, the first step is to copy your profile, and the profiles of those you follow.
-        Each profile contains a list of servers where that userID's posts can be found, and will be used for a full sync.
-    </p>
-
-    <InputBox 
-        label="Server URL"
-        placeholder="https://feoblog.example.com"
-        validationCallback={validateServerURL}
-        disabled={profileTask.isRunning}
-        bind:errorMessage={serverURLError}
-        bind:value={serverURL}
-    />
-    <UserIdInput
-        label="User ID"
-        placeholder="Default: current user's ID"
-        disabled={profileTask.isRunning}
-        bind:valid={bootstrapUserIDValid}
-        bind:value={bootstrapUserID}
-    />
-    <Button
-        disabled={!haveValidServerURL || (bootstrapUserID.length > 0 && !bootstrapUserIDValid) || profileTask.isRunning}
-        on:click={bootstrapProfiles}
-    >Sync</Button>
-
-    <TaskTrackerView bind:tracker={profileTask}/>
-</div>
 
 <div class="item">
     <h1>Sync My Feed</h1>
-    <p>Copies your own posts, and posts of those you follow, from any remote servers (listed in profiles) to this one.</p>
-    <Button on:click={syncMyFeed} disabled={syncMyFeedTracker.isRunning}>Sync</Button>
+    <p>Copies your own posts, and posts of those you follow, from any remote servers to this one.</p>
+
+    <InputBox 
+        label="Server URL"
+        placeholder="(Optional. Default: Servers listed in profiles)"
+        validationCallback={validateServerURL}
+        disabled={syncMyFeedTracker.isRunning}
+        bind:errorMessage={serverURLError}
+        bind:value={serverURL}
+    />
+    <Button 
+        on:click={syncMyFeed} 
+        disabled={syncMyFeedTracker.isRunning || serverURLError != ""}
+    >Sync</Button>
 
     <TaskTrackerView bind:tracker={syncMyFeedTracker}/>
 </div>
@@ -52,10 +35,8 @@
 
 
 <script language="ts">
-import { DateTime } from "luxon";
 import type { Writable } from "svelte/store"
-import { writable } from "svelte/store"
-import type { ItemListEntry, Profile } from "../../protos/feoblog";
+import type { Profile } from "../../protos/feoblog";
 
 import type { AppState } from "../../ts/app"
 import { Client, Signature, UserID } from "../../ts/client"
@@ -63,7 +44,6 @@ import { TaskTracker, validateServerURL } from "../../ts/common";
 import Button from "../Button.svelte"
 import InputBox from "../InputBox.svelte"
 import TaskTrackerView from "../TaskTrackerView.svelte";
-import UserIdInput from "../UserIDInput.svelte";
 
 export let appState: Writable<AppState>
 
@@ -77,11 +57,8 @@ $: userID = function() {
 
 let serverURL = ""
 let serverURLError = ""
-$: haveValidServerURL = (serverURL != "") && serverURLError === ""
 
 let bootstrapUserID = ""
-let bootstrapUserIDValid = false
-
 
 let profileTask = new TaskTracker()
 let syncMyFeedTracker = new TaskTracker()
@@ -171,20 +148,65 @@ function syncMyFeed() {
 
 async function syncMyFeedTask(tracker: TaskTracker) {
     let local = $appState.client
-    
-    let profile = await tracker.runSubtask("Syncing current user's items", (subTracker) => {
-        return syncUserItems({tracker: subTracker, local, userID})
-    })
 
-    let myServers = serversFromProfile(profile)
+    // If there's a single source server provided, only sync from that.
+    let sourceServer = serverURL
 
-    await tracker.runSubtask("Syncing follows' items", async (subtask) => {
-        for (let follow of profile.follows) {
+    let myProfile: Profile|undefined
+    let myServers = new Set<string>()
+
+    if (sourceServer) {
+        myServers.add(sourceServer)
+    } else {
+        let result = await local.getProfile(userID)
+        if (!result) {
+            tracker.error("Current user has no profile, and no server specified. Can't sync anything.")
+            return
+        }
+        myProfile = result.item.profile
+        myServers = serversFromProfile(myProfile, tracker)
+     }
+
+    if (myServers.size === 0) {
+        tracker.warn("No servers specified for current user. Can't sync current user's items.")   
+    } else {
+        await tracker.runSubtask("Current user's items", (tracker) => {
+            return syncUserItems({tracker, local, userID, servers: myServers})
+        })
+
+        // Re-load current user's profile, which may have been updated as a result of the sync
+        let result = await local.getProfile(userID)
+        if (result) {
+            myProfile = result.item.profile
+            if (!sourceServer) {
+                myServers = serversFromProfile(myProfile)
+            }
+        }
+    }
+
+    await tracker.runSubtask("Follows' items", async (tracker) => {
+        if (!myProfile) {
+            tracker.warn("User has no profile. No follows to sync.")
+            return
+        }
+
+        for (let follow of myProfile.follows) {
             // Sync items from each of my follows.
             try {
                 let uid = UserID.fromBytes(follow.user.bytes)
-                await subtask.runSubtask(`Syncing items for ${uid} "${follow.display_name}"`, (t) => {
-                    return syncUserItems({tracker: t, local, userID: uid, extraServers: myServers})
+
+                let followServers = myServers
+                if (!sourceServer) {
+                    let result = await local.getProfile(uid)
+                    if (result) {
+                        // Check our own servers first, to lessen load on others.
+                        // Also handles the case when our follows for some reason didn't specify a server.
+                        followServers = union(myServers, serversFromProfile(result.item.profile))
+                    }
+                }
+
+                await tracker.runSubtask(`Items for ${uid} ("${follow.display_name}")`, (tracker) => {
+                    return syncUserItems({tracker, local, userID: uid, servers: followServers})
                 })
             } catch (e) {
                 // Syncing one user's items shouldn't fail others:
@@ -195,35 +217,28 @@ async function syncMyFeedTask(tracker: TaskTracker) {
 
 }
 
+function union<T>(...sets: Set<T>[]): Set<T> {
+    let out = new Set<T>()
+    for (let s of sets) {
+        s.forEach((item) => out.add(item))
+    }
+    return out
+}
+
 type SyncOptions = {
     tracker: TaskTracker
     local: Client
     userID: UserID
 
-    // Additional servers to fetch from.
-    // Helps when your friends forgot to specify their server, but you're homed there.
-    extraServers?: Set<string>
-
-    // If true, `extraServers` completely replaces (instead of extends) the list provided by `userID`'s profile
-    serversOverride?: boolean
+    // Remote servers to sync from
+    servers: Set<string>
 }
 
-async function syncUserItems({tracker, local, userID, extraServers}: SyncOptions): Promise<Profile> {
-    let response = await local.getProfile(userID)
+async function syncUserItems({tracker, local, userID, servers}: SyncOptions): Promise<void> {
 
-    // TODO: Hmm, I suppose now that we take `extraServers` we could just try to sync from those.
-    if (!response) throw `${userID} has no profile`
-    let profile = response.item.profile
-
-    // Use a set to avoid hitting the same server multiple times:
-    let servers = serversFromProfile(profile, tracker)
-    if (extraServers) {
-        for (let s of extraServers) servers.add(s)
-    }
-    
     if (servers.size === 0) {
-        tracker.log("User profile has 0 servers.")
-        return profile
+        tracker.warn(`No servers found to sync ${userID}`)
+        return
     }
 
     // TODO: Put some optional limit on how far back we sync. 
@@ -231,34 +246,46 @@ async function syncUserItems({tracker, local, userID, extraServers}: SyncOptions
 
     for (let server of servers) {
         try {
-            tracker.log(`Syncing from ${server}`)
-            let remote = new Client({base_url: server})
+            let syncCount = 0
+            let errorSaving = false
 
-            for await (let listEntry of remote.getUserItems(userID)) {
-                let signature 
-                try {
-                    signature = Signature.fromBytes(listEntry.signature.bytes)
-                } catch (e) {
-                    tracker.error(`Invalid signature from server: ${listEntry.signature.bytes}`)
-                    continue
-                }
-                if (localSignatures.has(signature.toString())) continue
+            await tracker.runSubtask(`Syncing from ${server}`, async (tracker) => {
+                let remote = new Client({base_url: server})
 
-                try {
-                    await syncUserItem({
-                        userID,
-                        signature,
-                        to: local,
-                        from: remote,
-                        tracker,
-                    })
-                } catch (e) {
-                    tracker.error(`Error saving item: ${e}`)
-                    tracker.warn("This may mean that the user can not post to the server, or has exceeded their quota. Skipping")
-                    return profile
-                }
+                for await (let listEntry of remote.getUserItems(userID)) {
+                    let signature 
+                    try {
+                        signature = Signature.fromBytes(listEntry.signature.bytes)
+                    } catch (e) {
+                        tracker.error(`Invalid signature from server: ${listEntry.signature.bytes}`)
+                        continue
+                    }
+                    if (localSignatures.has(signature.toString())) continue
 
-                localSignatures.add(signature.toString())
+                    try {
+                        await syncUserItem({
+                            userID,
+                            signature,
+                            to: local,
+                            from: remote,
+                            tracker,
+                        })
+                        ++syncCount
+                    } catch (e) {
+                        tracker.error(`Error saving item: ${e}`)
+                        tracker.warn("This may mean that the user can not post to the server, or has exceeded their quota. Skipping")
+                        errorSaving = true
+                        return // out of the subtask.
+                    }
+
+                    localSignatures.add(signature.toString())
+                } //for
+            }) // subTask
+
+            tracker.log(`Copied ${syncCount} new items`)
+            if (errorSaving) {
+                // Very likely can't save more items for this user. Don't try more.
+                return
             }
         } catch (e) {
             // One server failing shouldn't stop us from syncing from others.
@@ -267,8 +294,6 @@ async function syncUserItems({tracker, local, userID, extraServers}: SyncOptions
         }
 
     }
-
-    return profile
 }
 
 // TODO: In the future, we can do some more efficient loading. Since getUserItems() returns 
