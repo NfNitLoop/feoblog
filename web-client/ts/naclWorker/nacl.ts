@@ -1,4 +1,4 @@
-import * as nacl from "tweetnacl-ts"
+import * as nacl from "tweetnacl"
 import {WorkerProxy} from "./coms"
 
 // Wraps tweetnacl functions in async versions that run in a WebWorker if available.
@@ -10,7 +10,7 @@ interface NaCl {
 // This version just calls the 
 class InBrowser implements NaCl {
     async sign_detached_verify(msg: Uint8Array, sig: Uint8Array, publicKey: Uint8Array): Promise<boolean> {
-        return nacl.sign_detached_verify(msg, sig, publicKey)
+        return nacl.sign.detached.verify(msg, sig, publicKey)
     }
 }
 

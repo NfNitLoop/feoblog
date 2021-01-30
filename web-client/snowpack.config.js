@@ -17,6 +17,7 @@ module.exports = {
         polyfillNode: true
     },
     plugins: [
+
         // Use protoc-gen-ts to compile .proto files:
         [
             "@snowpack/plugin-run-script",
@@ -43,7 +44,18 @@ module.exports = {
                 "watch": "$1 --watch",
                 "output": "stream"
             }
-        ]
+        ],
+        [ 
+            // Firefox and Safari do not support modules in web workers, so
+            // backport this to a legacy file:
+            // https://www.npmjs.com/package/legacy-bundle-snowpack-plugin
+            'legacy-bundle-snowpack-plugin',
+            {
+                // relative to the build/ directory
+                filePath: "ts/naclWorker/worker.js"
+            },
+        ],
+
     ],
     buildOptions: {
         clean: true,

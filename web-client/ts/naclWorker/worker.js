@@ -1,9 +1,11 @@
-// Aww, FireFox doesn't support modules:
+// Aww, FireFox/Safari don't support modules:
 // See: https://bugzilla.mozilla.org/show_bug.cgi?id=1247687
-import * as nacl from "tweetnacl-ts"
+// So we use a plugin later to transcode this to a module-free version:
+
+import * as nacl from "tweetnacl"
 
 let functions  = {
-    "sign_detached_verify": nacl.sign_detached_verify
+    "sign_detached_verify": nacl.sign.detached.verify
 }
 
 onmessage = function(event) {
