@@ -2,7 +2,7 @@
 import Button from "../Button.svelte"
 import bs58 from "bs58"
 import bs58check from "bs58check"
-import * as nacl from "tweetnacl-ts"
+import * as nacl from "tweetnacl"
 import buffer from "buffer"
 let Buffer = buffer.Buffer
 
@@ -10,16 +10,14 @@ let Buffer = buffer.Buffer
 let userID = ""
 let privateKey = ""
 
-// nacl signing secret keys contain redundant information.
-// The real private part is contained just in the first 32 bytes:
-const SEED_BYTES = 32;
-
 function createID() {
-    let pair = nacl.sign_keyPair()
+    let pair = nacl.sign.keyPair()
     
-    let seed: Uint8Array = pair.secretKey.slice(0, SEED_BYTES)
+    // nacl signing secret keys contain redundant information.
+    // The real private part is contained just in the first 32 bytes:
+    let seed: Uint8Array = pair.secretKey.slice(0, nacl.sign.seedLength)
     // Validate that we can derive the pubkey from this half of the private key:
-    let derived = nacl.sign_keyPair_fromSeed(seed)
+    let derived = nacl.sign.keyPair.fromSeed(seed)
 
     if (!equalBytes(pair.publicKey, derived.publicKey)) {
         let message = "Failed to derive public key from private seed."

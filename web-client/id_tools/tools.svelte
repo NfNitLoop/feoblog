@@ -31,8 +31,6 @@ table th {
 
 
 import bs58 from "bs58"
-import bs58check from "bs58check"
-import * as nacl from "tweetnacl-ts"
 import buffer from "buffer"
 let Buffer = buffer.Buffer
 

@@ -61,7 +61,7 @@
 import type { Writable } from "svelte/store"
 import bs58 from "bs58"
 import { Item, Signature } from "../protos/feoblog"
-import * as nacl from "tweetnacl-ts"
+import * as nacl from "tweetnacl"
 import bs58check from 'bs58check'
 import { DateTime } from "luxon"
 import { push as navigateTo } from "svelte-spa-router"
@@ -162,7 +162,7 @@ $: privateKeyError = function() {
     }
 
     
-    let keypair = nacl.sign_keyPair_fromSeed(buf);
+    let keypair = nacl.sign.keyPair.fromSeed(buf);
     
     let pubKey = bs58.encode(keypair.publicKey)
     if (pubKey != userID.toString()) {
@@ -186,7 +186,7 @@ $: validSignature = function(): boolean {
     try {
         let pubKey = userID.bytes
         let decodedSig = bs58.decode(signature)
-        isValid = nacl.sign_detached_verify(itemProtoBytes, decodedSig, pubKey)
+        isValid = nacl.sign.detached.verify(itemProtoBytes, decodedSig, pubKey)
     } catch (error) {
         console.error("Error validating signature:", error)
     }
@@ -213,8 +213,8 @@ async function sign() {
     if (!itemProtoBytes) throw `No bytes to sign.`
    
     let buf = bs58check.decode(privateKey)
-    let keypair = nacl.sign_keyPair_fromSeed(buf);
-    let binSignature = nacl.sign_detached(itemProtoBytes, keypair.secretKey)
+    let keypair = nacl.sign.keyPair.fromSeed(buf);
+    let binSignature = nacl.sign.detached(itemProtoBytes, keypair.secretKey)
     signature = bs58.encode(binSignature)
 
     // Delete the privateKey, we don't want to save it any longer than
