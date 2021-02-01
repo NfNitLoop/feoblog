@@ -45,3 +45,8 @@ if (window.Worker) {
 export function sign_detached_verify(msg: Uint8Array, sig: Uint8Array, publicKey: Uint8Array): Promise<boolean> {
     return proxy.sign_detached_verify(msg, sig, publicKey)
 }
+
+
+export function sign_detached_verify_sync(msg: Uint8Array, sig: Uint8Array, publicKey: Uint8Array): boolean {
+    return nacl.sign.detached.verify(msg, sig, publicKey)
+}

@@ -338,6 +338,7 @@ fn item_to_entry(item: &Item, user_id: &UserID, signature: &Signature) -> ItemLi
         match item.item_type {
             Some(Item_oneof_item_type::post(_)) => ItemType::POST,
             Some(Item_oneof_item_type::profile(_)) => ItemType::PROFILE,
+            Some(Item_oneof_item_type::comment(_)) => ItemType::COMMENT,
             None => ItemType::UNKNOWN,
         }
     );
@@ -880,6 +881,9 @@ async fn show_item(
 
             Ok(page.respond_to(&req).await?)
         },
+        Some(ItemType::comment(c)) => Ok(
+            HttpResponse::Ok().body("TODO: Display comments in HTML")
+        )
     }
 
 
@@ -1114,6 +1118,7 @@ fn display_by_default(item: &Item) -> bool {
     match item_type {
         ItemType::post(_) => true,
         ItemType::profile(_) => false,
+        ItemType::comment(_) => false,
     }
 }
 

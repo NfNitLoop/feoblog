@@ -42,6 +42,14 @@ export class AppState
         return UserID.fromString(userID)
     }
 
+    // Like loggedInUser, but throws an exception if no one is "logged in":
+    requireLoggedInUser(): UserID {
+        let userID = this._savedLogins[0]?.userID
+        if (!userID) throw `Must be logged in.`
+        return UserID.fromString(userID)
+
+    }
+
     get userBGColor(): string|null {
         return this._savedLogins[0]?.bgColor || null
     }

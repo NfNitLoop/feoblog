@@ -325,6 +325,10 @@ export class Signature {
         return nacl.sign_detached_verify(bytes, this.bytes, userID.bytes)
     }
 
+    isValidSync(userID: UserID, bytes: Uint8Array): boolean {
+        return nacl.sign_detached_verify_sync(bytes, this.bytes, userID.bytes)
+    }
+
     static fromString(userID: string): Signature {
         if (userID.length == 0) {
             throw "Signature must not be empty."

@@ -1,4 +1,11 @@
-<textarea bind:this={element} bind:value {disabled} {placeholder}></textarea>
+<textarea
+    bind:this={element}
+    bind:value
+    class:medium
+    class:small
+    {disabled}
+    {placeholder}
+></textarea>
 
 
 <script lang="ts">
@@ -6,11 +13,15 @@ export let value: string
 export let disabled = false
 export let placeholder = ""
 
+export let size: "medium"|"small" = "medium"
+
+$: medium = size == "medium"
+$: small = size == "small"
+
 let element: HTMLElement
 
 $: {
     value // on change:
-    // TODO: Make a reusable expanding textarea widget.
     expandTextarea(element)
 }
 
@@ -23,5 +34,17 @@ function expandTextarea(textarea: HTMLElement) {
         textarea.style.height = (textarea.scrollHeight + borderHeight).toString()
     }
 }
-
 </script>
+
+<style> 
+textarea {
+    margin-top: 1em;
+}
+
+textarea.medium {
+    min-height: 20em;
+}
+
+
+   
+</style>

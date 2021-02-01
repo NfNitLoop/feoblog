@@ -44,7 +44,7 @@ let routes = function() {
         "/u/:userID/": appPage("./pages/UserPage.svelte"),
         "/u/:userID/feed": appPage("./pages/FeedPage.svelte"),
         "/u/:userID/profile": appPage("./pages/ProfilePage.svelte"),
-        "/u/:userID/i/:signature/": appPage("./ItemView.svelte"),
+        "/u/:userID/i/:signature/": appPage("./pages/ItemPage.svelte"),
         "/login": appPage('./pages/Login.svelte'),
     }
 

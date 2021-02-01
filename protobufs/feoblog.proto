@@ -49,6 +49,7 @@ message Item {
     oneof item_type {
         Post post = 3;
         Profile profile = 4;
+        Comment comment = 5;
     }
 }
 
@@ -112,7 +113,31 @@ message Profile {
 
     // TODO:
     // irrevocably_purge_this_user
+    // Though, maybe that should just be its own type so that you can't specify a Profile with it.
 
+}
+
+// A Comment is a text-only response to some other Item.
+message Comment {
+    // Information about the Item we're replying to.
+    ReplyRef reply_to = 1;
+    
+    // CommonMark markdown text. 
+    // Inline images will NOT be rendered.
+    string text = 2;
+}
+
+// Information about an Item that we're replying to.
+message ReplyRef {
+    // REQUIRED: the user_id that posted the item.
+    UserID user_id = 1;
+    // REQUIRED: the signature of the item.
+    Signature signature = 2;
+
+    // Suggested: The type of the item we're replying to.
+    // This is useful in case clients want to only show certain types of comments. 
+    // Ex: show comments in reply to posts, but not comments replying to other comments.
+    ItemType item_type = 3;
 }
 
 // Information about where a 
@@ -142,7 +167,6 @@ message Follow {
     string display_name = 2;
 
     // Possible future features:
-    // * tags -- only follow or exclude certain tags users post about.
     // * quota -- determine how much disk space a particular user may use.
     //   (i.e.: how much of their content to cache on their behalf)
 }
@@ -201,4 +225,5 @@ enum ItemType {
 
     POST = 1;
     PROFILE = 2;
+    COMMENT = 3;
 }

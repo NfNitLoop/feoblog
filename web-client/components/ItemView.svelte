@@ -1,14 +1,16 @@
 <script lang="ts">
 // View of a single item.
 import type { Writable } from "svelte/store"
+import { push as navigateTo } from "svelte-spa-router"
 
-import { UserID as ClientUserID} from "../ts/client"
-import { markdownToHtml } from "../ts/common"
+import { Signature, UserID} from "../ts/client"
+import { markdownToHtml, fixLinks} from "../ts/common"
 import Timestamp from "./Timestamp.svelte"
 import Button from "./Button.svelte"
-import type { Item } from "../protos/feoblog"
+import type { Comment, Item, ReplyRef } from "../protos/feoblog"
 import type { AppState } from "../ts/app"
 import UserIdView from "./UserIDView.svelte"
+import CommentView from "./CommentView.svelte"
 
 export let userID: string
 export let signature: string
@@ -16,6 +18,10 @@ export let signature: string
 export let item: Item|null|undefined = undefined
 export let appState: Writable<AppState>
 export let showDetail = false
+
+// Show information about what this is in reply to.
+// Might want to hide if it's obvious from context.
+export let showReplyTo = true
 
 // How should we handle clicks on links in this item view?
 // newWindow: All links open in a new window.
@@ -26,6 +32,8 @@ export let showDetail = false
 //   
 export let linkMode: "fix" | "newWindow" | "ignore" = "fix"
 
+// Can we click on the item body to go to its page?
+export let clickable = false
 
 let itemPromise: Promise<Item|null>
 
@@ -55,9 +63,6 @@ async function getItem(userID: string, signature: string) {
     return await $appState.client.getItem(userID, signature)
 }
 
-function createComment() {
-    console.log("TODO: createComment() unimplemented")
-}
 
 let validFollows: ValidFollow[] = []
 $: validFollows = function(){
@@ -65,7 +70,7 @@ $: validFollows = function(){
     let valid: ValidFollow[] = []
     for (let follow of item.profile.follows) {
         try {
-            let id = ClientUserID.fromBytes(follow.user.bytes)
+            let id = UserID.fromBytes(follow.user.bytes)
             valid.push({
                 userID: id,
                 displayName: follow.display_name.trim() || id.toString(),
@@ -78,11 +83,12 @@ $: validFollows = function(){
 }()
 
 class ValidFollow {
-    userID: ClientUserID
+    userID: UserID
     displayName: string
 }
 
-function interceptLinkClicks(event: Event) {
+function onClick(event: Event) {
+    console.log("ItemView.onClick()")
 
     let target = event.target as HTMLElement
     let anchor: HTMLAnchorElement|undefined = undefined
@@ -97,35 +103,28 @@ function interceptLinkClicks(event: Event) {
         }
     }
 
-    if (!anchor) { return }
 
-    if (linkMode === "ignore") {
-        event.preventDefault()
-        console.log("linkMode==ignore, ignored click to", anchor)
+    if (anchor) { 
+        // The user clicked a link, don't navigate anywhere.
         return
     }
 
-    // Note: can't use anchor.href, because that gets resolved to a full http://blah.com/wharrgarbl.
-    // We want to know if this is a relative link.
-    let href = anchor.getAttribute("href")
-    if (!href) return
-
-    let isRelative = href.startsWith("/") && !href.startsWith("//")
-
-    // Must come first
-    if (linkMode === "newWindow") {
-        anchor.target = "_blank"
-    }
-
-    if (isRelative) {
-        anchor.href = `#${href}`
+    // Else this is not a link, we want to just navigate to the item's individual page:
+    if (clickable) {
+        let selection = window.getSelection()
+        // Don't count as a navigation click if user is selecting text:
+        if (!selection || selection.isCollapsed) {
+            navigateTo(`#/u/${userID}/i/${signature}`)
+            return
+        }
     }
 }
+
 
 </script>   
 
 
-<div class="item" on:click={interceptLinkClicks}>
+<div class="item" class:clickable on:click={onClick} use:fixLinks={{mode: linkMode}}>
 {#await itemPromise}
     <p>Loading...
         <!-- 
@@ -141,7 +140,7 @@ function interceptLinkClicks(event: Event) {
             <h1 class="title">{ item.post.title }</h1>
             {/if}
             <div class="userInfo">
-                <UserIdView userID={ClientUserID.fromString(userID)} {appState}/>
+                <UserIdView userID={UserID.fromString(userID)} {appState}/>
             </div>
             <Timestamp utc_ms={item.timestamp_ms_utc} minute_offset={item.utc_offset_minutes} href={`#/u/${userID}/i/${signature}/`} />
             
@@ -157,7 +156,6 @@ function interceptLinkClicks(event: Event) {
 
             {#if showDetail}
             <div>
-                <Button on:click={createComment}>Comment</Button>
                 {#if viewMode != "normal"}<Button on:click={() => viewMode = "normal"}>View Normal</Button>{/if}
                 {#if viewMode != "markdown"}<Button on:click={() => viewMode = "markdown"}>View Markdown</Button>{/if}
                 {#if viewMode != "data"}<Button on:click={() => viewMode = "data"}>View Data</Button>{/if}
@@ -166,10 +164,11 @@ function interceptLinkClicks(event: Event) {
         {:else if item.profile}
             <h1 class="title">Profile: {item.profile.display_name}</h1>
             <div class="userInfo">
-                <UserIdView userID={ClientUserID.fromString(userID)} resolve={false}/>
+                <UserIdView userID={UserID.fromString(userID)} resolve={false}/>
             </div>
             <Timestamp utc_ms={item.timestamp_ms_utc} minute_offset={item.utc_offset_minutes} />
 
+            <!-- TODO: Move viewMode options out of the body of the Item.item_type, and into a generic top-level location -->
             {#if viewMode == "normal"}
                 {@html markdownToHtml(item.profile.about)}
             {:else if viewMode == "markdown"}
@@ -199,10 +198,28 @@ function interceptLinkClicks(event: Event) {
                 {/each}
             </ul>
             
+        {:else if item.comment}
+            <CommentView {appState} {showReplyTo} {item} 
+                userID={UserID.fromString(userID)}
+                {signature}
+            />
         {:else}
             Unknown item type.
         {/if}
 {:catch error}
-    <p>Error: {error}
+    <p class="error">Error: {error}
 {/await} 
 </div>
+
+
+<style>
+
+.clickable {
+    cursor: pointer;
+}
+
+.userInfo {
+    font-family: monospace;
+}
+
+</style>

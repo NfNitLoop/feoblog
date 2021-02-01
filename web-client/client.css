@@ -38,11 +38,6 @@ input:hover, input:focus, textarea:hover, textarea:focus {
 }
 
 
-textarea {
-    margin-top: 1em;
-    min-height: 20em;
-}
-   
 .editPane table {
     width: 100%;
 }
@@ -77,6 +72,9 @@ textarea {
 .input input[type="text"], .input input[type="password"] {
     min-height: 30px;
     padding: 0 5px;
+}
+
+.input input[type="text"], .input input[type="password"], textarea {
     border-radius: 3px;
 }
 

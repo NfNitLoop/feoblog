@@ -51,10 +51,127 @@ export function parseUserIDError(userID: string): string {
 const cmReader = new commonmark.Parser()
 const cmWriter = new commonmark.HtmlRenderer({ safe: true})
 
-export function markdownToHtml(markdown: string): string {
+type MarkdownToHtmlOptions = {
+    stripImages?: boolean
+}
+
+export function markdownToHtml(markdown: string, options?: MarkdownToHtmlOptions): string {
     let parsed = cmReader.parse(markdown)
+
+    if (options?.stripImages) {
+        stripImages(parsed)
+    }
+
     return cmWriter.render(parsed)
 }
+
+function stripImages(root: commonmark.Node) {
+    let walker = root.walker()
+
+    for (let event = walker.next(); event; event = walker.next()) {
+        if (!event.entering) continue
+
+        let image = event.node
+        if (image.type != "image") continue
+
+        let altText = image.title?.trim()
+        let imageTitle: string = ""
+        if (image.firstChild && image.firstChild.type == "text") {
+            imageTitle = image.firstChild.literal?.trim() || ""
+        }
+
+        let link = new commonmark.Node("link")
+        link.destination = image.destination
+
+        let linkText
+        if (imageTitle && altText) {
+            // Use both:
+            linkText = altText
+            link.title = imageTitle
+        } else {
+            // Use the first one:
+            linkText = imageTitle || altText || link.destination
+        }
+        let textNode = new commonmark.Node("text")
+        textNode.literal = linkText
+        link.appendChild(textNode)
+
+        // Replace:
+        image.insertBefore(link)
+        image.unlink()
+        walker.resumeAt(link)
+    }
+}
+
+type FixLinksParams = {
+    // Default: "fix"
+    mode?: "ignore"|"newWindow"|"fix"
+}
+
+// Svelte link fixer: 
+// use:fixLinks={{mode:"ignore"}} to ignore all link clicks.
+// use:fixLinks={{mode:"newWindow"}} to open all link clicks in new windows.
+// use:fixLinks to just fix links to keep them inside the svelte-spa-router.
+export function fixLinks(node: HTMLElement, params?: FixLinksParams): {} {
+
+    let activeParams = params
+    let onClick = (event: Event) => {
+
+        let target = event.target as HTMLElement
+        let anchor: HTMLAnchorElement|undefined = undefined
+        let tag = target.tagName
+    
+        if (tag == "A") {
+            anchor = (target as HTMLAnchorElement)
+        } else if (tag == "IMG") {
+            let parent = target.parentElement
+            if (parent?.tagName == "A") {
+                anchor = (parent as HTMLAnchorElement)
+            }
+        }
+
+        if (!anchor) return        
+        interceptLinkClick(event, anchor, activeParams)
+    }
+
+    // Capture events to intercept events to hrefs:
+    let useCapture = true
+    node.addEventListener("click", onClick, useCapture)
+
+    return {
+        update(params: FixLinksParams) {
+            activeParams = params
+        },
+        destroy() {
+            node.removeEventListener("click", onClick, useCapture)
+        }
+    }
+}
+
+function interceptLinkClick(event: Event, anchor: HTMLAnchorElement, params?: FixLinksParams) {
+
+    if (params?.mode === "ignore") {
+        event.preventDefault()
+        return
+    }
+
+    // Note: can't use anchor.href, because that gets resolved to a full http://blah.com/wharrgarbl.
+    // We want to know if this is a relative link.
+    let href = anchor.getAttribute("href")
+    if (!href) return
+
+    let isRelative = href.startsWith("/") && !href.startsWith("//")
+
+    // Must come first
+    if (params?.mode === "newWindow") {
+        anchor.target = "_blank"
+    }
+
+    if (isRelative) {
+        anchor.href = `#${href}`
+    }
+}
+
 
 // Applies `asyncFilter` to up to `count` items before it begins yielding them.
 // Useful for prefetching things in parallel with promises.

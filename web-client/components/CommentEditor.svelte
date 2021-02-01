@@ -1,0 +1,75 @@
+{#if hasText}
+<TabBar tabs={["Edit", "Preview"]} animate={true} bind:activeTab={currentView}/>
+{/if}
+
+<div class="item">
+    {#if currentView == "Edit"}
+        <ExpandingTextarea size="small" placeholder="Leave a Comment" bind:value={text}/>
+        {#if hasText}
+            <SignAndSend
+                item={commentItem}
+                {appState}
+                on:sendSuccess
+            />
+        {/if}
+    {:else}
+        <CommentView {appState} item={commentItem}
+            {userID}
+            signature="unknown"
+            linkMode="newWindow"
+        />
+    {/if}
+</div>
+
+
+<script lang="ts">
+import { DateTime } from "luxon";
+
+import type { Writable } from "svelte/store";
+import { Item, Comment, ReplyRef, UserID as ProtoUserID, Signature as ProtoSignature} from "../protos/feoblog";
+import type { AppState } from "../ts/app";
+import type { Signature, UserID } from "../ts/client";
+import CommentView from "./CommentView.svelte";
+import ExpandingTextarea from "./ExpandingTextarea.svelte";
+import SignAndSend from "./SignAndSend.svelte";
+import TabBar from "./TabBar.svelte";
+
+
+export let appState: Writable<AppState>
+export let replyToUserID: UserID
+export let replyToSignature: Signature
+
+let currentView: "Edit"|"Preview" = "Edit"
+
+let text = ""
+
+$: userID = $appState.requireLoggedInUser()
+$: hasText = text.trim().length > 0
+
+$: commentItem = function() {
+    let item = new Item()
+
+    let now = DateTime.local()
+    item.timestamp_ms_utc = now.valueOf()
+    item.utc_offset_minutes = now.offset
+
+    let comment = new Comment()
+    item.comment = comment
+    
+    let ref = new ReplyRef()
+    ref.user_id = new ProtoUserID()
+    ref.user_id.bytes = replyToUserID.bytes
+    ref.signature = new ProtoSignature()
+    ref.signature.bytes = replyToSignature.bytes
+    // ref.item_type = // TODO
+
+    comment.reply_to = ref
+    comment.text = text
+
+    return item
+}()
+
+
+
+</script>
+

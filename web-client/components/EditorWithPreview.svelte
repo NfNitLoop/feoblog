@@ -134,6 +134,7 @@ let status = ""
 let privateKey = ""
 
 // TODO: Move parsing a private key to a separate function and component.
+// Oh hey, there's SignAndSend now. Replace all this w/ that.
 // Error to display about the private key:
 $: privateKeyError = function() {
     if (privateKey.length == 0) {
@@ -203,7 +204,7 @@ $: validSignature = function(): boolean {
 
 
 // Create a signature, delete the password.
-async function sign() {
+function sign() {
 
     if (privateKeyError) {
         console.error("Shouldn't be able to call sign w/ invalid private key.")
@@ -226,7 +227,6 @@ function unSign() {
     signature = ""
 }
 
-// TODO: Move to Client.
 async function submit() {
     if ( (errors.length > 0) || !validSignature) {
         console.error("Submit clicked when not valid");

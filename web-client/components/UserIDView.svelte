@@ -1,4 +1,4 @@
-<a class="userID" href={`#/u/${userID}/`}>@{displayName}</a>
+<a class="userID" href={link}>@{displayName}</a>
 
 <script lang="ts">
 import type { Writable } from "svelte/store";
@@ -10,9 +10,10 @@ export let userID: UserID
 export let resolve = true
 export let appState: Writable<AppState>
 export let displayName: string
+export let href: string|undefined
 
-// May resolve to a preferred display name:
-let namePromise: Promise<string|null> = Promise.resolve(null)
+$: defaultHref = `#/u/${userID}/`
+$: link = href || defaultHref
 
 $: {
     userID || appState

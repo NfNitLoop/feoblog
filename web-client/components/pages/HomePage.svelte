@@ -4,6 +4,7 @@
         userID={entry.userID.toString()}
         signature={entry.signature.toString()}
         item={entry.item}
+        clickable={true}
         {appState}
     />
 {:else}
