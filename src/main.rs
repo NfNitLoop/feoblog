@@ -4,12 +4,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::backend::ServerUser;
-use crate::backend::Factory;
-use crate::backend::UserID;
-use std::io;
-
-use failure::{Error, bail, ResultExt};
+use crate::backend::{ServerUser, Factory, UserID, sqlite};
+use failure::{Error, bail};
 use structopt::StructOpt;
 
 mod backend;
@@ -25,6 +21,7 @@ fn main() -> Result<(), Error> {
     match command {
         Serve(command) => server::serve(command)?,
         User(command) => command.main()?,
+        Db(command) => command.main()?,
     };
 
     Ok(())
@@ -41,14 +38,18 @@ enum Command
     /// Start a server.
     Serve(ServeCommand),
 
-    User(UserCommand)
+    /// User administration commands
+    User(UserCommand),
+
+    /// Database administration commands
+    Db(DbCommand),
 }
 
 #[derive(StructOpt, Debug, Clone)]
 
 struct ServeCommand {
     #[structopt(flatten)]
-    shared_options: SharedOptions,
+    backend_options: BackendOptions,
 
     /// Should we open a browser window?
     #[structopt(long)]
@@ -60,12 +61,23 @@ struct ServeCommand {
     binds: Vec<String>
 }
 
-// TODO: Rename BackendOptions?
 #[derive(StructOpt, Debug, Clone)]
-pub(crate) struct SharedOptions
+pub(crate) struct BackendOptions
 {
     #[structopt(long, default_value = "feoblog.sqlite3")]
     pub sqlite_file: String,
+}
+
+// Implements some functionality which may be different depending on the DB backend.
+impl BackendOptions {
+    fn factory_builder(&self) -> Result<Box<dyn backend::FactoryBuilder>, Error> {
+        // When we support more than one kind of DB, we can switch on that here:
+        Ok(
+            Box::new(
+                sqlite::FactoryBuilder::new(self.sqlite_file.clone())
+            )
+        )
+    }
 }
 
 #[derive(StructOpt, Debug, Clone)]
@@ -94,12 +106,12 @@ impl UserCommand {
 #[derive(StructOpt, Debug, Clone)]
 struct UserListCommand {
     #[structopt(flatten)]
-    shared_options: SharedOptions,
+    backend_options: BackendOptions,
 }
 
 impl UserListCommand {
     fn main(&self) -> Result<(), Error> {
-        let factory = backend::sqlite::Factory::new(self.shared_options.sqlite_file.clone());
+        let factory = self.backend_options.factory_builder()?.factory()?;
         let conn = factory.open()?;
         
         conn.server_users(&mut |server_user| {
@@ -119,7 +131,7 @@ impl UserListCommand {
 #[derive(StructOpt, Debug, Clone)]
 struct UserAddCommand {
     #[structopt(flatten)]
-    shared_options: SharedOptions,
+    shared_options: BackendOptions,
 
     user_id: UserID,
 
@@ -134,7 +146,7 @@ struct UserAddCommand {
 
 impl UserAddCommand {
     fn main(&self) -> Result<(), Error> {
-        let factory = backend::sqlite::Factory::new(self.shared_options.sqlite_file.clone());
+        let factory = self.shared_options.factory_builder()?.factory()?;
         let conn = factory.open()?;
 
         let user = ServerUser{
@@ -152,7 +164,7 @@ impl UserAddCommand {
 #[derive(StructOpt, Debug, Clone)]
 struct UserRemoveCommand {
     #[structopt(flatten)]
-    shared_options: SharedOptions,
+    shared_options: BackendOptions,
 
     user_id: UserID,
 }
@@ -164,3 +176,63 @@ impl UserRemoveCommand {
 }
 
 
+#[derive(StructOpt, Debug, Clone)]
+pub(crate) enum DbCommand {
+    /// Initialize a new database
+    Init(DbInitCommand),
+
+    /// Upgrade an old database to the latest version.
+    Upgrade(DbUpgradeCommand),
+
+    // TODO: 
+    // Prune data from a datbase that is no longer referenced.
+    // Prune(DbPruneCommand),
+}
+
+impl DbCommand {
+    fn main(&self) -> Result<(), Error> {
+        match self {
+            Self::Init(command) => command.main(),
+            Self::Upgrade(command) => command.main(),
+        }
+    }
+}
+
+#[derive(StructOpt, Debug, Clone)]
+struct DbInitCommand {
+    #[structopt(flatten)]
+    backend_options: BackendOptions,
+}
+
+impl DbInitCommand {
+    fn main(&self) -> Result<(), Error> {
+        let builder = self.backend_options.factory_builder()?;
+
+        if builder.db_exists()? {
+            bail!("The database already exists.");
+        }
+
+        builder.db_create()?;
+
+        Ok(())
+    }
+}
+
+#[derive(StructOpt, Debug, Clone)]
+struct DbUpgradeCommand {
+    #[structopt(flatten)]
+    backend_options: BackendOptions,
+
+    /// Verify that you've backed up your database in case this upgrade has an error.
+    #[structopt(long="i-have-a-backup")]
+    i_have_a_backup: bool,
+}
+
+
+impl DbUpgradeCommand {
+    fn main(&self) -> Result<(), Error> {
+        let builder = self.backend_options.factory_builder()?;
+        builder.db_upgrade()?;
+        Ok(())
+    }
+}

@@ -10,11 +10,47 @@ use bs58;
 use serde::{Deserialize, de::{self, Visitor}};
 use sodiumoxide::crypto::sign;
 
+/// This trait knows how to build a Factory, which in turn can open Backend connections.
+///
+/// It also provides functionality for checking/upgrading the backing database.
+pub trait FactoryBuilder {
+    /// Create a new factory which is capable of opening Backends.
+    /// Must first check that the database exists, and is the correct version.
+    fn factory(&self) -> Result<Box<dyn Factory>, Error>;
 
+    fn db_exists(&self) -> Result<bool, Error>;
+
+    fn db_create(&self) -> Result<(), Error>;
+
+    fn db_needs_upgrade(&self) -> Result<bool, Error>;
+
+    /// Upgrade the database to the currently supported version.
+    fn db_upgrade(&self) -> Result<(), Error>;
+}
 /// Knows how to open Backend "connections".
-pub trait Factory
+pub trait Factory: Send
 {
+    /// Create a clone of this Factory.
+    /// Like Clone, but can operate on dyn pointers.
+    fn dyn_clone(&self) -> Box<dyn Factory>;
+
+    /// Open a single Backend connection.
+    /// It is recommended that Factory implementions use their own connection pooling.
     fn open(&self) -> Result<Box<dyn Backend>, Error>;
+}
+
+/// Dumb hack to make dyn Factory impl Cloneable
+/// Clone is required for passing Factory instances to multiple web server threads.
+pub struct FactoryBox {
+    pub factory: Box<dyn Factory>
+}
+
+impl Clone for FactoryBox {
+    fn clone(&self) -> Self {
+        Self {
+            factory: self.factory.dyn_clone()
+        }
+    }
 }
 
 /// Represents a connection to the backend, and logic we want to perform
@@ -25,9 +61,6 @@ pub trait Backend
     // type here. Should probably impl Error, which requires changes in sqlite.
     // Maybe Box<dyn Error> is sufficient? https://github.com/dtolnay/anyhow/issues/25
     
-    /// Set up the initial DB state, maybe running migrations.
-    fn setup(&self) -> Result<(), Error>;
-
     /// Find most recent items for users flagged to be displayed on the
     /// home page, which have timestamps before `before`.
     /// Items are returned through callback, and will continue to be fetched while callback continues

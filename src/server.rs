@@ -7,6 +7,7 @@ use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData, net::TcpListener};
 // * Static file handling logic.
 // * etc?
 
+use backend::FactoryBox;
 use futures_core::stream::Stream;
 use futures_util::StreamExt;
 
@@ -46,19 +47,17 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
 
     env_logger::init();
 
-    let ServeCommand{open, shared_options: options, mut binds} = command;
+    let ServeCommand{open, backend_options, mut binds} = command;
 
-    // TODO: Error if the file doesn't exist, and make a separate 'init' command.
-    let factory = backend::sqlite::Factory::new(options.sqlite_file.clone());
-    // For now, this creates one if it doesn't exist already:
-    factory.open()?.setup().context("Error setting up DB")?;
-    
+    let factory_box = FactoryBox{
+        factory: backend_options.factory_builder()?.factory()?
+    };
 
     let app_factory = move || {
         let mut app = App::new()
             .wrap(actix_web::middleware::Logger::default())
             .data(AppData{
-                backend_factory: Box::new(factory.clone()),
+                backend_factory: factory_box.factory.dyn_clone(),
             })
             .configure(routes)
         ;

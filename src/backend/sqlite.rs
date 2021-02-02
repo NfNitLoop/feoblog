@@ -5,13 +5,18 @@
 //! Mostly, this makes data management trivial since it's all in one file.
 //! But if performance is an issue we can implement a different backend.
 
+mod upgraders;
+
+use std::{ops::DerefMut, path::Path};
+
 use crate::protos::Item;
-use rusqlite::NO_PARAMS;
+use r2d2::ManageConnection;
+use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::{NO_PARAMS, OpenFlags};
 use crate::backend::FnIter;
 use crate::backend::{self, UserID, Signature, ItemRow, ItemDisplayRow, Timestamp, ServerUser, QuotaDenyReason};
 
 use failure::{Error, bail, ResultExt};
-use protobuf::Message as _;
 use rusqlite::{params, OptionalExtension, Row};
 
 const CURRENT_VERSION: u32 = 3;
@@ -19,19 +24,115 @@ const CURRENT_VERSION: u32 = 3;
 type Pool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
 type PConn = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
-#[derive(Clone)]
+pub(crate) struct FactoryBuilder {
+    sqlite_file: String
+}
+
+impl FactoryBuilder {
+    pub fn new(sqlite_file: String) -> Self {
+        Self {
+            sqlite_file
+        }
+    }
+}
+
+impl backend::FactoryBuilder for FactoryBuilder {
+    fn factory(&self) -> Result<Box<dyn backend::Factory>, Error> {
+        if !self.db_exists()? {
+            bail!("\
+                    Error: Database file not found.\n\
+                    You may need to run `feoblog db init` to create the a database.\
+            ");
+        }
+
+        if self.db_needs_upgrade()? {
+            bail!("\
+                Error: Database needs an upgrade.\n\
+                Run `feoblog db upgrade` to upgrade it.
+            ");
+        }
+
+        Ok(Box::new(self.build_factory()?))
+    }
+
+    fn db_exists(&self) -> Result<bool, Error> {
+        let path = Path::new(self.sqlite_file.as_str());
+        Ok(path.exists())
+    }
+
+    fn db_needs_upgrade(&self) -> Result<bool, Error> {
+        let conn = self.connection()?;
+        let db_version = conn.get_version()?;
+        Ok(db_version < CURRENT_VERSION)
+    }
+
+    fn db_upgrade(&self) -> Result<(), Error> {
+        if !self.db_exists()? {
+            bail!("No such database file: {}", self.sqlite_file)
+        }
+
+        let upgraders = upgraders::Upgraders::new();
+        let conn = self.connection()?;
+        upgraders.upgrade(&conn)?;
+
+        Ok(())
+    }
+
+    fn db_create(&self) -> Result<(), Error> {
+        if self.db_exists()? {
+            bail!("Database already exists")
+        }
+
+        println!("Creating database: {}", self.sqlite_file);
+        let pool = self.pool_builder().build(
+            self.connection_manager()
+            // Let sqlite create the DB file since that is explicitly our intention here:
+            .with_flags(OpenFlags::SQLITE_OPEN_CREATE | OpenFlags::SQLITE_OPEN_READ_WRITE)
+        )?;
+
+        let conn = Connection{ conn: pool.get()? };
+        conn.initialize()?;
+
+        println!("Done.");
+        Ok(())
+    }
+}
+
+impl FactoryBuilder {
+    // Shortcut the FactoryBuilder::new() checks and open a connection to a DB that may be in a bad state.
+    // e.g.:
+    // * needs tables created
+    // * needs to be upgraded.
+    fn connection(&self) -> Result<Connection, Error> {
+        Ok(
+            Connection { conn: self.pool()?.get()? }
+        )
+    }
+
+    fn pool(&self) -> Result<r2d2::Pool<SqliteConnectionManager>, r2d2::Error> {
+        self.pool_builder().build(self.connection_manager())
+    }
+
+    fn pool_builder(&self) -> r2d2::Builder<SqliteConnectionManager> {
+        r2d2::Pool::builder()
+        .min_idle(Some(0)) // defaults to max_size. (Which defaults to 10.)
+    }
+
+    fn build_factory(&self) -> Result<Factory, Error> {
+        Ok(Factory{ pool: self.pool()? })
+    }
+
+    fn connection_manager(&self) -> r2d2_sqlite::SqliteConnectionManager {
+        r2d2_sqlite::SqliteConnectionManager
+            ::file(self.sqlite_file.as_str())
+            // Note: explicitly NOT SQLITE_OPEN_CREATE
+            .with_flags(OpenFlags::SQLITE_OPEN_READ_WRITE)
+    }
+}
+
 pub(crate) struct Factory
 {
     pool: Pool,
-}
-
-impl Factory {
-    pub fn new(file_path: String) -> Self
-    {
-        let manager = r2d2_sqlite::SqliteConnectionManager::file(file_path.as_str());
-        let pool = r2d2::Pool::new(manager).expect("Creating SQLite connection pool");
-        Factory{ pool }
-    }
 }
 
 impl backend::Factory for Factory
@@ -43,16 +144,29 @@ impl backend::Factory for Factory
         };
         Ok(Box::new(conn))
     }
+
+    fn dyn_clone(&self) -> Box<dyn backend::Factory> {
+        let new_factory = Factory {
+            pool: self.pool.clone()
+        };
+        Box::new(new_factory)
+    }
 }
+
 
 pub(crate) struct Connection
 {
     conn: PConn,
 }
 
+trait SqliteConn: DerefMut<Target=rusqlite::Connection> {}
+impl <T: DerefMut<Target=rusqlite::Connection>> SqliteConn for T {}
+
+
+/// private methods for Conneciton
 impl Connection
 {
-    fn setup_new(&self) -> Result<(), Error>
+    fn initialize(&self) -> Result<(), Error>
     {
         self.run("
             CREATE TABLE version (
@@ -186,7 +300,7 @@ impl Connection
         Ok(())
     }
 
-    fn get_version(&self) -> Result<Option<u32>, Error>
+    fn get_version(&self) -> Result<u32, Error>
     {
         let table_count: u32  = self.conn.prepare(
             "SELECT count()
@@ -200,19 +314,46 @@ impl Connection
         )?;
 
         if table_count == 0 {
-            return Ok(None);
+            bail!("No version table found. This may not be a valid feoblog database.")
         }
 
-        let  version = self.conn.prepare(
-            "SELECT MAX(version) from version"
-        )?.query_row(
+        let mut stmt = self.conn.prepare(
+            "SELECT version from version"
+        )?; 
+        let versions = stmt.query_map(
             params![],
-            |row| Ok(row.get(0)?)
+            |row| -> rusqlite::Result<u32> { Ok(row.get(0)?) }
         )?;
 
-        Ok(version)
+        let versions: Vec<u32> = versions.take(2).collect::<rusqlite::Result<Vec<u32>>>()?;
+
+        if versions.len() == 0 {
+            bail!("Found no version in the database. This may not be a valid feoblog database.");
+        }
+        if versions.len() > 1 {
+            bail!("Found more than one version in the database. This database may have been corrupted.");
+        }
+
+        Ok(versions[0])
     }
 
+    fn upgrade(&self) -> Result<(), Error>
+    {
+        let version = self.get_version()?;
+        if version == CURRENT_VERSION {
+            return Ok(());
+        }
+        if version > CURRENT_VERSION {
+            bail!(
+                "DB version ({}) newer than current version ({})",
+                version,
+                CURRENT_VERSION
+            );
+        }
+
+        // TODO:
+        bail!("DB version {} is unknown. Migration not implemented.", version);
+    }
 }
 
 /// We're saving a profile. If it's new, update the profile and follow tables.
@@ -270,32 +411,6 @@ fn update_profile(conn: &rusqlite::Savepoint, item_row: &ItemRow, item: &Item) -
 
 impl backend::Backend for Connection
 {
-
-    fn setup(&self) -> Result<(), Error>
-    {
-        let version = match self.get_version()? {
-            None => {
-                // TODO: This shouldn't be automatic, should force user to
-                // explicitly create a new data store.
-                return self.setup_new();
-            },
-            Some(version) => version
-        };
-        if version == CURRENT_VERSION {
-            return Ok(());
-        }
-        if version > CURRENT_VERSION {
-            bail!(
-                "DB version ({}) newer than current version ({})",
-                version,
-                CURRENT_VERSION
-            );
-        }
-
-        // TODO:
-        bail!("DB version {} is unknown. Migration not implemented.", version);
-    }
-
     fn homepage_items<'a>(
         &self,
         before: Timestamp,
