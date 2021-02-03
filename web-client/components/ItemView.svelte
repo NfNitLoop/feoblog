@@ -88,8 +88,6 @@ class ValidFollow {
 }
 
 function onClick(event: Event) {
-    console.log("ItemView.onClick()")
-
     let target = event.target as HTMLElement
     let anchor: HTMLAnchorElement|undefined = undefined
     let tag = target.tagName

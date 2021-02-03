@@ -18,7 +18,7 @@ use crate::backend::{self, UserID, Signature, ItemRow, ItemDisplayRow, Timestamp
 use failure::{Error, bail, ResultExt};
 use rusqlite::{params, OptionalExtension, Row};
 
-const CURRENT_VERSION: u32 = 4;
+const CURRENT_VERSION: u32 = 5;
 
 type Pool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
 type PConn = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
@@ -558,7 +558,7 @@ impl backend::Backend for Connection
     ) -> Result<(), Error> {
         let mut stmt = self.conn.prepare("
             SELECT
-                user_id
+                i.user_id
                 , i.signature
                 , unix_utc_ms
                 , received_utc_ms
@@ -567,12 +567,67 @@ impl backend::Backend for Connection
             WHERE
                 unix_utc_ms < ?
                 AND user_id = ?
+                AND EXISTS(SELECT user_id FROM known_users WHERE user_id = i.user_id)
             ORDER BY unix_utc_ms DESC
         ")?;
 
         let mut rows = stmt.query(params![
             before.unix_utc_ms,
             user.bytes(),
+        ])?;
+
+        let convert = |row: &Row<'_>| -> Result<ItemRow, Error> {
+            let item = ItemRow{
+                user: UserID::from_vec(row.get(0)?)?,
+                signature: Signature::from_vec(row.get(1)?)?,
+                timestamp: Timestamp{ unix_utc_ms: row.get(2)? },
+                received: Timestamp{ unix_utc_ms: row.get(3)? },
+                item_bytes: row.get(4)?,
+            };
+
+            Ok(item)
+        };
+
+        while let Some(row) = rows.next()? {
+            let item = convert(row)?;
+            let result = callback(item)?;
+            if !result { break; }
+        }
+
+        Ok( () )
+    }
+
+    fn reply_items<'a>(
+        &self,
+        user: &UserID,
+        signature: &Signature,
+        before: Timestamp,
+        callback: RowCallback<'a, ItemRow>,
+    ) -> Result<(), Error> {
+        let mut stmt = self.conn.prepare("
+            SELECT
+                i.user_id
+                , i.signature
+                , unix_utc_ms
+                , received_utc_ms
+                , bytes
+            FROM item AS i
+            INNER JOIN reply AS r ON (
+                r.from_user_id = i.user_id
+                AND r.from_signature = i.signature
+            )
+            WHERE
+                unix_utc_ms < ?
+                AND r.to_user_id = ?
+                AND r.to_signature = ?
+                AND EXISTS(SELECT user_id FROM known_users WHERE user_id = i.user_id)
+            ORDER BY unix_utc_ms DESC
+        ")?;
+
+        let mut rows = stmt.query(params![
+            before.unix_utc_ms,
+            user.bytes(),
+            signature.bytes(),
         ])?;
 
         let convert = |row: &Row<'_>| -> Result<ItemRow, Error> {
@@ -754,9 +809,10 @@ impl backend::Backend for Connection
                 , unix_utc_ms
                 , received_utc_ms
                 , bytes
-            FROM item
+            FROM item AS i
             WHERE user_id = ?
             AND signature = ?
+            AND EXISTS(SELECT user_id FROM known_users WHERE user_id = i.user_id)
         ")?;
 
         let mut rows = stmt.query(params![

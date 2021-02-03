@@ -222,6 +222,29 @@ export class Client {
         }
     }
 
+    async * getReplyItems(userID: UserID, signature: Signature): AsyncGenerator<ItemListEntry> {
+        yield* this.paginateItemList(`/u/${userID}/i/${signature}/replies/proto3`)
+    }
+
+    private async * paginateItemList(url: string) {
+        let before: number|undefined = undefined
+        while (true) {
+            let list: ItemList = await this.getItemList(url, {before})
+            if (list.items.length == 0) {
+                // There are no more items.
+                return
+            }
+    
+            for (let entry of list.items) yield entry
+            
+            if (list.no_more_items) {
+                return
+            }
+    
+            before = list.items[list.items.length - 1].timestamp_ms_utc
+        }
+    }
+
     // itemsPath: relative path to the thing that yields an ItemsList, ex: /homepage/proto3
     // params: Any HTTP GET params we might send to that path for pagination.
     private async getItemList(itemsPath: string, params?: Record<string,string|number|undefined>): Promise<ItemList> {

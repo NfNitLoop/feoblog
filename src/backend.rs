@@ -75,6 +75,15 @@ pub trait Backend
         callback: RowCallback<'a, ItemRow>,
     ) -> Result<(), Error>;
 
+    /// Most recent replies to an Item
+    fn reply_items<'a>(
+        &self,
+        user: &UserID,
+        signature: &Signature,
+        before: Timestamp,
+        callback: RowCallback<'a, ItemRow>,
+    ) -> Result<(), Error>;
+
     /// Find the most recent items from users followed by the given user ID. Includes the users's own items too.
     fn user_feed_items<'a>(
         &self,

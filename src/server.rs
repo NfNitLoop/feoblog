@@ -8,7 +8,6 @@ use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData, net::TcpListener};
 // * etc?
 
 use backend::FactoryBox;
-use futures_core::stream::Stream;
 use futures_util::StreamExt;
 
 use actix_web::{dev::HttpResponseBuilder, http::Method, middleware::DefaultHeaders, web::Query};
@@ -16,10 +15,8 @@ use actix_web::web::{
     self,
     get,
     put,
-    resource,
     route,
     Data,
-    Form,
     HttpResponse,
     Path,
     HttpRequest,
@@ -27,7 +24,7 @@ use actix_web::web::{
 };
 use actix_web::{App, HttpServer, Responder};
 use askama::Template;
-use failure::{bail, ResultExt, format_err};
+use failure::{ResultExt, format_err};
 use rust_embed::RustEmbed;
 use serde::Deserialize;
 
@@ -37,8 +34,8 @@ use async_trait::async_trait;
 use protobuf::Message;
 
 use crate::{ServeCommand, backend::ItemDisplayRow, protos::{ItemList, ItemListEntry, ItemType, Item_oneof_item_type}};
-use crate::backend::{self, Backend, Factory, UserID, Signature, ItemRow, Timestamp};
-use crate::protos::{Item, Post, ProtoValid};
+use crate::backend::{self, UserID, Signature, ItemRow, Timestamp};
+use crate::protos::{Item, ProtoValid};
 
 mod filters;
 
@@ -141,12 +138,18 @@ fn routes(cfg: &mut web::ServiceConfig) {
             .wrap(cors_ok_headers())
         )
 
+
         .route("/u/{userID}/i/{signature}/", get().to(show_item))
         .service(
             web::resource("/u/{userID}/i/{signature}/proto3")
             .route(get().to(get_item))
             .route(put().to(put_item))
             .route(route().method(Method::OPTIONS).to(cors_preflight_allow))
+            .wrap(cors_ok_headers())
+        )
+        .service(
+            web::resource("/u/{user_id}/i/{signature}/replies/proto3")
+            .route(get().to(item_reply_list))
             .wrap(cors_ok_headers())
         )
 
@@ -464,6 +467,40 @@ async fn user_item_list(
     // display_name, which we then throw away. We *could* make a more efficient
     // version that we use for just this case, but eh, reuse is nice.
     backend.user_items(&user_id, paginator.before(), &mut paginator.callback()).compat()?;
+
+    let mut list = ItemList::new();
+    list.no_more_items = !paginator.has_more;
+    list.items = protobuf::RepeatedField::from(paginator.items);
+    Ok(
+        proto_ok()
+        .body(list.write_to_bytes()?)
+    )
+}
+
+async fn item_reply_list(
+    data: Data<AppData>,
+    Path((user_id, signature)): Path<(UserID, Signature)>,
+    Query(pagination): Query<Pagination>,
+) -> Result<HttpResponse, Error> {
+    let mut paginator = Paginator::new(
+        pagination,
+        |row: ItemRow| -> Result<ItemListEntry,failure::Error> {
+            let mut item = Item::new();
+            item.merge_from_bytes(&row.item_bytes)?;
+            Ok(item_to_entry(&item, &row.user, &row.signature))
+        }, 
+        |_| { true } // include all items
+    );
+    // We're only holding ItemListEntries in memory, so we can up this limit and
+    // save some round trips.
+    paginator.max_items = 1000;
+
+    let backend = data.backend_factory.open().compat()?;
+
+    // Note: user_feed_items is doing a little bit of extra work to fetch
+    // display_name, which we then throw away. We *could* make a more efficient
+    // version that we use for just this case, but eh, reuse is nice.
+    backend.reply_items(&user_id, &signature, paginator.before(), &mut paginator.callback()).compat()?;
 
     let mut list = ItemList::new();
     list.no_more_items = !paginator.has_more;
@@ -850,7 +887,7 @@ async fn show_item(
     use crate::protos::Item_oneof_item_type as ItemType;
     match item.item_type {
         None => Ok(HttpResponse::InternalServerError().body("No known item type provided.")),
-        Some(ItemType::profile(p)) => Ok(HttpResponse::Ok().body("Profile update.")),
+        Some(ItemType::profile(_)) => Ok(HttpResponse::Ok().body("Profile update.")),
         Some(ItemType::post(p)) => {
             let page = PostPage {
                 nav: vec![
@@ -875,7 +912,7 @@ async fn show_item(
 
             Ok(page.respond_to(&req).await?)
         },
-        Some(ItemType::comment(c)) => Ok(
+        Some(ItemType::comment(_)) => Ok(
             HttpResponse::Ok().body("TODO: Display comments in HTML")
         )
     }
@@ -900,8 +937,6 @@ async fn get_item(
     // We'd also probably need to *send* an etag w/ the resposne to allow browsers to do this.
     // And all this needs a bit of testing.
     
-    // TODO: Limit items we return to "known users", in case we unfollowed someone due to sketchy content.
-
     let (user_id, signature) = path.into_inner();
     let backend = data.backend_factory.open().compat()?;
     let item = backend.user_item(&user_id, &signature).compat()?;

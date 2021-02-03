@@ -15,7 +15,8 @@ pub(crate) struct Upgraders {
 impl Upgraders {
     pub fn new() -> Self {
         Self { upgraders: vec![
-            Box::new(From3To4)
+            Box::new(From3To4),
+            Box::new(From4To5),
         ]}
     }
 
@@ -181,3 +182,39 @@ impl ItemPager {
     }
 }
 
+// Adds an index which makes finding whether someone is a "known user" much more efficient.
+struct From4To5;
+impl Upgrader for From4To5 {
+    fn from_version(&self) -> u32 { 4 }
+    fn to_version(&self) -> u32 { 5 }
+    fn upgrade(&self, conn: &Connection) -> Result<(), Error> {
+
+        // Note: Could have made an index on (followed_user_id, source_user_id), but:
+        // * Docs say the benefit of a covering index is minimal.
+        // * It's redundant w/ the UNIQUE index in the other direction.
+        // * Two columns would make for a bigger index.
+        conn.run("
+            CREATE INDEX follow_followed_idx
+            ON follow(followed_user_id)
+        ")?;
+
+        // Note: Must use "UNION ALL" here to allow for subquery flattening.
+        // Unfortunately that means if we query it directly we get dupes. Oh well.
+        // See: https://www.sqlite.org/optoverview.html#flattening
+        conn.run("
+            CREATE VIEW known_users (user_id) AS
+            -- For internal use only. All 'known users' of the server.
+                SELECT user_id
+                FROM server_user
+            UNION ALL
+                SELECT followed_user_id
+                FROM follow AS f
+                INNER JOIN server_user AS s
+                    ON (f.source_user_id=s.user_id)
+            ;
+        ")?;
+        
+        conn.set_version(self.to_version())?;
+        Ok(())
+    }
+}

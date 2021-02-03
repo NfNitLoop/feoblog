@@ -7,6 +7,13 @@ with each other.
 
 [REST]: https://en.wikipedia.org/wiki/Representational_state_transfer
 
+This document defines two kinds of URLS:
+ * Display URLs, which should render a basic HTML view of the content.
+ * REST URLs, which accept/return binary protobuf3 data.
+
+
+Display URLs
+============
 
 `/`
 ---
@@ -14,13 +21,6 @@ with each other.
 The root of the server may display any type of user interface the implementation
 desires. It may be a stream of latest posts on the server, or of a single
 user's posts, if the server is the home of a single user.
-
-`/homepage/proto3`
-------------------
-
-Returns a protobuf `ItemList` type listing items that should be shown on the server's home page.
-
-Should accept a `before` parameter, which allows paginating through results.
 
 `/u/<userID>/`
 ------------
@@ -31,14 +31,6 @@ links to the full posts is up to the implementaiton.
 
 You may also display information about a user, such as their preferred name(s),
 number/size of posts, "home server", etc., either inline or as links.
-
-`/u/<userID>/proto3`
-------------
-
-Returns a protobuf `ItemList` of all items the server has for a user. (This is unlike the `/u/<userID>/` which may filter items
-that it shows.)
-
-Should accept a `before` parameter, which allows paginating through results.
 
 `/u/<userID>/i/<signature>/`
 ------------------------
@@ -55,8 +47,39 @@ post.
 
 [CommonMark]: https://commonmark.org/
 
+
+`/u/<userID>/feed/`
+-------------------
+
+Renders a view of posts from users that this user follows, according to their
+latest profile. The user's own posts may be included here 
+
+`/u/<userID>/profile/`
+-------------------
+
+Renders a view of the user's latest `Profile`.
+
+
+REST URLs
+=========
+
+`/homepage/proto3[?before=ts_ms_utc]`
+------------------
+
+Returns a protobuf `ItemList` type listing items that should be shown on the server's home page.
+
+Should accept a `before` parameter, which allows paginating through results.
+
+`/u/<userID>/proto3[?before=ts_ms_utc]`
+--------------------
+
+Returns a protobuf `ItemList` of all items the server has for a user. (This is
+unlike the `/u/<userID>/` which may filter items that it shows.)
+
+Should accept a `before` parameter, which allows paginating through results.
+
 `/u/<userID>/i/<signature>/proto3`
---------------------------------
+----------------------------------
 
 This endpoint should serve the binary Protobuf Item for a single post by a user.
 Other clients must be able to fetch this data so that they can verify the
@@ -70,8 +93,24 @@ data. The server may decide whether to accept or reject the data. If the
 server accepts the data, it should always verify that it is valid data, 
 and is signed by the `userID` and `signature` provided in the URL.
 
+`/u/<userID>/i/<signature>/replies/proto3[?before=ts_ms_utc]`
+----------------------------------
+
+Returns a protobuf `ItemList` of known replies to this Item.
+
+Note: Not every server will know about every reply to an Item. Servers only
+accept Items for some users, so you'll only replies from those users, if their
+replies have been copied to the server. (This happens as part of a normal sync.)
+
+Clients may want to further limit which replies are visible. For example, a
+client could choose to only show replies that are from users followed by the
+author of the original item or the currently logged-in user.
+
+Should accept a `before` parameter, which allows paginating through results.
+
+
 `/u/<userID>/i/<signature>/files/*`
-------------------------------
+-----------------------------------
 
 Note: Not yet implemented.
 
@@ -90,24 +129,12 @@ been published (at `/<userID>/<signature>/proto3`). The server must verify
 that the posted data matches the corresponding hash and size as specified in the
 Protobuf data. (TODO: Not yet implemented.)
 
-`/u/<userID>/feed/`
--------------------
-
-Renders a view of posts from users that this user follows, according to their latest profile. The user's own posts may
-be included here 
-
 `/u/<userID>/feed/proto3`
 -------------------------
 
 Returns a protobuf `ItemList` of all items from users followed by `userID`, including `userID`.
 
 Should accept a `before` parameter, which allows paginating through results.
-
-
-`/u/<userID>/profile/`
--------------------
-
-Renders a view of the user's latest `Profile`.
 
 `/u/<userID>/profile/proto3`
 -------------------------
