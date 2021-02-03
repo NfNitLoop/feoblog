@@ -231,6 +231,13 @@ struct DbUpgradeCommand {
 
 impl DbUpgradeCommand {
     fn main(&self) -> Result<(), Error> {
+
+        if !self.i_have_a_backup {
+            println!("Please first back up your database in case there is an error during the upgrade process.");
+            println!("If you have a backup, add the --i-have-a-backup option.");
+            bail!("No backup");
+        }
+
         let builder = self.backend_options.factory_builder()?;
         builder.db_upgrade()?;
         Ok(())

@@ -10,16 +10,15 @@ mod upgraders;
 use std::{ops::DerefMut, path::Path};
 
 use crate::protos::Item;
-use r2d2::ManageConnection;
+use backend::RowCallback;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{NO_PARAMS, OpenFlags};
-use crate::backend::FnIter;
+use rusqlite::{NO_PARAMS, OpenFlags, named_params};
 use crate::backend::{self, UserID, Signature, ItemRow, ItemDisplayRow, Timestamp, ServerUser, QuotaDenyReason};
 
 use failure::{Error, bail, ResultExt};
 use rusqlite::{params, OptionalExtension, Row};
 
-const CURRENT_VERSION: u32 = 3;
+const CURRENT_VERSION: u32 = 4;
 
 type Pool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
 type PConn = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
@@ -92,8 +91,17 @@ impl backend::FactoryBuilder for FactoryBuilder {
 
         let conn = Connection{ conn: pool.get()? };
         conn.initialize()?;
+        println!("Database created.");
 
-        println!("Done.");
+
+        // This allows me to be lazy, I can specify new DB additions as version upgrades and not have to keep updating the
+        // main initialize() code. BUT, I probably should if the upgrade path gets too long.
+        drop(conn);
+        drop(pool);
+        if self.db_needs_upgrade()? {
+            self.db_upgrade()?;
+        }
+
         Ok(())
     }
 }
@@ -337,23 +345,67 @@ impl Connection
         Ok(versions[0])
     }
 
-    fn upgrade(&self) -> Result<(), Error>
-    {
-        let version = self.get_version()?;
-        if version == CURRENT_VERSION {
-            return Ok(());
-        }
-        if version > CURRENT_VERSION {
-            bail!(
-                "DB version ({}) newer than current version ({})",
-                version,
-                CURRENT_VERSION
-            );
+    fn set_version(&self, version: u32) -> Result<(), Error> {
+        self.conn.execute("UPDATE version SET version = ?", params![version])?;
+
+        Ok(())
+    }
+
+    fn all_items<'a>(&self, after_uid: &Option<UserID>, after_sig: &Option<Signature>, callback: RowCallback<'a, ItemRow>) -> Result<(), Error>{
+        let mut stmt;
+        let mut rows;
+        if let (Some(uid), Some(sig)) = (after_uid, after_sig) {
+            stmt = self.conn.prepare("
+                SELECT
+                    user_id,
+                    signature,
+                    unix_utc_ms,
+                    received_utc_ms,
+                    bytes
+                FROM item
+                WHERE (user_id > :uid)
+                OR (user_id = :uid AND signature > :sig)
+                ORDER BY user_id, signature
+            ")?;
+            rows = stmt.query_named(named_params! {
+                "uid": uid.bytes(),
+                "sig": sig.bytes(),
+            })?;
+        } else {
+            // Start from the beginning:
+            stmt = self.conn.prepare("
+                SELECT
+                    user_id,
+                    signature,
+                    unix_utc_ms,
+                    received_utc_ms,
+                    bytes
+                FROM item
+                ORDER BY user_id, signature
+            ")?;
+            rows = stmt.query(params![])?;
         }
 
-        // TODO:
-        bail!("DB version {} is unknown. Migration not implemented.", version);
+        let mut fetch_more = true;
+        while fetch_more {
+            let row = match rows.next()? {
+                None => return Ok(()), // No more results.
+                Some(row) => row,
+            };
+
+            let ir = ItemRow{
+                user: UserID::from_vec(row.get(0)?)?,
+                signature: Signature::from_vec(row.get(1)?)?,
+                timestamp: Timestamp {  unix_utc_ms: row.get(2)? },
+                received: Timestamp {  unix_utc_ms: row.get(3)? },
+                item_bytes: row.get(4)?,
+            };
+            fetch_more = callback(ir)?;
+        }
+
+        Ok(())
     }
+
 }
 
 /// We're saving a profile. If it's new, update the profile and follow tables.
@@ -408,6 +460,40 @@ fn update_profile(conn: &rusqlite::Savepoint, item_row: &ItemRow, item: &Item) -
 
     Ok(())
 }
+
+fn save_comment_reply(conn: &rusqlite::Connection, row: &ItemRow, item: &Item) -> Result<(), Error> {
+    if !item.has_comment() {
+        return Ok(())
+    }
+
+    let comment = item.get_comment();
+    let reply = ReplyRow {
+        from_user_id: row.user.clone(),
+        from_signature: row.signature.clone(),
+        to_user_id: UserID::from_vec(comment.get_reply_to().get_user_id().get_bytes().into())?,
+        to_signature: Signature::from_vec(comment.get_reply_to().get_signature().get_bytes().into())?,
+    };
+
+    save_reply_rows(conn, &[reply])
+}
+
+fn save_reply_rows(conn: &rusqlite::Connection, replies: &[ReplyRow]) -> Result<(), Error> {
+    let mut stmt = conn.prepare("
+        INSERT INTO reply (from_user_id, from_signature, to_user_id, to_signature)
+        VALUES (?,?,?,?)
+    ")?;
+    for reply in replies {
+        stmt.execute(params![
+            reply.from_user_id.bytes(),
+            reply.from_signature.bytes(),
+            reply.to_user_id.bytes(),
+            reply.to_signature.bytes(),
+        ])?;
+    }
+    
+    Ok(())
+}
+
 
 impl backend::Backend for Connection
 {
@@ -514,7 +600,7 @@ impl backend::Backend for Connection
         &self,
         user_id: &UserID,
         before: Timestamp,
-        callback: &'a mut dyn FnMut(ItemDisplayRow) -> Result<bool, Error>,
+        callback: RowCallback<'a, ItemDisplayRow>,
     ) -> Result<(), Error> {
         let mut stmt = self.conn.prepare("
             SELECT
@@ -608,7 +694,7 @@ impl backend::Backend for Connection
 
     }
 
-    fn server_users<'a>(&self, cb: FnIter<'a, ServerUser>) -> Result<(), Error> {
+    fn server_users<'a>(&self, cb: RowCallback<'a, ServerUser>) -> Result<(), Error> {
         let mut stmt = self.conn.prepare("
             SELECT 
                 user_id
@@ -724,6 +810,10 @@ impl backend::Backend for Connection
             update_profile(&tx, row, item)?;
         }
 
+        if item.has_comment() {
+            save_comment_reply(&tx, row, item)?;
+        }
+
         tx.commit().context("committing")?;
         Ok(())
     }
@@ -795,7 +885,7 @@ impl backend::Backend for Connection
         Ok(row.get(0)?)
     }
 
-    fn quota_check_item(&self, user_id: &UserID, bytes: &[u8], item: &Item) -> Result<Option<QuotaDenyReason>, Error> {
+    fn quota_check_item(&self, user_id: &UserID, _bytes: &[u8], _item: &Item) -> Result<Option<QuotaDenyReason>, Error> {
         
         if self.server_user(user_id)?.is_some() {
             // TODO: Implement optional quotas for "server users".
@@ -825,4 +915,11 @@ impl backend::Backend for Connection
 
         Ok(Some(QuotaDenyReason::UnknownUser))
     }
+}
+
+struct ReplyRow {
+    from_user_id: UserID,
+    from_signature: Signature,
+    to_user_id: UserID,
+    to_signature: Signature,
 }

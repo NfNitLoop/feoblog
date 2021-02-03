@@ -72,7 +72,7 @@ pub trait Backend
         &self,
         user: &UserID,
         before: Timestamp,
-        callback: &'a mut dyn FnMut(ItemRow) -> Result<bool, Error>,
+        callback: RowCallback<'a, ItemRow>,
     ) -> Result<(), Error>;
 
     /// Find the most recent items from users followed by the given user ID. Includes the users's own items too.
@@ -80,7 +80,7 @@ pub trait Backend
         &self,
         user_id: &UserID,
         before: Timestamp,
-        callback: &'a mut dyn FnMut(ItemDisplayRow) -> Result<bool, Error>,
+        callback: RowCallback<'a, ItemDisplayRow>,
     ) -> Result<(), Error>;
 
     /// Find one particular UserItem
@@ -97,7 +97,7 @@ pub trait Backend
     fn server_user(&self, user: &UserID) -> Result<Option<ServerUser>, Error>;
 
     /// List users granted direct access to post to the server.
-    fn server_users<'a>(&self, cb: FnIter<'a, ServerUser>) -> Result<(), Error>;
+    fn server_users<'a>(&self, cb: RowCallback<'a, ServerUser>) -> Result<(), Error>;
 
     /// Add a new "server user" who is explicitly allowed to post to this server.
     fn add_server_user(&self, server_user: &ServerUser) -> Result<(), Error>;
@@ -118,7 +118,7 @@ pub trait Backend
 
 /// A callback function used for callback iteration through large database resultsets.
 /// Each row T will be sent to the callback. The callback should return Ok(true) to continue iteration.
-type FnIter<'a, T> = &'a mut dyn FnMut(T) -> Result<bool, Error>; 
+pub type RowCallback<'a, T> = &'a mut dyn FnMut(T) -> Result<bool, Error>; 
 
 /// A UserID is a nacl public key. (32 bytes)
 #[derive(Debug, Clone)]

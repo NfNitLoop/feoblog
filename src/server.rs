@@ -385,12 +385,7 @@ fn proto_ok() -> HttpResponseBuilder {
 
 // // CORS headers must be present for *all* responses, including 404, 500, etc.
 // // Applying it to each case individiaully may be error-prone, so here's a filter to do so for us.
-// fn cors_allow<SF, Serv>(req: ServiceRequest, serv: &mut SF::Service) 
-// where SF: ServiceFactory,
-//       Serv: SF::Service
-// {
-//     let mut fut = serv.call(req);
-// }
+
 fn cors_ok_headers() -> DefaultHeaders {
     DefaultHeaders::new()
     .header("Access-Control-Allow-Origin", "*")
