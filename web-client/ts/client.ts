@@ -1,6 +1,8 @@
 import { Item, ItemList, ItemListEntry, Post } from "../protos/feoblog"
 import bs58 from "bs58"
 import * as nacl from "./naclWorker/nacl"
+import { ConsoleLogger, Logger, prefetch } from "./common";
+import { tick } from "svelte";
 
 // Encapsulates communication with the server(s).
 export class Client {
@@ -392,3 +394,127 @@ const MAX_ITEM_SIZE = 32 * 1024 // 32KiB
 // Some servers may increase max item size? Eh, we'll be lenient in what we accept
 // Though, we do want to protect against trying to load absolutely massive ones in the browser:
 const LENIENT_MAX_ITEM_SIZE = 1024 * 1024 // 1 MiB
+
+
+
+// Contains an item, and its userID/signature, required to properly display it:
+export type DisplayItem = {
+    item: Item
+    userID: UserID
+    signature: Signature
+}
+
+export type LazyItemLoaderOptions = {
+    client: Client,
+    
+    // A function that we can use to test whether the end of the page is still visible.
+    endIsVisible: () => boolean,
+
+    // A function we'll call when a new item is available to display:
+    displayItem: (nextItem: DisplayItem) => void,
+
+    // A function we'll call when we've reached the end of the available items.
+    endReached: () => void,
+
+    itemEntries: AsyncGenerator<ItemListEntry>,
+
+    log?: Logger,
+}
+
+// Many pages deal with lazily loading a list of items from an ItemList provided by the server.
+// This class assists in that.
+export class LazyItemLoader {
+    constructor(options: LazyItemLoaderOptions) {
+        this.client = options.client
+        this.endIsVisibile = options.endIsVisible
+        this.displayItemCallback = options.displayItem
+        this.lazyDisplayItems = prefetch(options.itemEntries, 4, this.fetchDisplayItem)
+        this.endReached = options.endReached
+        this.log = options.log || new ConsoleLogger()
+    }
+
+    private client: Client
+    private endIsVisibile: () => boolean
+    private displayItemCallback: (nextItem: DisplayItem) => void
+    private lazyDisplayItems: AsyncGenerator<DisplayItem|null>
+    private endReached: () => void
+    private log: Logger
+
+    // We'll bump this up each time the user bumps into the bottom of the screen.
+    private minItemsToDisplay = 3
+
+    // Are we currently in the middle of displaying more items?
+    private displayingMoreItems = false
+
+    // Call this whenever the UI needs for us to display more items.
+    // We'll continue displaying items until !endIsVisibile (at least).
+    displayMoreItems = async () => {
+        if (this.displayingMoreItems) {
+            // The user could scroll to the end of the page while we're still loading and displaying more items.
+            // No need to fire off another async process:
+            return
+        }
+        try {
+            this.displayingMoreItems = true
+            await this.displayMoreItems2()
+        } finally {
+            this.displayingMoreItems = false
+        }
+    }
+
+    private async displayMoreItems2() {
+        let endIsVisible = this.endIsVisibile
+        let displayItem = this.displayItemCallback
+        this.log.debug("displayMoreItems, endIsVisible", endIsVisible())
+
+        let minToDisplay = this.minItemsToDisplay++
+
+        while(minToDisplay > 0 || endIsVisible()) {
+
+            let n = await this.lazyDisplayItems.next()
+            if (n.done) {
+                this.endReached()
+                return
+            }
+
+            if (n.value === null) {
+                // lazyDisplayItems already warned about this. Just skip:
+                continue
+            }
+
+            displayItem(n.value)
+            minToDisplay--
+
+            // Wait for Svelte to apply state changes.
+            // MAY cause endIsVisibile to toggle off, but at least in Firefox that
+            // doesn't always seem to have happened ASAP.
+            // I don't mind loading a few more items than necessary, though.
+            await tick()
+        }
+    }
+
+    private fetchDisplayItem = async (entry: ItemListEntry): Promise<DisplayItem|null> => {
+        let userID = UserID.fromBytes(entry.user_id.bytes)
+        let signature = Signature.fromBytes(entry.signature.bytes)
+        let item: Item|null 
+        try {
+            item = await this.client.getItem(userID, signature)
+        } catch (e) {
+            this.log.error("Error loading Item:", userID, signature, e)
+            return null
+        }
+
+        if (item === null) {
+            // TODO: Display some placeholder?
+            // It does seem like an error, the server told us about the item, but doesn't have it?
+            this.log.error("No such item", userID, signature)
+            return null
+        }
+
+        return {
+            item,
+            signature: signature,
+            userID: userID,
+        }
+    }
+}

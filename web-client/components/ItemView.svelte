@@ -1,3 +1,8 @@
+<!--
+    See: https://github.com/sveltejs/svelte/issues/5960  🤦‍♂️
+-->
+<svelte:options immutable/>
+
 <script lang="ts">
 // View of a single item.
 import type { Writable } from "svelte/store"

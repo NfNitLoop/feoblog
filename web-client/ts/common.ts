@@ -56,6 +56,8 @@ type MarkdownToHtmlOptions = {
 }
 
 export function markdownToHtml(markdown: string, options?: MarkdownToHtmlOptions): string {
+    if (!markdown) { return ""}
+
     let parsed = cmReader.parse(markdown)
 
     if (options?.stripImages) {
