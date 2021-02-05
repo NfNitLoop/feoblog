@@ -3,8 +3,10 @@
     signature={signature.toString()}
     showDetail={true}
     {appState}
+    bind:item
 />
 
+{#if allowComments}
 <div class="commentSection">
     <CommentEditor 
         {appState}
@@ -24,6 +26,22 @@
         />
     {/each}
 </div>
+{/if}
+
+{#if isProfile}
+<div class="item">
+    <div class="body">
+        <p>You are viewing a single update of this user's profile. 
+            This may not be the most recent profile for this user. 
+            You can always view the most recent profile at:
+        </p>
+
+        <Button href={`#/u/${userID}/profile`}>View Profile</Button>
+            
+    </div>
+</div>
+{/if}
+
 
 
 <script lang="ts">
@@ -35,15 +53,25 @@ import { Signature, UserID } from "../../ts/client"
 import ItemView from "../ItemView.svelte"
 import CommentEditor from "../CommentEditor.svelte"
 import type { Item } from "../../protos/feoblog";
+import Button from "../Button.svelte"
 
 // svelte-spa-router passes in URL params here:
 export let params: any
-
 export let appState: Writable<AppState>
 
 $: userID = UserID.fromString(params.userID)
 $: signature = Signature.fromString(params.signature)
-$: loadComments(userID, signature)
+$: loadComments(allowComments, userID, signature)
+
+// Loaded for us by ItemView:
+let item: Item|undefined
+
+$: isProfile = !!(item && item.profile)
+// Don't show coments UI on profile updates. Profiles are the one ephemeral-ish part of FeoBlog.
+// An individual comment update never goes away, but it will not always be the newest.
+$: allowComments = !!(item && !isProfile)
+
+
 
 type DisplayItem = {
     item: Item
@@ -62,13 +90,17 @@ function commentSendSuccess(event: any) {
 }
 
 // Loads all comments for now. Will add pagination & filtering later.
-async function loadComments(userID: UserID, signature: Signature) {
+async function loadComments(allowComments: boolean, userID: UserID, signature: Signature) {
+
+    replies = []
+
     if (!userID || !signature) {
-        console.log("uid/sig not loaded yet")
+        return
+    }
+    if (!allowComments) {
         return
     }
 
-    replies = []
     let client = $appState.client
     let items = client.getReplyItems(userID, signature)
 

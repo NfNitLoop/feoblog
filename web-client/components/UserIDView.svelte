@@ -18,7 +18,7 @@ export let displayName: string
 export let href: string|undefined
 export let shouldLink = true
 
-$: defaultHref = `#/u/${userID}/`
+$: defaultHref = `#/u/${userID}/profile`
 $: link = href || defaultHref
 
 // The display name is actually the public key until we fetch the real name:

@@ -1,5 +1,7 @@
 <div class="item">
-    <p>Page not NotFound: {$location}</p>
+    <div class="body">
+        <p>Page not found: <code>{$location}</code></p>
+    </div>
 </div>
 
 <script lang="ts">

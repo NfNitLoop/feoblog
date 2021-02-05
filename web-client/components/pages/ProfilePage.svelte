@@ -8,15 +8,27 @@
 {:then loaded} 
     {#if loaded.error}
         <div class="item error">{loaded.error}</div>
-    {:else if !loaded.profile}
-        <div class="item error">This state should be unreachable</div>
     {:else}
+        {#if !loaded.profile}
+            <div class="item"><div class="body error">This user has no profile</div></div>
+        {:else}
         <ItemView 
             {appState}
             item={loaded.profile.item}
             userID={userID.toString()}
             signature={loaded.profile.signature.toString()}
         />
+        {/if}
+
+        <div class="item">
+            <div class="body">
+                {#if userID.toString() == loggedInUser?.toString()} 
+                        <Button href={`#/my_profile`}>Edit</Button>
+                {/if}
+                <Button href={`#/u/${userID}/`}>View Posts</Button>
+            </div>
+        </div>
+
     {/if}
 {:catch e} 
     <div class="item error">
@@ -30,13 +42,18 @@ import type { Writable } from "svelte/store";
 
 import type { AppState } from "../../ts/app";
 import { ProfileResult, UserID } from "../../ts/client";
+import Button from "../Button.svelte";
 import ItemView from "../ItemView.svelte";
 
 export let appState: Writable<AppState>
 export let params: {
     userID: string
 }
-let userID = UserID.fromString(params.userID)
+
+
+$: userID = UserID.fromString(params.userID)
+
+let loggedInUser = $appState.loggedInUser
 
 let loadedProfile: Promise<LoadedProfile>
 $: loadedProfile = loadProfile(userID)
@@ -48,14 +65,16 @@ type LoadedProfile = {
 
 async function loadProfile(userID: UserID|null): Promise<LoadedProfile> {
     if (!userID) return {
-        error: "Must be logged in."
+        error: "UserID is required"
     }
 
     // Note: non-exhaustive search
     let result = await $appState.client.getProfile(userID)
 
-    if (result) return {
-        profile: result
+    if (result) {
+        return {
+            profile: result
+        }
     }
 
     return {}

@@ -20,7 +20,7 @@ import ItemHeader from "./ItemHeader.svelte"
 
 export let userID: string
 export let signature: string
-// Caller can provide a pre-fetched Item
+// Caller can provide a pre-fetched Item. We'll load the item here.
 export let item: Item|null|undefined = undefined
 export let appState: Writable<AppState>
 export let showDetail = false
@@ -44,24 +44,27 @@ export let previewMode = false
 // Can we click on the item body to go to its page?
 export let clickable = false
 
-let itemPromise: Promise<Item|null>
-
-
+let loadError = ""
 let viewMode: "normal"|"markdown"|"data" = "normal"
 
-$: {
-    // Rerun getItem when any of these change:
-    itemPromise = getItem(userID, signature); item
-}
+$: getItem(userID, signature)
+
+
 
 async function getItem(userID: string, signature: string) {
     if (item !== undefined) {
         // User has provided their own, don't load one:
-        return item
+        return
     }
-    return await $appState.client.getItem(userID, signature)
-}
 
+    try {
+        let result = await $appState.client.getItem(userID, signature)
+        item = result
+    } catch (e) {
+        loadError = `Error loading item: ${e}`
+        console.error(e)
+    }
+}
 
 let validFollows: ValidFollow[] = []
 $: validFollows = function(){
@@ -118,18 +121,26 @@ function onClick(event: Event) {
 }
 </script>   
 
-{#await itemPromise}
+{#if item === undefined}
     <div class="item">
-        <p>Loading...
-            <!-- 
-        <br>user_id: { userID }
-        <br>signature: { signature }
-        -->
-        </p>
+        <div class="body">
+            <p>Loading...
+                <!-- 
+            <br>user_id: { userID }
+            <br>signature: { signature }
+            -->
+            </p>
+        </div>
     </div>
-{:then item}
+{:else if loadError}
+    <div class="item">
+        <div class="body">
+            <p class="error">Error: {loadError}
+        </div>
+    </div>
+{:else}<!-- item && !loadError-->
 <div class="item" class:clickable class:comment={item?.comment} on:click={onClick} use:fixLinks={{mode: linkMode}}>
-    {#if !item}
+    {#if item === null}
         <div class="body">
             No such item: <code>/u/{userID}/i/{signature}/</code>
         </div>
@@ -201,21 +212,11 @@ function onClick(event: Event) {
         Unknown item type.
     {/if}
 </div>
-{:catch error}
-    <div class="item">
-        <p class="error">Error: {error}
-    </div>
-{/await} 
+{/if}
 
 
 <style>
-
 .clickable {
     cursor: pointer;
 }
-
-
-
-
-
 </style>

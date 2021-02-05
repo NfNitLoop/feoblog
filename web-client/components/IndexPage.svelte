@@ -8,7 +8,8 @@
             {:else}
                 <div>{$appState.userName || "(unknown user)"}</div>
                 <a use:active href="#/u/{$appState.loggedInUser}/feed">My Feed</a>
-                <a use:active href="#/my_profile">My Profile</a>
+                <a use:active href="#/u/{$appState.loggedInUser}/profile">My Profile</a>
+                <a use:active href="#/u/{$appState.loggedInUser}/">My Posts</a>
                 <a use:active href="#/post">New Post</a>
                 <a use:active href="#/sync">Sync</a>
                 <a use:active href="#/login">Change User</a>
