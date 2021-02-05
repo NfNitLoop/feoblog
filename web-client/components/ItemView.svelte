@@ -8,20 +8,29 @@
 import type { Writable } from "svelte/store"
 import { push as navigateTo } from "svelte-spa-router"
 
-import { Signature, UserID} from "../ts/client"
+import { UserID} from "../ts/client"
 import { markdownToHtml, fixLinks} from "../ts/common"
-import Timestamp from "./Timestamp.svelte"
 import Button from "./Button.svelte"
-import type { Comment, Item, ReplyRef } from "../protos/feoblog"
+import type { Item } from "../protos/feoblog"
 import type { AppState } from "../ts/app"
 import UserIdView from "./UserIDView.svelte"
 import CommentView from "./CommentView.svelte"
 import ItemHeader from "./ItemHeader.svelte"
+import { createEventDispatcher } from "svelte";
 
 export let userID: string
 export let signature: string
-// Caller can provide a pre-fetched Item. We'll load the item here.
-export let item: Item|null|undefined = undefined
+
+// Caller can provide a pre-fetched Item. 
+// DO NOT BIND. If you want to see the item loaded, use on:itemLoaded
+let initialItem: Item|null|undefined // = undefined // weird, causes type errors in callers.
+export {initialItem as item}
+
+
+// The item that we loaded:
+let item: Item|null|undefined = undefined
+
+
 export let appState: Writable<AppState>
 export let showDetail = false
 
@@ -47,13 +56,12 @@ export let clickable = false
 let loadError = ""
 let viewMode: "normal"|"markdown"|"data" = "normal"
 
-$: getItem(userID, signature)
+let dispatcher = createEventDispatcher()
 
-
-
-async function getItem(userID: string, signature: string) {
-    if (item !== undefined) {
-        // User has provided their own, don't load one:
+$: getItem(userID, signature, initialItem)
+async function getItem(userID: string, signature: string, initialItem: Item|null|undefined) {
+    if (initialItem !== undefined) {
+        item = initialItem
         return
     }
 
@@ -64,6 +72,8 @@ async function getItem(userID: string, signature: string) {
         loadError = `Error loading item: ${e}`
         console.error(e)
     }
+
+    dispatcher("itemLoaded", item)
 }
 
 let validFollows: ValidFollow[] = []

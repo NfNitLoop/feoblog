@@ -3,7 +3,7 @@
     signature={signature.toString()}
     showDetail={true}
     {appState}
-    bind:item
+    on:itemLoaded={itemLoaded}
 />
 
 {#if allowComments}
@@ -63,8 +63,10 @@ $: userID = UserID.fromString(params.userID)
 $: signature = Signature.fromString(params.signature)
 $: loadComments(allowComments, userID, signature)
 
-// Loaded for us by ItemView:
-let item: Item|undefined
+let item: Item|undefined = undefined
+function itemLoaded(event: CustomEvent<Item>) {
+    item = event.detail
+}
 
 $: isProfile = !!(item && item.profile)
 // Don't show coments UI on profile updates. Profiles are the one ephemeral-ish part of FeoBlog.
@@ -86,7 +88,7 @@ function commentSendSuccess(event: any) {
     let sig = event.detail.signature
     console.log("Send success", uid, sig)
 
-    // TODO: Clear the editor and show the item.
+    // SignAndSend will send us to the ItemView page for the new comment.
 }
 
 // Loads all comments for now. Will add pagination & filtering later.

@@ -3,11 +3,9 @@
 -->
 
 <div class="item">
-    <h1>Posts by:</h1>
-    <div class="userInfo">
-        <UserIDView {appState} {userID}/>
+    <div class="body">
+        <h1>Posts by: <UserIDView {appState} {userID}/></h1>
     </div>
-    <Button href={`#/u/${userID}/profile`}>View Profile</Button>
 </div>
 
 {#each items as entry, index (entry.signature)}
@@ -18,7 +16,11 @@
         {appState}
     />
 {:else}
-    <div class="item">No posts found for user <UserIDView {appState} {userID}/></div>
+    <div class="item">
+        <div class="body">
+            No posts found for user <UserIDView {appState} {userID}/>
+        </div>
+    </div>
 {/each}
 
 <VisibilityCheck on:itemVisible={lazyLoader.displayMoreItems} bind:visible={endIsVisible}/>
@@ -31,7 +33,6 @@ import type { DisplayItem } from "../../ts/client"
 import { UserID, LazyItemLoader } from "../../ts/client";
 
 import ItemView from "../ItemView.svelte"
-import Button from "../Button.svelte"
 import VisibilityCheck from "../VisibilityCheck.svelte";
 import UserIDView from "../UserIDView.svelte"
 
