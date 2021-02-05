@@ -12,7 +12,6 @@
         {appState}
         replyToUserID={userID}
         replyToSignature={signature}
-        on:sendSuccess={commentSendSuccess}
     />
 
     {#each replies as reply (reply)}
@@ -83,13 +82,6 @@ type DisplayItem = {
 
 let replies: DisplayItem[] = []
 
-function commentSendSuccess(event: any) {
-    let uid = event.detail.userID
-    let sig = event.detail.signature
-    console.log("Send success", uid, sig)
-
-    // SignAndSend will send us to the ItemView page for the new comment.
-}
 
 // Loads all comments for now. Will add pagination & filtering later.
 async function loadComments(allowComments: boolean, userID: UserID, signature: Signature) {

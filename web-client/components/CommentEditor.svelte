@@ -48,6 +48,19 @@ let currentView: "Edit"|"Preview" = "Edit"
 
 let text = ""
 
+$: 
+{
+    // Whenever any of these change, clear the text:
+    // This avoids an issue where the box gets re-used on the next item page.
+    $appState; replyToUserID; replyToSignature
+    clear()
+}
+
+export function clear() {
+    text = ""
+    currentView = "Edit"
+}
+
 $: userID = $appState.requireLoggedInUser()
 $: hasText = text.trim().length > 0
 
@@ -75,6 +88,11 @@ $: commentItem = function() {
 }()
 
 
-
 </script>
 
+<style>
+.item :global(textarea) {
+    margin-bottom: 1em;    
+}
+
+</style>
