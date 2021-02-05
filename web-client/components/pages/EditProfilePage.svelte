@@ -10,9 +10,11 @@
         <div class="item error">{loaded.error}</div>
     {:else if !loaded.profile && !createNewOK}
         <div class="item">
-            <p>Could not find an existing profile.</p>
-            <Button on:click={createNew}>Create New Profile</Button>
-            <Button href="#/sync">Sync from another server</Button>
+            <div class="body">
+                <p>Could not find an existing profile.</p>
+                <Button on:click={createNew}>Create New Profile</Button>
+                <Button href="#/sync">Sync from another server</Button>
+            </div>
         </div>
     {:else if !loaded.profile}
         <EditorWithPreview
