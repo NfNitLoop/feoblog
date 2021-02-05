@@ -182,8 +182,9 @@ function onClick(event: Event) {
         <ItemHeader {appState} {item} userID={UserID.fromString(userID)} {signature} {previewMode} />
         <div class="body">
             <h1 class="title">Profile: {item.profile.display_name}</h1>
-
-            <!-- TODO: Move viewMode options out of the body of the Item.item_type, and into a generic top-level location -->
+            <div class="userIDInfo">
+                id: <UserIdView userID={UserID.fromString(userID)} resolve={false} shouldLink={false} />
+            </div>
             {#if viewMode == "normal"}
                 {@html markdownToHtml(item.profile.about)}
             {:else if viewMode == "markdown"}
@@ -229,4 +230,13 @@ function onClick(event: Event) {
 .clickable {
     cursor: pointer;
 }
+
+.userIDInfo {
+    font-size: 0.8em;
+}
+
+.userIDInfo, .userIDInfo :global(.userID) {
+    color: #888;
+}
+
 </style>
