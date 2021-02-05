@@ -121,24 +121,6 @@ input:hover, input:focus, textarea:hover, textarea:focus {
     border-radius: 20px 20px 0 0;
 }
 
-.item .header .pic {
-    height: 2rem;
-    width: 2rem;
-    background-color: #888;
-    /* TODO: Don't use this image. */
-    background-image: url("/static/staff-placeholder-female.jpg");
-    background-position: center center;
-    background-repeat: no-repeat;
-    background-size: cover;
-
-    display: inline-block;
-    margin: 0.2rem;
-    margin-right: 0.5rem;
-    border-radius: 5px;
-
-    flex-grow: 0;
-    flex-shrink: 0;
-}
 
 .item .header .text > * {
     display: inline-block;

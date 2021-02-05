@@ -297,6 +297,15 @@ export class UserID {
         return bs58.encode(this.bytes)
     }
 
+    // A hex representation of the bytes:
+    toHex(): string {
+        let out = []
+        for (let byte of this.bytes) {
+            out.push(byte.toString(16).padStart(2, "0"))
+        }
+        return out.join("")
+    }
+
     static fromString(userID: string): UserID {
         if (userID.length == 0) {
             throw "UserID must not be empty."

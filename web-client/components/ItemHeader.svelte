@@ -2,7 +2,7 @@
     The .header inside of an .item
 -->
 <div class="header">
-    <div class="pic"></div>
+    <ProfileImage {userID} />
     <div class="text">
         <UserIdView {userID} {appState}/>
         {#if showReplyTo && item.comment != null}
@@ -28,6 +28,7 @@ import { Signature, UserID } from "../ts/client";
 
 import UserIdView from "./UserIDView.svelte"
 import Timestamp from "./Timestamp.svelte"
+import ProfileImage from "./ProfileImage.svelte";
 
 // required:
 export let appState: Writable<AppState>

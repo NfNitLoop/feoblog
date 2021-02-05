@@ -4,6 +4,8 @@ import bs58 from "bs58"
 import bs58check from "bs58check"
 import * as nacl from "tweetnacl"
 import buffer from "buffer"
+import ProfileImage from "../ProfileImage.svelte"
+import { UserID } from "../../ts/client";
 let Buffer = buffer.Buffer
 
 
@@ -55,7 +57,12 @@ function equalBytes(array1: Uint8Array, array2: Uint8Array): boolean {
 <Button on:click={createID}>Create new ID</Button>
 
 {#if userID}
+   
     <table>
+        <tr>
+            <th>Identicon:</th>
+            <td class="userID"><ProfileImage userID={UserID.fromString(userID)}/></td>
+        </tr>
         <tr>
             <th>User ID:</th>
             <td class="userID">{userID}</td>
