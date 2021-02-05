@@ -53,6 +53,7 @@ $: userID = UserID.fromString(params.userID)
 $: lazyLoader = createLazyLoader(userID)
 
 function createLazyLoader(userID: UserID) {
+    items = []
     return new LazyItemLoader({
         client: $appState.client,
         endIsVisible: () => endIsVisible,

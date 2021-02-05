@@ -51,6 +51,7 @@ let moreItems = true
 
 $: lazyLoader = createLazyLoader()
 function createLazyLoader() {
+    items = []
     return new LazyItemLoader({
         itemEntries: $appState.client.getHomepageItems(),
         client: $appState.client,
