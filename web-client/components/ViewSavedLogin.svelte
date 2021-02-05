@@ -11,6 +11,8 @@
 import type { SavedLogin } from "../ts/app";
 import { createEventDispatcher } from "svelte";
 import Button from "./Button.svelte"
+import ProfileImage from "./ProfileImage.svelte";
+import { UserID } from "../ts/client";
 
 export let savedLogin: SavedLogin
 export let isLoggedIn = false
@@ -75,6 +77,9 @@ class EventData {
 <div class="savedLogin" >
 <div class="item">
 <div class="body" style={itemStyle}>
+    <div class="imageBox" on:click={logIn}>
+        <ProfileImage userID={UserID.fromString(userID)} size="fit"/>
+    </div>
     <table>
         {#if isLoggedIn}
         <tr>
@@ -115,8 +120,23 @@ input:hover, input:focus {
     border: 1px solid black;
 }
 
+th {
+    text-align: left;
+}
+
 .userID, .color {
     font-family: Consolas, monospace;
+}
+
+.body {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.body .imageBox {
+    margin-right: 1em;
+    cursor: pointer;
 }
 
 </style>

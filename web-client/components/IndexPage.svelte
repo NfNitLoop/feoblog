@@ -93,7 +93,7 @@ $: {
 </script>
 
 <style>
-    .active {
-        color: black;
-    }
+:global(.nav .active) {
+    color: black;
+}
 </style>

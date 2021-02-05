@@ -1,5 +1,18 @@
-<div class="pic" class:isIdenticon class:isPhoto {style}></div>
-
+{#if iconSize}
+<div 
+    class="pic"
+    class:isIdenticon
+    class:isPhoto
+    {style}
+></div>
+{:else}
+<img
+    class="pic"
+    class:fitSize
+    src={imgSrc}
+    alt=""
+/>
+{/if}
 
 <script lang="ts">
 import type { UserID } from "../ts/client";
@@ -11,21 +24,26 @@ import Identicon from "identicon.js"
 // export let appState: Writable<AppState>
 
 export let userID: UserID
+
+export let size: "icon"|"fit" = "icon"
+
+$: iconSize = size == "icon"
+$: fitSize = size == "fit"
+
 let isIdenticon = true
 let isPhoto = false
 
 
 let style = ""
-$: style = getStyleFor(userID)
-
-function getStyleFor(userID: UserID): string {
+$: style = `background-image: url("${imgSrc}");`
+$: imgSrc = getImgSrc(userID)
+function getImgSrc(userID: UserID): string {
     let icon = new Identicon(userID.toHex(), {
         size: 100,
         format: 'svg',
         background: [255, 255, 255, 0],
     })
-
-    return `background-image: url("data:image/svg+xml;base64,${icon}");`
+    return `data:image/svg+xml;base64,${icon}`
 }
 
 </script>
@@ -49,6 +67,11 @@ function getStyleFor(userID: UserID): string {
     background-color: white;
 
     box-shadow: 0px 3px 3px rgba(0,0,0,0.15);
+}
+
+.fitSize {
+    width: 100%;
+    height: auto;
 }
 
 .pic.isIdenticon {
