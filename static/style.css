@@ -52,14 +52,6 @@ body
 	margin-top: 0.5em;
 }
 
-.item > * {
-	margin: 0;
-}
-
-.item > *:not(:first-child) {
-	margin-top: 1em;
-}
-
 .item pre
 {
 	display: block;
@@ -111,6 +103,10 @@ body
 	}
 }
 
+code {
+	font-family: Consolas, monospace;
+}
+
 
 .item, .nav {
 	padding: 1em;
@@ -124,7 +120,7 @@ body
 /* Post, reply, etc. */
 .item {
 	margin: 1em;
-	max-width: 55em;
+	max-width: 55rem;
 }
 
 /** Things like H1s like to add their own margins, but it doesn't make sense
@@ -132,6 +128,11 @@ as the first item in the content. */
 .item > *:first-child
 {
 	margin-top: 0px;
+}
+
+.item > *:last-child
+{
+	margin-bottom: 0px;
 }
 
 .item .userInfo, .item .timestamp {

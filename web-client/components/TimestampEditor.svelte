@@ -67,7 +67,10 @@ $: errorBox = errors.length > 0
 </script>
 
 <style>
-    .errorBox {
-        border: 1px solid red;
-    }
+.errorBox {
+    border: 1px solid red;
+}
+.timestamp {
+    font-family: Consolas, monospace;
+}
 </style>

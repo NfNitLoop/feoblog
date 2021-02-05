@@ -51,6 +51,7 @@ function equalBytes(array1: Uint8Array, array2: Uint8Array): boolean {
 </script>
 
 <div class="item">
+<div class="body">
 <Button on:click={createID}>Create new ID</Button>
 
 {#if userID}
@@ -76,6 +77,7 @@ function equalBytes(array1: Uint8Array, array2: Uint8Array): boolean {
     <Button on:click={clear}>Clear</Button>
 {/if}
 
+</div>
 </div>
 
 <style>

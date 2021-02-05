@@ -2,11 +2,14 @@
     <ViewSavedLogin {savedLogin} isLoggedIn={index===0} on:logIn={logInSaved} on:remove={removeSaved} on:change={updateSavedLogin}/>
 {:else}
 <div class="item">
-    You are not currently logged in.
+<div class="body">
+        You are not currently logged in.
+</div>
 </div>
 {/each}
 
 <div class="item">
+<div class="body">
 <form>
     
     <UserIDInput label="Log in as" bind:value={userID} bind:valid={validUserID}/>
@@ -25,6 +28,7 @@
     {/if}
     <Button on:click={confirmLogin}>Confirm</Button>
 {/if}
+</div>
 </div>
 
 <CreateID></CreateID>

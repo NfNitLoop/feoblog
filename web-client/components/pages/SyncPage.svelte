@@ -1,10 +1,14 @@
 <div class="item">
+<div class="body">
+
     <h1>Sync</h1>
     <p>Synchronize your posts (and your feed) from/to multiple servers</p>
+</div>
 </div>
 
 
 <div class="item">
+<div class="body">
     <h1>Sync My Feed</h1>
     <p>Copies your own posts, and posts of those you follow, from any remote servers to this one.</p>
 
@@ -23,14 +27,17 @@
 
     <TaskTrackerView bind:tracker={syncMyFeedTracker}/>
 </div>
+</div>
 
 <div class="item">
-    <h1>Publish My Posts</h1>
+<div class="body">
+        <h1>Publish My Posts</h1>
     <p>Copy your posts (and profile updates, etc.) from this server to all servers listed in your profile</p>
 
     <Button on:click={publishMyPosts}>Sync</Button>
 
     <TaskTrackerView bind:tracker={publishMyPostsTracker}/>
+</div>
 </div>
 
 

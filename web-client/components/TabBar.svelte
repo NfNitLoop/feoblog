@@ -1,17 +1,15 @@
 <!-- a tab bar that sits atop an item. -->
-<div class="tabBar" class:animate>
+<div class="tabBar" transition:slide|local>
     {#each tabs as tabName, idx (tabName)}
         <span class="tab" class:inactive={idx != activeIdx} on:click={() => setActiveIndex(idx)}>{tabName}</span>
     {/each}
 </div>
 
 <script lang="ts">
-import { createEventDispatcher } from "svelte";
+import { slide } from "svelte/transition";
 
 
 export let tabs: string[] = []
-// Should we animate this when it appears?
-export let animate = false
 
 export let activeTab: string
 
@@ -39,21 +37,6 @@ function setActiveIndex(index: number) {
     /* used in our keyframe max-height below: */
     height: 1.5em;
 
-}
-
-.tabBar.animate {
-    animation: 0.5s ease-in-out 0s popup;
-}
-
-@keyframes popup {
-    from {
-        overflow: hidden;
-        max-height: 0px;
-    }
-    to {
-        overflow: hidden;
-        max-height: 1.5em;
-    }
 }
 
 :global(.tabBar + .item) {

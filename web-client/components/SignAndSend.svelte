@@ -4,7 +4,7 @@
     dispatches:
      * "sendSuccess", {userID, signature}
 -->
-<div class="sendBox inputWhiteBox">
+<div class="sendBox inputWhiteBox" transition:slide|local>
     {#if errors.length > 0}
         <div class="error">
             {#each errors as error}
@@ -16,6 +16,7 @@
         <InputBox 
             inputType="password"
             label="Private Key"
+            placeholder=""
             bind:value={privateKey}
             bind:errorMessage={privateKeyError}
         />
@@ -37,9 +38,9 @@
 
 
 <script lang="ts">
+import { push as navigateTo } from "svelte-spa-router"
+import { slide } from "svelte/transition"
 import type { Writable } from "svelte/store";
-
-
 import type { Item } from "../protos/feoblog";
 import type { AppState } from "../ts/app";
 import { Signature } from "../ts/client";
@@ -55,6 +56,7 @@ export let item: Item
 export let disabled = false
 // Errors sent to us from outside.
 export let errors: string[] = []
+export let navigateWhenDone = true
 
 $: itemBytes = item.serialize()
 
@@ -178,6 +180,10 @@ async function submit() {
     status = `Success: ${result.status}: ${result.statusText}`
 
     dispatcher("sendSuccess", {userID, signature: sig})
+
+    if (navigateWhenDone) {
+        navigateTo(`#/u/${userID}/i/${signature}/`)
+    }
 }
 
 </script>

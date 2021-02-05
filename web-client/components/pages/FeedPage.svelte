@@ -2,6 +2,7 @@
     The "friend feed", which shows posts by users a given user follows.    
 -->
 <!-- Displays the homepage feed in the client. -->
+<div class="feed">
 {#each items as entry (entry) }
     <ItemView 
         userID={entry.userID.toString()}
@@ -20,8 +21,9 @@
     {/if}
 </div>
 {/each}
-
 <VisibilityCheck on:itemVisible={lazyLoader.displayMoreItems} bind:visible={endIsVisible}/>
+</div>
+
 
 <script lang="ts">
 import type { Writable } from "svelte/store";
@@ -67,3 +69,9 @@ function createLazyLoader(userID: UserID) {
 }
 
 </script>
+
+<style>
+    .feed {
+        max-width: 55rem;
+    }
+</style>

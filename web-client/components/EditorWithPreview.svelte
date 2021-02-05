@@ -20,61 +20,35 @@
         signature="unknown"
         {item}
         linkMode="newWindow"
+        previewMode
     />
 
-    <!-- Sign & Send -->
-    <div class="item sendBox inputWhiteBox">
-        {#if errors.length > 0}
-            <div class="error">
-                {#each errors as error}
-                    {error}<br>
-                {/each}
-            </div>
-        
-        {:else if !validSignature}
-            <InputBox 
-                inputType="password"
-                label="Private Key"
-                bind:value={privateKey}
-                bind:errorMessage={privateKeyError}
-            />
-            <Button on:click={sign} disabled={!validPrivateKey}>Sign</Button>
-        {:else}
-            <InputBox
-                label="Signature"
-                value={signature}
-                disabled={true}
-             />
-            <div class="buttons">
-                <Button on:click={submit}>Submit</Button>
-            </div>
-            {#if status}
-                <div>{status}</div>
-            {/if}
-        {/if}
+    <!-- force transition:slide|local to be local -->
+    {#if true}
+    <div class="item">
+        <div class="body">
+            <SignAndSend
+                {appState}
+                {item}
+            />    
+        </div>
     </div>
+    {/if}
 
 </div>
 
 
 <script lang="ts">
 import type { Writable } from "svelte/store"
-import bs58 from "bs58"
-import { Item, Signature } from "../protos/feoblog"
-import * as nacl from "tweetnacl"
-import bs58check from 'bs58check'
-import { DateTime } from "luxon"
-import { push as navigateTo } from "svelte-spa-router"
+import { Item } from "../protos/feoblog"
 
 
-import { MAX_ITEM_SIZE } from '../ts/common'
-import { UserID as ClientUserID, Signature as ClientSignature } from "../ts/client"
+import type { UserID as ClientUserID } from "../ts/client"
 import type { AppState } from '../ts/app';
 import ItemView from './ItemView.svelte'
-import Button from './Button.svelte'
-import InputBox from './InputBox.svelte';
 import EditProfile from './EditProfile.svelte';
 import EditPost from './EditPost.svelte';
+import SignAndSend from "./SignAndSend.svelte";
 
 export let appState: Writable<AppState>
 
@@ -95,11 +69,7 @@ export let signature = ""
 
 
 let userID: ClientUserID
-$: userID = function() {
-    let userID = $appState.loggedInUser
-    if (userID) return userID
-    throw `Must be logged in.`
-}()
+$: userID = $appState.requireLoggedInUser()
 
 // Validation Errors from EditProfile/EditPost:
 let validationErrors: string[] = []
@@ -107,161 +77,6 @@ let validationErrors: string[] = []
 let item: Item = new Item()
 
 
-// errors including validationErrors and additional checks:
-let errors: string[] = []
-$: errors = function() {
-    let errors = [...validationErrors]
-    if (protoSize > MAX_ITEM_SIZE) {
-        errors.push(`Item is ${protoSize} bytes but max size is ${MAX_ITEM_SIZE}`)
-    }
-    if (!item.timestamp_ms_utc) {
-        errors.push(`A timestamp is required`)
-    }
-
-    let now = DateTime.local().valueOf()
-    if (item.timestamp_ms_utc > now.valueOf()) {
-        // Technically, servers allow some leniency here, but, eh:
-        errors.push("Date must not be in the future.")
-    }
-
-    return errors
-}()
-
-// The result of the last submit()
-let status = ""
-
-
-let privateKey = ""
-
-// TODO: Move parsing a private key to a separate function and component.
-// Oh hey, there's SignAndSend now. Replace all this w/ that.
-// Error to display about the private key:
-$: privateKeyError = function() {
-    if (privateKey.length == 0) {
-        return "";
-    }
-    
-    let buf: Uint8Array;
-    try {
-        buf = bs58.decode(privateKey)
-    } catch (error) {
-        return "Not valid base58"
-    }
-
-    // Secret is 32 bytes, + 4 for checked base58.
-    if (buf.length < 36) {
-        return "Password is too short."
-    }
-    if (buf.length > 36) {
-        return "Password is too long."
-    }
-
-    try {
-        buf = bs58check.decode(privateKey)
-    } catch (e) {
-        return "Invalid Password"
-    }
-
-    
-    let keypair = nacl.sign.keyPair.fromSeed(buf);
-    
-    let pubKey = bs58.encode(keypair.publicKey)
-    if (pubKey != userID.toString()) {
-        return "Private key does not match user ID."
-    }
-
-    return ""    
-}()
-
-// We have a key which could be used to sign.
-$: validPrivateKey = privateKey.length > 0 && privateKeyError == ""
-$: itemProtoBytes = item.serialize()
-$: protoSize = itemProtoBytes?.length || 0
-
-$: validSignature = function(): boolean {
-    if (!userID || !signature || !itemProtoBytes) {
-        return false
-    }
-
-    let isValid = false
-    try {
-        let pubKey = userID.bytes
-        let decodedSig = bs58.decode(signature)
-        isValid = nacl.sign.detached.verify(itemProtoBytes, decodedSig, pubKey)
-    } catch (error) {
-        console.error("Error validating signature:", error)
-    }
-
-    // Re-validating a signature on every keypress is *expensive*.
-    // If we've started editing and this signature is no longer valid, delete it so
-    // that we can short-circuit (above)
-    if (!isValid) {
-        unSign()
-    }
-
-    return isValid
-}()
-
-
-// Create a signature, delete the password.
-function sign() {
-
-    if (privateKeyError) {
-        console.error("Shouldn't be able to call sign w/ invalid private key.")
-        return
-    }
-
-    if (!itemProtoBytes) throw `No bytes to sign.`
-   
-    let buf = bs58check.decode(privateKey)
-    let keypair = nacl.sign.keyPair.fromSeed(buf);
-    let binSignature = nacl.sign.detached(itemProtoBytes, keypair.secretKey)
-    signature = bs58.encode(binSignature)
-
-    // Delete the privateKey, we don't want to save it any longer than
-    // necessary:
-    privateKey = ""
-}
-
-function unSign() {
-    signature = ""
-}
-
-async function submit() {
-    if ( (errors.length > 0) || !validSignature) {
-        console.error("Submit clicked when not valid");
-        return
-    }
-
-    if (!itemProtoBytes) {
-        console.error("Refusing to send 0 bytes")
-        return
-    }
-
-    let sig = ClientSignature.fromString(signature)
-
-    status = "Making request"
-
-    try {
-        $appState.client.putItem(userID, sig, itemProtoBytes)
-    } catch (e) {
-        console.error("PUT exception:", e)
-        status = `PUT exception: ${e}`
-        return 
-    }
-
-    // Response was OK.
-    if (mode === "profile") {
-        $appState.userProfileChanged()
-    }
-
-    navigateTo(`#/u/${userID}/i/${sig}/`)
-}
 
 </script>
 
-<style>
-.buttons {
-    margin-top: 1em;
-}
-</style>

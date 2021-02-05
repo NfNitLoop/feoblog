@@ -73,7 +73,8 @@ class EventData {
 
 
 <div class="savedLogin" >
-<div class="item" style={itemStyle}>
+<div class="item">
+<div class="body" style={itemStyle}>
     <table>
         {#if isLoggedIn}
         <tr>
@@ -90,7 +91,7 @@ class EventData {
         </tr>
         <tr>
             <td>Color:</td>
-            <td><input type="text" bind:value={bgColor} placeholder="(none)"></td>
+            <td><input class="color" type="text" bind:value={bgColor} placeholder="(none)"></td>
         </tr>
         <tr>
             <td></td>
@@ -102,16 +103,20 @@ class EventData {
     </table>
 </div>
 </div>
+</div>
 
 <style>
-    input {
-        border: 1px solid rgba(0, 0, 0, 0);
-        font-family: inherit;
-        font-size: inherit;
-    }
-    input:hover, input:focus {
-        border: 1px solid black;
-    }
+input {
+    border: 1px solid rgba(0, 0, 0, 0);
+    font-family: inherit;
+    font-size: inherit;
+}
+input:hover, input:focus {
+    border: 1px solid black;
+}
 
+.userID, .color {
+    font-family: Consolas, monospace;
+}
 
 </style>

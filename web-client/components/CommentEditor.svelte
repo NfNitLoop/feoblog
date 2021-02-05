@@ -1,30 +1,35 @@
 {#if hasText}
-<TabBar tabs={["Edit", "Preview"]} animate={true} bind:activeTab={currentView}/>
+<TabBar tabs={["Edit", "Preview"]} bind:activeTab={currentView}/>
 {/if}
 
-<div class="item">
-    {#if currentView == "Edit"}
-        <ExpandingTextarea size="small" placeholder="Leave a Comment" bind:value={text}/>
-        {#if hasText}
-            <SignAndSend
-                item={commentItem}
-                {appState}
-                on:sendSuccess
-            />
-        {/if}
-    {:else}
-        <CommentView {appState} item={commentItem}
+{#if currentView == "Edit"}
+    <div class="item">
+        <div class="body">
+            <ExpandingTextarea size="oneLine" placeholder="Leave a Comment" bind:value={text}/>
+            {#if hasText}
+                <SignAndSend
+                    item={commentItem}
+                    {appState}
+                    on:sendSuccess
+                />
+            {/if}
+        </div>
+    </div>
+{:else}
+    <!-- TODO: Just replace with ItemView: -->
+    <div class="item">
+        <CommentView {appState} 
+            item={commentItem}
             {userID}
             signature="unknown"
             linkMode="newWindow"
         />
-    {/if}
-</div>
+    </div>
+{/if}
 
 
 <script lang="ts">
 import { DateTime } from "luxon";
-
 import type { Writable } from "svelte/store";
 import { Item, Comment, ReplyRef, UserID as ProtoUserID, Signature as ProtoSignature} from "../protos/feoblog";
 import type { AppState } from "../ts/app";

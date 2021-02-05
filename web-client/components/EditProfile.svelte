@@ -2,35 +2,33 @@
     Component for editing a profile. Used from within EditorWithPreview
 -->
 <div class="item editPane">
-    <h1><input type="text" bind:value={displayName} placeholder="(Profile Display Name)"></h1>
-    <div class="userInfo">
-        <span class="userID">@{userID}</span>
+    <div class="body">
+        <h1><input type="text" bind:value={displayName} placeholder="(Profile Display Name)"></h1>
+        <ExpandingTextarea bind:value={profileContent} placeholder="Your profile here..."/>
+
+        <h2>Follows</h2>
+        {#each follows as follow, index (follow)} 
+            <FollowBox 
+                bind:userID={follows[index].userID} 
+                bind:displayName={follows[index].displayName}
+                on:delete={() => removeFollow(index)}
+            />
+        {/each}
+        <Button on:click={addFollow}>New Follow</Button>
+
+
+        <h2>Servers</h2>
+        {#each servers as server, index (server)}
+            <div class="inputsGreyBox">
+            <InputBox
+                label="Server"
+                placeholder="https://feoblog.example.com"
+                validationCallback={validateServerURL}
+                bind:value={servers[index].url}
+            />
+            </div>
+        {/each}
     </div>
-    <ExpandingTextarea bind:value={profileContent} placeholder="Your profile here..."/>
-
-    <h2>Follows</h2>
-    {#each follows as follow, index (follow)} 
-        <FollowBox 
-            bind:userID={follows[index].userID} 
-            bind:displayName={follows[index].displayName}
-            on:delete={() => removeFollow(index)}
-        />
-    {/each}
-    <Button on:click={addFollow}>New Follow</Button>
-
-
-    <h2>Servers</h2>
-    {#each servers as server, index (server)}
-        <div class="inputsGreyBox">
-        <InputBox
-            label="Server"
-            placeholder="https://feoblog.example.com"
-            validationCallback={validateServerURL}
-            bind:value={servers[index].url}
-        />
-        </div>
-    {/each}
-
 </div>
 
 

@@ -16,6 +16,7 @@ import type { Comment, Item, ReplyRef } from "../protos/feoblog"
 import type { AppState } from "../ts/app"
 import UserIdView from "./UserIDView.svelte"
 import CommentView from "./CommentView.svelte"
+import ItemHeader from "./ItemHeader.svelte"
 
 export let userID: string
 export let signature: string
@@ -36,24 +37,17 @@ export let showReplyTo = true
 //     But leaves external links alone.
 //   
 export let linkMode: "fix" | "newWindow" | "ignore" = "fix"
+// This is a preview of an in-progress Item:
+// TODO: Maybe deprecate linkMode now that there's previewMode?
+export let previewMode = false
 
 // Can we click on the item body to go to its page?
 export let clickable = false
 
 let itemPromise: Promise<Item|null>
 
-// Support routing from svelte-spa-router.
-// 🙁 See: https://github.com/ItalyPaleAle/svelte-spa-router/issues/183
-export let params: any|undefined
-$: {
-    if (params) {
-        userID = params.userID
-        signature = params.signature
-   }
-} 
 
 let viewMode: "normal"|"markdown"|"data" = "normal"
-
 
 $: {
     // Rerun getItem when any of these change:
@@ -122,31 +116,29 @@ function onClick(event: Event) {
         }
     }
 }
-
-
 </script>   
 
-
-<div class="item" class:clickable on:click={onClick} use:fixLinks={{mode: linkMode}}>
 {#await itemPromise}
-    <p>Loading...
-        <!-- 
-    <br>user_id: { userID }
-    <br>signature: { signature }
-    -->
-    </p>
+    <div class="item">
+        <p>Loading...
+            <!-- 
+        <br>user_id: { userID }
+        <br>signature: { signature }
+        -->
+        </p>
+    </div>
 {:then item}
-        {#if !item}
+<div class="item" class:clickable class:comment={item?.comment} on:click={onClick} use:fixLinks={{mode: linkMode}}>
+    {#if !item}
+        <div class="body">
             No such item: <code>/u/{userID}/i/{signature}/</code>
-        {:else if item.post}
+        </div>
+    {:else if item.post}
+        <ItemHeader {appState} {item} userID={UserID.fromString(userID)} {signature} {previewMode} />
+        <div class="body">
             {#if item.post.title}
-            <h1 class="title">{ item.post.title }</h1>
-            {/if}
-            <div class="userInfo">
-                <UserIdView userID={UserID.fromString(userID)} {appState}/>
-            </div>
-            <Timestamp utc_ms={item.timestamp_ms_utc} minute_offset={item.utc_offset_minutes} href={`#/u/${userID}/i/${signature}/`} />
-            
+                <h1 class="title">{ item.post.title }</h1>
+            {/if}        
             {#if viewMode == "normal"}
                 {@html markdownToHtml(item.post.body || "")}
             {:else if viewMode == "markdown"}
@@ -163,13 +155,12 @@ function onClick(event: Event) {
                 {#if viewMode != "markdown"}<Button on:click={() => viewMode = "markdown"}>View Markdown</Button>{/if}
                 {#if viewMode != "data"}<Button on:click={() => viewMode = "data"}>View Data</Button>{/if}
             </div>
-            {/if}
-        {:else if item.profile}
+        {/if}
+        </div>
+    {:else if item.profile}
+        <ItemHeader {appState} {item} userID={UserID.fromString(userID)} {signature} {previewMode} />
+        <div class="body">
             <h1 class="title">Profile: {item.profile.display_name}</h1>
-            <div class="userInfo">
-                <UserIdView userID={UserID.fromString(userID)} resolve={false}/>
-            </div>
-            <Timestamp utc_ms={item.timestamp_ms_utc} minute_offset={item.utc_offset_minutes} />
 
             <!-- TODO: Move viewMode options out of the body of the Item.item_type, and into a generic top-level location -->
             {#if viewMode == "normal"}
@@ -200,19 +191,21 @@ function onClick(event: Event) {
                     <li>(None)</li>
                 {/each}
             </ul>
-            
-        {:else if item.comment}
-            <CommentView {appState} {showReplyTo} {item} 
-                userID={UserID.fromString(userID)}
-                {signature}
-            />
-        {:else}
-            Unknown item type.
-        {/if}
-{:catch error}
-    <p class="error">Error: {error}
-{/await} 
+        </div>
+    {:else if item.comment}
+        <CommentView {appState} {showReplyTo} {item} 
+            userID={UserID.fromString(userID)}
+            {signature}
+        />
+    {:else}
+        Unknown item type.
+    {/if}
 </div>
+{:catch error}
+    <div class="item">
+        <p class="error">Error: {error}
+    </div>
+{/await} 
 
 
 <style>
@@ -221,8 +214,8 @@ function onClick(event: Event) {
     cursor: pointer;
 }
 
-.userInfo {
-    font-family: monospace;
-}
+
+
+
 
 </style>

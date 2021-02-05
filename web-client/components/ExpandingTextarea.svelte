@@ -3,6 +3,7 @@
     bind:value
     class:medium
     class:small
+    class:oneLine
     {disabled}
     {placeholder}
 ></textarea>
@@ -13,10 +14,11 @@ export let value: string
 export let disabled = false
 export let placeholder = ""
 
-export let size: "medium"|"small" = "medium"
+export let size: "medium"|"small"|"oneLine" = "medium"
 
 $: medium = size == "medium"
 $: small = size == "small"
+$: oneLine = size == "oneLine"
 
 let element: HTMLElement
 
@@ -37,12 +39,13 @@ function expandTextarea(textarea: HTMLElement) {
 </script>
 
 <style> 
-textarea {
-    margin-top: 1em;
-}
 
 textarea.medium {
     min-height: 20em;
+}
+
+textarea.oneLine {
+    height: 1em;
 }
 
 
