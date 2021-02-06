@@ -1,11 +1,11 @@
-{#if hasText}
+{#if hasText && isLoggedIn}
 <TabBar tabs={["Edit", "Preview"]} bind:activeTab={currentView}/>
 {/if}
 
 {#if currentView == "Edit"}
     <div class="item">
         <div class="body">
-            <ExpandingTextarea size="oneLine" placeholder="Leave a Comment" bind:value={text}/>
+            <ExpandingTextarea size="oneLine" {placeholder} disabled={!isLoggedIn} bind:value={text}/>
             {#if hasText}
                 <SignAndSend
                     item={commentItem}
@@ -16,6 +16,7 @@
         </div>
     </div>
 {:else}
+    {#if userID != null}
     <!-- TODO: Just replace with ItemView: -->
     <div class="item">
         <CommentView {appState} 
@@ -25,8 +26,14 @@
             linkMode="newWindow"
         />
     </div>
+    {:else}
+    <div class="item">
+        <div class="body error">
+            Shouldn't be able to get here. You must log in to comment & preview.
+        </div>
+    </div>
+    {/if}
 {/if}
-
 
 <script lang="ts">
 import { DateTime } from "luxon";
@@ -61,8 +68,10 @@ export function clear() {
     currentView = "Edit"
 }
 
-$: userID = $appState.requireLoggedInUser()
+$: userID = $appState.loggedInUser
+$: isLoggedIn = userID != null
 $: hasText = text.trim().length > 0
+$: placeholder = isLoggedIn ? "Leave a Comment" : "Must log in to comment"
 
 $: commentItem = function() {
     let item = new Item()
