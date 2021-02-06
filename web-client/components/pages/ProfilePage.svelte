@@ -22,7 +22,7 @@
 
         <div class="item">
             <div class="body">
-                {#if userID.toString() == loggedInUser?.toString()} 
+                {#if userID.toString() == $appState.loggedInUser?.toString()} 
                         <Button href={`#/my_profile`}>Edit</Button>
                 {/if}
                 <Button href={`#/u/${userID}/`}>View Posts</Button>
@@ -53,7 +53,6 @@ export let params: {
 
 $: userID = UserID.fromString(params.userID)
 
-let loggedInUser = $appState.loggedInUser
 
 let loadedProfile: Promise<LoadedProfile>
 $: loadedProfile = loadProfile(userID)
