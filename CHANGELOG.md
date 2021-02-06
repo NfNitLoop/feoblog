@@ -1,7 +1,30 @@
 Changelog
 =========
 
+
+Version 0.2.2
+=============
+
+Released: Feb. 5, 2021
+
+Bug Fixes
+---------
+
+ * You need not be logged in to view comments in the client.
+
 Version 0.2.1
+=============
+
+Released: Feb. 5, 2021
+
+Bug Fixes
+---------
+
+* Fix a broken build.  
+  Building in dev mode doesn't necessarily expose all the broken parts. Oops!
+
+
+Version 0.2.0
 =============
 
 Released: Feb. 5, 2021
