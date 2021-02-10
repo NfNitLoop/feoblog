@@ -43,20 +43,6 @@ input:hover, input:focus, textarea:hover, textarea:focus {
 }
 
 
-.editPane table {
-    width: 100%;
-}
-.editPane table th {
-    text-align: right;
-    width: auto;
-    min-width: 12ch;
-    vertical-align: top;
-}
-.editPane table td {
-    width: 100%;
-    vertical-align: top;
-}
-
 .error {
     color: red;
     font-weight: bold;

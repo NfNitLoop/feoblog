@@ -9,7 +9,7 @@ import type { Writable } from "svelte/store"
 import { push as navigateTo } from "svelte-spa-router"
 
 import { UserID} from "../ts/client"
-import { markdownToHtml, fixLinks} from "../ts/common"
+import { markdownToHtml, fixLinks, FileInfo} from "../ts/common"
 import Button from "./Button.svelte"
 import type { Item } from "../protos/feoblog"
 import type { AppState } from "../ts/app"
@@ -52,6 +52,10 @@ export let previewMode = false
 
 // Can we click on the item body to go to its page?
 export let clickable = false
+
+// When in preview mode, caller can provide a list of file attachments
+// which we'll use to preview files.
+export let previewFiles: FileInfo[] = []
 
 let loadError = ""
 let viewMode: "normal"|"markdown"|"data" = "normal"
@@ -161,7 +165,7 @@ function onClick(event: Event) {
                 <h1 class="title">{ item.post.title }</h1>
             {/if}        
             {#if viewMode == "normal"}
-                {@html markdownToHtml(item.post.body || "")}
+                {@html markdownToHtml(item.post.body || "", {withPreview: previewFiles})}
             {:else if viewMode == "markdown"}
                 Markdown source:
                 <code><pre>{item.post.body}</pre></code>

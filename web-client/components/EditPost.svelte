@@ -9,7 +9,8 @@
             bind:offsetMinutes
             bind:errors={timestampErrors}
         />
-        <ExpandingTextarea bind:value={text} placeholder="Your post here 😊"/>
+        <ExpandingTextarea bind:value={text} bind:this={textarea} placeholder="Your post here 😊"/>
+        <FileAttachments bind:files on:fileAdded={fileAdded}/>
     </div>
 </div>
 
@@ -17,9 +18,12 @@
 <script lang="ts">
 import ExpandingTextarea from "./ExpandingTextarea.svelte"
 import TimestampEditor from "./TimestampEditor.svelte"
-import { Item, Post } from "../protos/feoblog";
+import { Attachments, File, Item, Post } from "../protos/feoblog";
 import moment from "moment";
+import FileAttachments from "./FileAttachments.svelte"
+import type {FileInfo} from "../ts/common"
 
+export let files: FileInfo[] = []
 
 let title = ""
 let text = ""
@@ -27,10 +31,12 @@ let timestampMsUTC = moment().valueOf()
 let offsetMinutes = moment().utcOffset()
 let timestampErrors: string[] = []
 
+let textarea: ExpandingTextarea
+
 // Exported so that EditorWithPreview can preview, serialize, & send it for us.
 export let item: Item
 $: item = function() {
-    return new Item({
+    let itm = new Item({
         timestamp_ms_utc: timestampMsUTC,
         utc_offset_minutes: offsetMinutes,
         post: new Post({
@@ -38,6 +44,22 @@ $: item = function() {
             body: text,
         })
     })
+
+    if (files.length > 0) {
+        let attachments: File[] = []
+        for (let info of files) {
+            let file = new File({
+                hash: info.hash.bytes,
+                size: info.size,
+                name: info.name,
+            })
+            attachments.push(file)
+        }
+
+        itm.post.attachments = new Attachments({file: attachments})
+    }
+
+    return itm
 }()
 
 
@@ -52,6 +74,15 @@ $: validationErrors = function(): string[] {
     return errs
 }()
 
+function fileAdded(event: CustomEvent<FileInfo>) {
+    let fi = event.detail
+
+    textarea.addLink({
+        text: fi.name,
+        href: `files/${fi.name}`,
+        asImage: fi.isImage
+    })
+}
 
 </script>
 

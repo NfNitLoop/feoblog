@@ -10,6 +10,7 @@
         <EditPost
             bind:validationErrors
             bind:item
+            bind:files={fileAttachments}
         />
     {/if}
     
@@ -21,6 +22,7 @@
         {item}
         linkMode="newWindow"
         previewMode
+        previewFiles={fileAttachments}
     />
 
     <!-- force transition:slide|local to be local -->
@@ -49,6 +51,7 @@ import ItemView from './ItemView.svelte'
 import EditProfile from './EditProfile.svelte';
 import EditPost from './EditPost.svelte';
 import SignAndSend from "./SignAndSend.svelte";
+import type { FileInfo } from "../ts/common";
 
 export let appState: Writable<AppState>
 
@@ -60,13 +63,7 @@ export let mode: "post"|"profile" = "post"
 // Can provide an initial item for editing.
 export let initialItem: Item|undefined = undefined
 
-// May be provided externally if we were provided an item
-// TODO: TBH, the fact that this works w/ an initialItem: Item above is just an
-// artifact of our serializer having a deterministic output. That may not be the case
-// and we may want to pass itemBytes here if we want to verify the signature of profiles
-// we load.  Though, maybe that's just not worth it.
-export let signature = ""
-
+let fileAttachments: FileInfo[] = []
 
 let userID: ClientUserID
 $: userID = $appState.requireLoggedInUser()

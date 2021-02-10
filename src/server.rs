@@ -10,7 +10,7 @@ use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData, net::TcpListener};
 use backend::FactoryBox;
 use futures_util::StreamExt;
 
-use actix_web::{dev::HttpResponseBuilder, http::Method, middleware::DefaultHeaders, web::Query};
+use actix_web::{dev::HttpResponseBuilder, http::{Method, header::ContentType}, middleware::DefaultHeaders, web::Query};
 use actix_web::web::{
     self,
     get,
@@ -221,6 +221,7 @@ impl <T: RustEmbed> StaticFilesResponder for T {
 
         Ok(
             HttpResponse::NotFound()
+            .set(ContentType::plaintext())
             .body("File not found.")
         )
     }

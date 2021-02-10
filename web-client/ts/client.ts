@@ -1,7 +1,7 @@
 import { Item, ItemList, ItemListEntry, Post } from "../protos/feoblog"
 import bs58 from "bs58"
 import * as nacl from "./naclWorker/nacl"
-import { ConsoleLogger, Logger, prefetch } from "./common";
+import { bytesToHex, ConsoleLogger, Logger, prefetch } from "./common";
 import { tick } from "svelte";
 
 // Encapsulates communication with the server(s).
@@ -299,11 +299,7 @@ export class UserID {
 
     // A hex representation of the bytes:
     toHex(): string {
-        let out = []
-        for (let byte of this.bytes) {
-            out.push(byte.toString(16).padStart(2, "0"))
-        }
-        return out.join("")
+        return bytesToHex(this.bytes)
     }
 
     static fromString(userID: string): UserID {

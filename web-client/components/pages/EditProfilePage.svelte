@@ -26,7 +26,6 @@
             {appState}
             mode="profile"
             initialItem={loaded.profile.item}
-            signature={loaded.profile.signature.toString()}
         />
     {/if}
 {:catch e} 

@@ -74,8 +74,8 @@ message Post {
     // size of the enclosing Item.
     string body = 2;
 
-    // TODO: files? Or should that be Attachments in the Item?
-    // TODO: replyTo
+    // File attachments that will be visible at ./files/*
+    Attachments attachments = 5;
 }
 
 
@@ -109,7 +109,6 @@ message Profile {
     //
     // The order of the list is unimportant.
     repeated Follow follows = 4;
-
 
     // TODO:
     // irrevocably_purge_this_user
@@ -226,4 +225,27 @@ enum ItemType {
     POST = 1;
     PROFILE = 2;
     COMMENT = 3;
+}
+
+// File attachments.
+// Certain item types may allow file attachments.
+message Attachments {
+    repeated File file = 1;
+}
+
+// Metadata about a file attachment.
+// All fields are REQUIRED.
+message File {
+    // A  64-byte sha-512 hash of the contents of the file.
+    bytes hash = 1;
+    
+    // The sie of the file in bytes.
+    // Some servers may reject files based on their size, or the user's quota.
+    // Note: all fields are required, so the size may not be 0.
+    uint64 size = 2;
+
+    // The name of the file.
+    // The file name may not contain path separators / or \.  
+    // Note: The server will use the file extension to determine the mime type with which to serve the file.
+    string name = 3;
 }

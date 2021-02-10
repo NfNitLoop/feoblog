@@ -4,6 +4,7 @@ import bs58 from "bs58"
 import * as commonmark from "commonmark"
 import { DateTime } from "luxon";
 import type { Writable } from "svelte/store";
+import nacl from "tweetnacl";
 
 const USER_ID_BYTES = 32;
 const PASSWORD_BYTES = USER_ID_BYTES + 4 // 4 bytes b58 checksum.
@@ -53,6 +54,7 @@ const cmWriter = new commonmark.HtmlRenderer({ safe: true})
 
 type MarkdownToHtmlOptions = {
     stripImages?: boolean
+    withPreview?: FileInfo[]
 }
 
 export function markdownToHtml(markdown: string, options?: MarkdownToHtmlOptions): string {
@@ -62,6 +64,10 @@ export function markdownToHtml(markdown: string, options?: MarkdownToHtmlOptions
 
     if (options?.stripImages) {
         stripImages(parsed)
+    }
+
+    if (options?.withPreview) {
+        previewImages(parsed, options.withPreview)
     }
 
     return cmWriter.render(parsed)
@@ -102,6 +108,35 @@ function stripImages(root: commonmark.Node) {
         image.insertBefore(link)
         image.unlink()
         walker.resumeAt(link)
+    }
+}
+
+function previewImages(root: commonmark.Node, attachments: FileInfo[]) {
+    if (attachments.length === 0) return
+
+    // Map FileInfo to their relative ./file/* paths for fast lookup:
+    let fileMap = new Map<string,FileInfo>()
+    for (let fi of attachments) {
+        let key = encodeURI(`files/${fi.name}`)
+        fileMap.set(key, fi)
+        // Also allow ./-prefixed relative paths:
+        fileMap.set(`./${key}`, fi)
+    }
+
+    let walker = root.walker()
+    for (let event = walker.next(); event; event = walker.next()) {
+        if (!event.entering) continue
+
+        let image = event.node
+        if (image.type != "image") continue
+        if (!image.destination) continue
+
+        let newDestination = fileMap.get(image.destination)
+        if (newDestination) {
+            // Replace w/ an objectURL to view the attached file inline:
+            // (also avoids unnecessary hits to the server).
+            image.destination = newDestination.objectURL
+        }
     }
 }
 
@@ -433,4 +468,97 @@ export function validateServerURL(url: string): string {
     }
 
     return ""
+}
+
+// Give a size in human-readable 
+export function readableSize(bytes: number): string {
+    let base = 1024
+    let magitudes = ["bytes", "KiB", "MiB", "GiB", "TiB"]
+    let count = bytes
+
+    while (count > base && magitudes.length > 1) {
+        count = count / base
+        magitudes.shift()
+    }
+
+    // Show 3 significant digits:
+    let out
+    if (count < 10) {
+        out = count.toFixed(2)
+    } else if (count < 100) {
+        out = count.toFixed(1)
+    } else {
+        out = count.toFixed(0)
+    }
+
+    return `${out} ${magitudes[0]}`
+}
+
+export function bytesToHex(bytes: Uint8Array): string {
+    let out = []
+    for (let byte of bytes) {
+        out.push(byte.toString(16).padStart(2, "0"))
+    }
+    return out.join("")
+}
+
+// Wraps a (browser) File with some extra info.
+export class FileInfo {
+    readonly file: File
+    readonly objectURL: string
+    hash: Hash
+
+    private constructor(file: File) {
+        this.file = file
+        this.objectURL = URL.createObjectURL(file)
+    }
+
+    static async from(file: File): Promise<FileInfo> {
+        let fi = new FileInfo(file)
+        
+        // TODO: Not supported in Safari?
+        let bytes = await file.arrayBuffer()
+        let ui8a = new Uint8Array(bytes)
+        fi.hash = Hash.ofBytes(ui8a)
+        return fi
+    }
+
+    get name() { return this.file.name }
+    get type() { return this.file.type }
+    get size() { return this.file.size }
+
+    get readableSize(): string {
+        return readableSize(this.size)
+    }
+
+    private static supportedImagesTypes = [
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/svg+xml",
+    ]
+
+    get isImage(): boolean {
+        for (let type of FileInfo.supportedImagesTypes) {
+            if (type === this.type) return true
+        }
+        return false
+    }
+}
+
+// A 64-byte SHA-512 hash
+export class Hash {
+    readonly bytes: Uint8Array
+    readonly asHex: string
+
+    private constructor(hashBytes: Uint8Array, asHex: string) {
+        this.bytes = hashBytes
+        this.asHex = asHex
+    }
+
+    static ofBytes(bytes: Uint8Array): Hash {
+        let hashBytes = nacl.hash(bytes)
+        let asHex = bytesToHex(hashBytes)
+        return new Hash(hashBytes, asHex)
+    }
 }
