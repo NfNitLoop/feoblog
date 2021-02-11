@@ -272,6 +272,14 @@ export class ConsoleLogger implements Logger {
     }
 }
 
+// An exception wrapper for TaskTracker so we can stop redundant logging.
+class TaskTrackerException {
+    cause: any
+
+    constructor(cause: any) {
+        this.cause = cause
+    }
+}
 
 // Tracks the progress of some long-running async task.
 export class TaskTracker 
@@ -315,12 +323,17 @@ export class TaskTracker
         try {
             return await asyncTask(this)
         } catch (e) {
-            console.error("Error in TaskTracker.run():", e)
-            this.error(`Task threw an exception: ${e}`)
+            if (!(e instanceof TaskTrackerException)) {
+                console.error("Error in TaskTracker.run():", e)
+                this.error(`Task threw an exception: ${e}`)
+                throw new TaskTrackerException(e)
+            }
             throw e
         } finally {
             this._isRunning = false
-            this.log(`Finished after ${timer}. Errors: ${this.errorCount} Warnings: ${this.warnCount}`) // calls notify()
+            this.log(`Finished after ${timer}.`)
+            if (this.warnCount > 0) this.log(`Warnings: ${this.warnCount}`) 
+            if (this.errorCount > 0) this.log(`Errors: ${this.errorCount}`)
         }
     }
 
@@ -562,3 +575,64 @@ export class Hash {
         return new Hash(hashBytes, asHex)
     }
 }
+
+// Mutex to allow only one (async) process to proceed at a time.
+// I'm surprised JavaScript doesn't have one of these built in already!? 
+export class Mutex {
+    private _locked = false
+    private queue: (() => Promise<void>)[] = []
+    private setLocked(locked: boolean) {
+        this._locked = locked
+        if (this.lockNotifier) this.lockNotifier(locked)
+    }
+
+    get locked(): boolean { return this._locked }
+
+    // Can be set to a callback that gets called when .locked changes.
+    lockNotifier: ((locked: boolean) => void)|undefined
+    
+
+    // Run a single callback with the locked mutex.
+    // Will wait until a lock is available.
+    run<T>(callback: () => Promise<T>): Promise<T> {
+        let res: (value: T) => void
+        let rej: (reason?: any) => void
+        let promise = new Promise<T>((resolve, reject) => {
+            res = resolve
+            rej = reject
+        })
+
+        let myCallback = async () => {
+            try {
+                res(await callback())
+            } catch (e) {
+                rej(e)
+            }
+        }
+
+        this.queue.push(myCallback)
+        this.runQueue() // note: NO await
+
+        return promise
+    }
+
+    private async runQueue() {
+        // already running:
+        if (this.locked) return
+        // Nothing to do:
+        if (this.queue.length === 0) return
+
+        this.setLocked(true)
+        try {
+            while (this.queue.length > 0) {
+                let callback = this.queue.shift()!
+                await callback()
+            }
+        } catch (e) {
+            console.error("Exception in Mutex.runQueue()!?  Should be impossible.", e)
+        } finally {
+            this.setLocked(false)
+        }
+    }
+}
+

@@ -10,7 +10,6 @@
                 <SignAndSend
                     item={commentItem}
                     {appState}
-                    on:sendSuccess
                 />
             {/if}
         </div>

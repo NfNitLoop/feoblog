@@ -93,6 +93,27 @@ export class Client {
         return response
     }
 
+    async putAttachment(userID: UserID, signature: Signature, fileName: string, blob: Blob): Promise<Response> {
+        let url = `${this.base_url}/u/${userID}/i/${signature}/files/${fileName}`
+        
+        let response: Response
+        try {
+            response = await fetch(url, {
+                method: "PUT",
+                body: blob,
+            })
+            if (!response.ok) {
+                throw `Error uploading attachment "${fileName}": ${response.status} ${response.statusText}`
+            }
+
+        } catch (e) {
+            console.error("PUT exception:", e)
+            throw e
+        }
+
+        return response
+    }
+
     // Like getItem, but just gets the latest profile that a server knows about for a given user ID.
     // The signature is returned in a header from the server. This function verifies that signature
     // before returning the Item.

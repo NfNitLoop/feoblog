@@ -32,6 +32,7 @@
             <SignAndSend
                 {appState}
                 {item}
+                attachments={fileAttachments}
             />    
         </div>
     </div>
