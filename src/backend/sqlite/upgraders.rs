@@ -6,7 +6,7 @@ use rusqlite::params;
 
 use crate::{backend::{ItemRow, RowCallback, Signature, UserID}, protos::Item};
 
-use super::{CURRENT_VERSION, Connection, ReplyRow, save_reply_rows};
+use super::{AttachmentRow, CURRENT_VERSION, Connection, ReplyRow, get_attachment_rows, save_attachment_rows, save_reply_rows};
 
 pub(crate) struct Upgraders {
     upgraders: Vec<Box<dyn Upgrader>>
@@ -17,6 +17,7 @@ impl Upgraders {
         Self { upgraders: vec![
             Box::new(From3To4),
             Box::new(From4To5),
+            Box::new(From5To6),
         ]}
     }
 
@@ -159,7 +160,7 @@ impl ItemPager {
         // If we get zero results, default to "done":
         let mut done = true;
 
-        let mut myCb = |row: ItemRow| {
+        let mut my_cb = |row: ItemRow| {
             new_uid = Some(row.user.clone());
             new_sig = Some(row.signature.clone());
 
@@ -172,7 +173,7 @@ impl ItemPager {
         };
 
 
-        conn.all_items(&self.after_uid, &self.after_sig, &mut myCb)?;
+        conn.all_items(&self.after_uid, &self.after_sig, &mut my_cb)?;
 
         self.after_uid = new_uid;
         self.after_sig = new_sig;
@@ -214,6 +215,108 @@ impl Upgrader for From4To5 {
             ;
         ")?;
         
+        conn.set_version(self.to_version())?;
+        Ok(())
+    }
+}
+
+// Adds tables and indexes for file attachment.
+struct From5To6;
+impl Upgrader for From5To6 {
+    fn from_version(&self) -> u32 { 5 }
+    fn to_version(&self) -> u32 { 6 }
+    fn upgrade(&self, conn: &Connection) -> Result<(), Error> {
+        conn.run("
+            CREATE TABLE item_attachment(
+                -- maps items to their attached files.
+                
+                user_id BLOB,
+                signature BLOB,
+
+                -- The name of the file
+                name TEXT,
+
+                -- The size of the attachment (in bytes)
+                -- (allows us to calculate quotas even if files haven't been attached yet)
+                size INTEGER,
+
+                -- the 64-byte sha-512 hash of the file (as bytes).
+                -- used to look up the file contents in the 'store' table.
+                hash BLOB
+            )
+        ")?;
+
+        conn.run("
+            CREATE INDEX item_attachment_item_idx
+            ON item_attachment(user_id, signature, name)
+        ")?;
+        conn.run("
+            CREATE INDEX item_attachment_hash_idx
+            ON item_attachment(hash)
+        ")?;
+
+        conn.run("
+            CREATE TABLE store(
+                -- a content-addressable blob store.
+
+                -- The 64-byte sha-512 hash of the blob's contents.
+                hash BLOB,
+
+                contents BLOB
+            )
+        ")?;
+
+        conn.run("
+            CREATE INDEX store_hash_idx
+            ON store(hash)
+        ")?;
+
+        // Index any attachments that may have been uploaded before our upgrade:
+        // TODO: Newer rusqlite supports u64 & usize:
+        let item_count: u32 = conn.conn.query_row(
+            "SELECT COUNT(*) FROM item",
+            params![],
+            |row| Ok(row.get(0)?)
+        )?;
+
+        if item_count > 1000 {
+            println!("Scanning {} items for file attachments. This may take a some time.", item_count);
+        }
+
+        let mut pager = ItemPager::new();
+        
+        // If SQLite hasn't enabled WAL (not the default, & not supported
+        // everywhere) then we can't read & write from the DB at the same time.
+        // Batch up rows to write here, and periodically write them:
+        let mut rows_to_insert = Vec::<AttachmentRow>::new();
+        let max_rows = 1000;
+        
+        while !pager.done {
+            pager.iterate(conn, &mut |row| {
+                let mut item = Item::new();
+                item.merge_from_bytes(row.item_bytes.as_slice())?;
+
+                match get_attachment_rows(&row, &item) {
+                    Err(err) => {
+                        println!(
+                            "Not indexing file attachments for /u/{}/i/{} due to error: {}",
+                            row.user.to_base58(),
+                            row.signature.to_base58(),
+                            err
+                        );
+                    },
+                    Ok(rows) => rows_to_insert.extend(rows),
+                };
+
+                Ok(rows_to_insert.len() < max_rows)
+            })?;
+
+            // Write cached reply_tos to the database:
+            save_attachment_rows(&conn.conn, rows_to_insert)?;
+            rows_to_insert = vec![];
+                
+        }
+
         conn.set_version(self.to_version())?;
         Ok(())
     }

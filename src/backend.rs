@@ -297,17 +297,6 @@ pub struct ItemDisplayRow {
     pub display_name: Option<String>
 }
 
-/// Profile information from the `profile` table. `profile` table.
-/// Expected to be fetched via join/query on userID, so that's excluded.
-pub struct Profile {
-    /// The signature for the Item that contains the latest profile.
-    pub signature: Signature,
-
-    /// May be empty if the user omitted a display name.
-    pub display_name: String,
-}
-
-
 /// Info about users explicitly allowed on this server.
 /// i.e.: A row in the server_user table.
 #[derive(Debug, Clone)]
@@ -372,5 +361,28 @@ impl std::fmt::Display for QuotaDenyReason {
             Self::ProfileRevoked => 
                 write!(f, "This user ID has been revoked."),
         }
+    }
+}
+
+/// A 64-byte SHA-512 hash.
+/// Used by nacl internally, but also used by us for hashing file attachments.
+#[derive(PartialEq, Eq)]
+pub struct SHA512 {
+    hash: sodiumoxide::crypto::hash::sha512::Digest,
+}
+
+impl SHA512 {
+    pub fn from_hash_bytes(slice: &[u8]) -> Result<Self,  Error> {
+        use sodiumoxide::crypto::hash::sha512::Digest;
+        let digest = Digest::from_slice(slice);
+        if let Some(digest) = digest {
+            return Ok(Self { hash: digest});
+        }
+
+        bail!("SHA512::from_hash_bytes(): wrong number of bytes: {}", slice.len());
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        return &self.hash.0
     }
 }

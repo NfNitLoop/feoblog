@@ -38,7 +38,7 @@ use crate::backend::{self, UserID, Signature, ItemRow, Timestamp};
 use crate::protos::{Item, ProtoValid};
 
 mod filters;
-
+mod attachments;
 
 pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
 
@@ -122,7 +122,7 @@ fn open_socket(bind: &str) -> Result<TcpListener, failure::Error> {
 // This is so that we have typesafe access to AppData fields, because actix
 // Data<Foo> can fail at runtime if you delete a Foo and don't clean up after
 // yourself.
-struct AppData {
+pub(crate) struct AppData {
     backend_factory: Box<dyn backend::Factory>,
 }
 
@@ -150,6 +150,13 @@ fn routes(cfg: &mut web::ServiceConfig) {
         .service(
             web::resource("/u/{user_id}/i/{signature}/replies/proto3")
             .route(get().to(item_reply_list))
+            .wrap(cors_ok_headers())
+        ).service(
+            web::resource("/u/{user_id}/i/{signature}/files/{file_name}")
+            .route(get().to(attachments::get_file))
+            .route(put().to(attachments::put_file))
+            .route(route().method(Method::HEAD).to(attachments::head_file))
+            .route(route().method(Method::OPTIONS).to(cors_preflight_allow))
             .wrap(cors_ok_headers())
         )
 
@@ -406,7 +413,7 @@ fn cors_ok_headers() -> DefaultHeaders {
 // This responds to that request to let the client know this request is allowed.
 async fn cors_preflight_allow() -> HttpResponse {
     HttpResponse::NoContent()
-        .header("Access-Control-Allow-Methods", "OPTIONS, GET, PUT")
+        .header("Access-Control-Allow-Methods", "OPTIONS, GET, PUT, HEAD")
         .body("")
 }
 
@@ -1164,7 +1171,7 @@ enum Nav {
 
 /// A type implementing ResponseError that can hold any kind of std::error::Error.
 #[derive(Debug)]
-struct Error {
+pub(crate) struct Error {
     inner: Box<dyn std::error::Error + 'static>
 }
 

@@ -1,3 +1,4 @@
+#![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
 #![deny(unknown_lints)]
 #![deny(unused_must_use)]
 

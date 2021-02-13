@@ -10,7 +10,7 @@ mod upgraders;
 use std::{ops::DerefMut, path::Path};
 
 use crate::protos::Item;
-use backend::RowCallback;
+use backend::{RowCallback, SHA512};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{NO_PARAMS, OpenFlags, named_params};
 use crate::backend::{self, UserID, Signature, ItemRow, ItemDisplayRow, Timestamp, ServerUser, QuotaDenyReason};
@@ -18,7 +18,7 @@ use crate::backend::{self, UserID, Signature, ItemRow, ItemDisplayRow, Timestamp
 use failure::{Error, bail, ResultExt};
 use rusqlite::{params, OptionalExtension, Row};
 
-const CURRENT_VERSION: u32 = 5;
+const CURRENT_VERSION: u32 = 6;
 
 type Pool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
 type PConn = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
@@ -870,6 +870,8 @@ impl backend::Backend for Connection
             save_comment_reply(&tx, row, item)?;
         }
 
+        index_attachments(&tx, row, item)?;
+
         tx.commit().context("committing")?;
         Ok(())
     }
@@ -978,4 +980,71 @@ struct ReplyRow {
     from_signature: Signature,
     to_user_id: UserID,
     to_signature: Signature,
+}
+
+/// A row from the item_attachment table.
+struct AttachmentRow {
+    user_id: UserID,
+    signature: Signature,
+    name: String,
+
+    // The size of the attachment (in bytes)
+    // Unfortunately must be i64 because SQLite doesn't support u64.
+    size: i64,
+
+    hash: SHA512,
+}
+
+fn index_attachments(conn: &rusqlite::Connection, row: &ItemRow, item: &Item) -> Result<(), Error> {
+    save_attachment_rows(conn, get_attachment_rows(row, item)?)
+}
+
+fn get_attachment_rows(row: &ItemRow, item: &Item) -> Result<Vec<AttachmentRow>, Error> {
+    let mut rows = vec![];
+
+    // TODO: Eventually support attachments for Profiles (and other types?) too:
+    let post = item.get_post();
+
+    let attachments = post.get_attachments().get_file();
+    for attachment in attachments {
+        let row = AttachmentRow {
+            name: attachment.name.clone(),
+            hash: SHA512::from_hash_bytes(attachment.hash.as_slice())?,
+            user_id: row.user.clone(),
+            signature: row.signature.clone(),
+            size: attachment.size as i64,
+        };
+        if row.name.contains("/") || row.name.contains("\\") {
+            bail!("File separators are not allowed in attached file names: {}", row.name);
+        }
+        if row.size < 0 {
+            bail!("File sizes greater than {} bytes are unsupported", i64::MAX);
+        }
+
+        rows.push(row);
+    }
+    return Ok(rows);
+}
+
+fn save_attachment_rows(conn: &rusqlite::Connection, rows: Vec<AttachmentRow>) -> Result<(), Error> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    let mut stmt = conn.prepare("
+        INSERT INTO item_attachment(user_id, signature, name, hash, size)
+        VALUES (?,?,?,?,?)
+    ")?;
+
+    for row in rows {
+        stmt.execute(params![
+            row.user_id.bytes(),
+            row.signature.bytes(),
+            row.name,
+            row.hash.bytes(),
+            row.size as i64, // If you're expecting petabytes of data, you're outta luck.
+        ])?;
+    }
+
+    Ok(())
 }
