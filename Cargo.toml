@@ -29,7 +29,8 @@ bs58 = { version = "*", features = ["check"] }
 sodiumoxide = "*"
 
 # Markdown:
-pulldown-cmark = "0.5.2"
+# Comrak is safe by default:
+comrak = "*"
 
 # Allow embedding local files. 
 rust-embed = { version = "*" }
@@ -59,12 +60,17 @@ askama_actix = "*"
 # To work around https://github.com/actix/actix-web/issues/1913
 socket2 = "*"
 
+# A nice library for getting blocking I/O out of the main thread(s)
+blocking = "*"
+
 [dependencies.rusqlite]
 # TODO: Switch to sqlx for async sql support?
 version = "0.24"
 features = [
     # Use a bundled, statically-linked version of sqlite. (Simplifies building on Windows)
-    "bundled"
+    "bundled",
+    # Enable extra BLOB APIs for streaming large BLOBs:
+    "blob",
 ]
 
 

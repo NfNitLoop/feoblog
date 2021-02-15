@@ -165,7 +165,7 @@ function onClick(event: Event) {
                 <h1 class="title">{ item.post.title }</h1>
             {/if}        
             {#if viewMode == "normal"}
-                {@html markdownToHtml(item.post.body || "", {withPreview: previewFiles})}
+                {@html markdownToHtml(item.post.body || "", {withPreview: previewFiles, relativeBase: `/u/${userID}/i/${signature}/`})}
             {:else if viewMode == "markdown"}
                 Markdown source:
                 <code><pre>{item.post.body}</pre></code>

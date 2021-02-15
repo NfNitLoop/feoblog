@@ -14,7 +14,7 @@
             timestamp_utc_ms|with_offset(utc_offset_minutes)
         }}</a></div>
         {#  #}
-        {{ text|markdown|safe }}
+        {{ text|markdown_with(user_id, signature)|safe }}
 
 
     </div>

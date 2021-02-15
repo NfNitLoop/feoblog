@@ -1192,3 +1192,27 @@ where E: std::error::Error + 'static
         }
     }
 }
+
+/// An Error that is also Send, required in some cases:
+#[derive(Debug)]
+pub struct SendError {
+    inner: Box<dyn std::error::Error + Send + 'static>
+}
+
+impl fmt::Display for SendError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> std::result::Result<(), fmt::Error> { 
+        self.inner.fmt(formatter)
+    }
+}
+
+impl actix_web::error::ResponseError for SendError {}
+
+impl <E> From<E> for SendError
+where E: std::error::Error + Send + 'static
+{
+    fn from(err: E) -> Self {
+        Self{
+            inner: Box::new(err)
+        }
+    }
+}

@@ -23,7 +23,7 @@
         <div class="timestamp"><a href="/u/{{ userID }}/i/{{ signature }}/">{{ 
             item.get_timestamp_ms_utc() | with_offset(item.get_utc_offset_minutes())
         }}</a></div>
-        {{ post.get_body()|markdown|safe }}
+        {{ post.get_body()|markdown_with(row.item.user, row.item.signature)|safe }}
     </div>
 {% endfor -%}
 

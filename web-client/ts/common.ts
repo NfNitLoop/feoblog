@@ -55,6 +55,9 @@ const cmWriter = new commonmark.HtmlRenderer({ safe: true})
 type MarkdownToHtmlOptions = {
     stripImages?: boolean
     withPreview?: FileInfo[]
+
+    // A base URL to prepend to relative URLs.
+    relativeBase?: string
 }
 
 export function markdownToHtml(markdown: string, options?: MarkdownToHtmlOptions): string {
@@ -70,7 +73,30 @@ export function markdownToHtml(markdown: string, options?: MarkdownToHtmlOptions
         previewImages(parsed, options.withPreview)
     }
 
+    fixRelativeLinks(parsed, options)
+
     return cmWriter.render(parsed)
+}
+
+function fixRelativeLinks(root: commonmark.Node, options?: MarkdownToHtmlOptions) {
+    if (!(options?.relativeBase)) { return }
+
+    let walker = root.walker()
+    for (let event = walker.next(); event; event = walker.next()) {
+        if (!event.entering) continue
+
+        let node = event.node
+        if (!(node.type == "image" || node.type == "link")) continue
+        if (!node.destination) continue
+
+        let url = node.destination
+        if (url.startsWith("/") || url.indexOf("//") >= 0) {
+            // absolute URLs do not get corrected:
+            continue
+        }
+
+        node.destination = options.relativeBase + node.destination
+    }
 }
 
 function stripImages(root: commonmark.Node) {
@@ -185,6 +211,14 @@ export function fixLinks(node: HTMLElement, params?: FixLinksParams): {} {
     }
 }
 
+// These patterns should have a # prepended so that they stay inside of the client:
+const CLIENT_LINK_PATTERNS: RegExp[] = [
+    /^\/$/,
+    /^\/u\/[^\/]+\/?$/,
+    /^\/u\/[^\/]+\/(feed|profile)$/,
+    /^\/u\/[^\/]+\/i\/[^\/]+\/?$/,
+];
+
 function interceptLinkClick(event: Event, anchor: HTMLAnchorElement, params?: FixLinksParams) {
 
     if (params?.mode === "ignore") {
@@ -197,14 +231,20 @@ function interceptLinkClick(event: Event, anchor: HTMLAnchorElement, params?: Fi
     let href = anchor.getAttribute("href")
     if (!href) return
 
-    let isRelative = href.startsWith("/") && !href.startsWith("//")
+    let matches = false
+    for (let pat of CLIENT_LINK_PATTERNS) { 
+        if (pat.exec(href)) {
+            matches = true
+            break
+        }
+    }
 
     // Must come first
     if (params?.mode === "newWindow") {
         anchor.target = "_blank"
     }
 
-    if (isRelative) {
+    if (matches) {
         anchor.href = `#${href}`
     }
 }

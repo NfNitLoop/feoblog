@@ -2,11 +2,16 @@
 
 use askama::Result;
 
-use crate::markdown::ToHTML;
+use crate::{backend::{Signature, UserID}, markdown::{Options, ToHTML}};
 use crate::backend::Timestamp;
 
-pub(crate) fn markdown(s: &str) -> Result<String> {
-    Ok(s.md_to_html())
+pub(crate) fn markdown_with(s: &str, user_id: &UserID, signature: &Signature) -> Result<String> {
+    Ok(
+        s.md_to_html_with(Options{
+            user_id: Some(user_id),
+            signature: Some(signature),
+        })
+    )
 }
 
 

@@ -5,8 +5,11 @@ pub(crate) mod sqlite;
 use crate::protos::Item;
 use core::str::FromStr;
 use std::marker::PhantomData;
+use actix_web::{dev::SizedStream, web::Bytes};
 use failure::{Error, ResultExt, bail, format_err};
 use bs58;
+use futures::Stream;
+use futures_core::stream;
 use serde::{Deserialize, de::{self, Visitor}};
 use sodiumoxide::crypto::sign;
 
@@ -123,6 +126,17 @@ pub trait Backend
 
     /// Check whether a user has remaiing quota/permissions to upload a particular item.
     fn quota_check_item(&self, user_id: &UserID, bytes: &[u8], item: &Item) -> Result<Option<QuotaDenyReason>, Error>;
+
+    /// Get a Stream of the bytes of the file attachment.
+    fn get_contents(&self, user_id: UserID, signature: Signature, file_name: &str) -> Result<Option<FileStream>, Error>;
+}
+
+pub struct FileStream {
+    /// file size in bytes
+    pub size: u64,
+
+    /// Stream of Bytes from the file:
+    pub stream: Box<dyn Stream<Item=Result<Bytes, crate::server::SendError>> + Unpin + Send + 'static>,
 }
 
 /// A callback function used for callback iteration through large database resultsets.

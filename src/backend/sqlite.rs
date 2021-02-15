@@ -7,16 +7,20 @@
 
 mod upgraders;
 
-use std::{ops::DerefMut, path::Path};
+use std::{io::Read, ops::DerefMut, path::Path};
 
 use crate::protos::Item;
+use actix_web::web::Bytes;
 use backend::{RowCallback, SHA512};
+use futures::Stream;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{NO_PARAMS, OpenFlags, named_params};
+use rusqlite::{DatabaseName, NO_PARAMS, OpenFlags, named_params};
 use crate::backend::{self, UserID, Signature, ItemRow, ItemDisplayRow, Timestamp, ServerUser, QuotaDenyReason};
 
 use failure::{Error, bail, ResultExt};
 use rusqlite::{params, OptionalExtension, Row};
+
+use super::FileStream;
 
 const CURRENT_VERSION: u32 = 6;
 
@@ -89,7 +93,10 @@ impl backend::FactoryBuilder for FactoryBuilder {
             .with_flags(OpenFlags::SQLITE_OPEN_CREATE | OpenFlags::SQLITE_OPEN_READ_WRITE)
         )?;
 
-        let conn = Connection{ conn: pool.get()? };
+        let conn = Connection{ 
+            conn: pool.get()?,
+            pool: pool.clone(),
+        };
         conn.initialize()?;
         println!("Database created.");
 
@@ -112,8 +119,12 @@ impl FactoryBuilder {
     // * needs tables created
     // * needs to be upgraded.
     fn connection(&self) -> Result<Connection, Error> {
+        let pool = self.pool()?;
         Ok(
-            Connection { conn: self.pool()?.get()? }
+            Connection { 
+                conn: pool.get()?,
+                pool,
+            }
         )
     }
 
@@ -149,6 +160,7 @@ impl backend::Factory for Factory
     {
         let conn = Connection{
             conn: self.pool.get()?,
+            pool: self.pool.clone(),
         };
         Ok(Box::new(conn))
     }
@@ -164,7 +176,11 @@ impl backend::Factory for Factory
 
 pub(crate) struct Connection
 {
+    // Mostly, we'll use an open connection:
     conn: PConn,
+
+    // But also let's get an Arc copy of the pool in case we need to open more connections.
+    pool: Pool,
 }
 
 trait SqliteConn: DerefMut<Target=rusqlite::Connection> {}
@@ -288,16 +304,7 @@ impl Connection
             ON profile(user_id)
         ")?;
 
-
-        // TODO: Store file attachments, etc:
-        // self.run("
-        //     CREATE TABLE blob(
-        //         -- A content-addressable store for many kinds of data.
-        //         hash BLOB PRIMARY KEY, -- multihash of the data.
-        //         data BLOB
-        //     )
-        // ")?; 
-
+        // See upgraders.rs for newer DB additions.
 
         Ok(())
     }
@@ -972,6 +979,87 @@ impl backend::Backend for Connection
         // TODO: I've since decided that "pinning" might be prone to abuse. I should write up my thoughts there.
 
         Ok(Some(QuotaDenyReason::UnknownUser))
+    }
+   
+    fn get_contents(&self, user_id: UserID, signature: Signature, file_name: &str) 
+    -> Result< Option<FileStream> , Error> 
+    {
+        let mut stmt = self.conn.prepare("
+            SELECT store.rowid, length(store.contents), a.size
+            FROM store 
+            INNER JOIN item_attachment AS a USING(hash)
+            WHERE 
+                a.user_id = ?
+                AND a.signature = ?
+                AND a.name = ?
+                AND EXISTS(SELECT user_id FROM known_users WHERE user_id = a.user_id)
+        ")?;
+
+        let mut rows = stmt.query(params![
+            user_id.bytes(),
+            signature.bytes(),
+            file_name,
+        ])?;
+
+        let row = match rows.next()? {
+            None => return Ok(None),
+            Some(row) => row,
+        };
+
+        let rowid: i64 = row.get(0)?;
+        let size = row.get::<_, i64>(1)? as u64;
+        let expected_size = row.get::<_, i64>(2)? as u64;
+
+        if size != expected_size {
+            bail!("Item expected {} bytes but found {}", expected_size, size);
+        }
+
+        if rows.next()?.is_some() {
+            bail!("UNIQUE constraint failure, found 2 results for file");
+        }
+
+        drop(rows);
+        drop(stmt);
+
+
+        // Open a new pooled connection that will be owned just by our Iterator/Stream:
+        // TODO: Maybe we should just re-open the connection every time if we have to for the BLOB too?
+        let conn = self.pool.get()?;
+        let mut buf = [0 as u8; 32 * 1024];
+        let mut read_pos = 0;
+
+        let iter = std::iter::from_fn(move || -> Option<Result<Bytes,crate::server::SendError>> {
+            // Have to re-open the BLOB every time because it's not Send (due to its lifetime on &Connection?).
+            let blob = conn.blob_open(
+                DatabaseName::Main, 
+                "store",
+                "contents",
+                rowid,
+                true // read-only
+            );
+
+            let blob = match blob {
+                Ok(b) => b,
+                Err(err) => return Some(Err(err.into())),
+            };
+    
+            let bytes_read = match blob.read_at(&mut buf, read_pos) {
+                Err(io_err) => return Some(Err(io_err.into())),
+                Ok(x) => x,
+            };
+            read_pos += bytes_read;
+
+            if bytes_read == 0 {
+                return None;
+            }
+
+            let bytes = Bytes::copy_from_slice(&buf[..bytes_read]);
+            return Some(Ok(bytes));
+        });
+
+        let stream = blocking::Unblock::with_capacity(2, iter);
+        let stream = Box::new(stream);
+        Ok(Some(FileStream{stream, size}))
     }
 }
 
