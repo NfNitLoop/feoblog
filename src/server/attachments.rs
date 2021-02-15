@@ -31,12 +31,6 @@ pub(crate) async fn get_file(
         // no_chunking() sets the content-length, so this is redundant:
         // .set_header(CONTENT_LENGTH, contents.size)
         .no_chunking(contents.size)
-
-        // Once an Item is stored, it is immutable. Cache forever.
-        // "aggressive caching" according to https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
-        // 31536000 = 365 days, as seconds
-        .header("Cache-Control", "public, max-age=31536000, immutable")
-
         .streaming(contents.stream);
 
         // Note: Above we could've used a SizedStream, but it explicitly requires an actix::Error, not an Into<actix::Error>,

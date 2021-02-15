@@ -8,9 +8,10 @@ use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData, net::TcpListener};
 // * etc?
 
 use backend::FactoryBox;
+use futures::Future;
 use futures_util::StreamExt;
 
-use actix_web::{dev::HttpResponseBuilder, http::{Method, header::ContentType}, middleware::DefaultHeaders, web::Query};
+use actix_web::{dev::{HttpResponseBuilder, Service, ServiceRequest, ServiceResponse}, http::{Method, header::ContentType}, middleware::DefaultHeaders, web::Query};
 use actix_web::web::{
     self,
     get,
@@ -146,6 +147,7 @@ fn routes(cfg: &mut web::ServiceConfig) {
             .route(put().to(put_item))
             .route(route().method(Method::OPTIONS).to(cors_preflight_allow))
             .wrap(cors_ok_headers())
+            .wrap_fn(immutable_etag)
         )
         .service(
             web::resource("/u/{user_id}/i/{signature}/replies/proto3")
@@ -158,6 +160,7 @@ fn routes(cfg: &mut web::ServiceConfig) {
             .route(route().method(Method::HEAD).to(attachments::head_file))
             .route(route().method(Method::OPTIONS).to(cors_preflight_allow))
             .wrap(cors_ok_headers())
+            .wrap_fn(immutable_etag)
         )
 
         .route("/u/{user_id}/profile/", get().to(show_profile))
@@ -232,7 +235,66 @@ impl <T: RustEmbed> StaticFilesResponder for T {
             .body("File not found.")
         )
     }
-} 
+}
+
+/// Browsers like to re-validate things even when they don't need to. (Say, when the user hits reload.)
+/// For our content-addressable URLs, make a shortcut etag to spare us some bandwidth & DB hits:
+fn immutable_etag<'a, S>(req: ServiceRequest, service: &'a mut S) 
+-> impl Future<Output = Result<ServiceResponse, actix_web::error::Error>>
+where S: Service<Request=ServiceRequest, Response=ServiceResponse, Error=actix_web::error::Error>
+{
+    use actix_web::Either;
+    use actix_web::http::header::{self, HeaderName, HeaderValue};
+
+    let is_get = req.method() == &Method::GET;
+    // If the client sends us an if-none-match, they're just sending back our "immutable" ETag.
+    // This means they already have our data and are just trying to re-load it unnecessarily.
+    let cache_validation_request = req.headers().get("if-none-match").is_some();
+
+
+    let fut = if !cache_validation_request {
+        Either::A(service.call(req))
+    } else {
+        // Skip dispatching to the underlying service, and pass along the req:
+        Either::B(req)
+    };
+    async move {
+        let mut res = match fut {
+            Either::A(fut) => fut.await?,
+            Either::B(req) => {
+                let res = HttpResponse::NotModified().body("");
+                let res = req.into_response(res);
+                return Ok(res);
+            }
+        };
+
+        if is_get && res.response().status().is_success() {
+            let headers = res.headers_mut();
+            headers.insert(header::ETAG, HeaderValue::from_static("\"immutable\""));
+                    
+            // "aggressive caching" according to https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+            // 31536000 = 365 days, as seconds
+            headers.insert(
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("public, max-age=31536000, no-transform, immutable")
+            );
+        }
+
+        Ok(res)
+    }
+}
+
+// Note: This function signature DID NOT WORK with wrap_fn(), and produced
+// confusing error messages. If anyone can clarify to me why, I'd be very happy
+// to know.
+// See: https://twitter.com/NfNitLoop/status/1361389613672062978
+//
+// async fn immutable_etag<S>(req: ServiceRequest, service: S) 
+// -> Result<ServiceResponse, actix_web::error::Error> 
+// where for<'a> &'a mut S: Service
+// {
+//     todo!()
+// }
 
 
 #[derive(RustEmbed, Debug)]
@@ -935,16 +997,6 @@ async fn get_item(
     data: Data<AppData>,
     path: Path<(UserID, Signature,)>,
 ) -> Result<HttpResponse, Error> {
-
-    // TODO: Check whether Access-Control-Max-Age effectively truncates our Cache-Control max-age.
-    // If it does, we'll likely get more hits to this resource than necessary.
-    // But, according to https://developer.mozilla.org/en-US/docs/Web/HTTP/Caching,
-    // browsers will send an If-None-Match header if they're updating caches. Does that apply to
-    // expired Access-Control caches too? If so, we could just check for the presence of that tag
-    // and return the "This content hasn't updated" response w/o having to touch the DB.
-    // We'd also probably need to *send* an etag w/ the resposne to allow browsers to do this.
-    // And all this needs a bit of testing.
-    
     let (user_id, signature) = path.into_inner();
     let backend = data.backend_factory.open().compat()?;
     let item = backend.user_item(&user_id, &signature).compat()?;
@@ -962,10 +1014,6 @@ async fn get_item(
     // for itself anyway.
     Ok(
         proto_ok()
-        // Once an Item is stored, it is immutable. Cache forever.
-        // "aggressive caching" according to https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
-        // 31536000 = 365 days, as seconds
-        .header("Cache-Control", "public, max-age=31536000, immutable")
         .body(item.item_bytes)
     )
 
