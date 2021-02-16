@@ -22,7 +22,6 @@ body {
         max-width: 111em;
         grid-template-columns: 1fr 1fr;
         grid-gap: 1em;
-        align-items: start;
         padding: 1em;
     }
     .dualPaneEditor > * {
@@ -98,6 +97,8 @@ input:hover, input:focus, textarea:hover, textarea:focus {
 .item {
     padding: 0px;
     background-color: transparent;
+    display: flex;
+    flex-direction: column;
 }
 
 .item .header {
@@ -121,6 +122,7 @@ input:hover, input:focus, textarea:hover, textarea:focus {
     border-top: 0px solid white;
     padding: 1rem;
     border-radius: 20px;
+    flex-grow: 1;
 }
 
 .item .header + .body {
