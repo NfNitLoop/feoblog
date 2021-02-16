@@ -6,6 +6,7 @@ use std::io::{BufReader, BufWriter, Seek, SeekFrom};
 use actix_web::{HttpRequest, HttpResponse, Responder, client::HttpError, dev::{SizedStream}, http::header::CONTENT_LENGTH, web::{Data, Path, Payload}};
 use failure::ResultExt;
 use futures::{AsyncSeekExt, AsyncWriteExt, StreamExt};
+use mime_guess::mime;
 use sodiumoxide::crypto::hash::sha512;
 use tempfile::tempfile;
 use log::{debug};
@@ -30,7 +31,13 @@ pub(crate) async fn get_file(
         Some(c) => c,
     };
 
-    let mime_type = format!("{}", mime_guess::from_path(&file_name).first_or_octet_stream());
+    let mut mime_type = format!("{}", mime_guess::from_path(&file_name).first_or_octet_stream());
+
+    // FeoBlog is not meant to be a general web server.
+    // Plus, since the client also runs in the browser, these could be a security risk:
+    if mime_type.contains("html") || mime_type.contains("javascript") {
+        mime_type = mime::TEXT_PLAIN.to_string();
+    }
     let response = HttpResponse::Ok()
         .content_type(mime_type)
 
