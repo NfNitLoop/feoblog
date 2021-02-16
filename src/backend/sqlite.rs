@@ -7,14 +7,16 @@
 
 mod upgraders;
 
-use std::{io::Read, ops::DerefMut, path::Path};
+use std::{io::{Read, Write}, ops::DerefMut, path::Path};
 
 use crate::protos::Item;
 use actix_web::web::Bytes;
-use backend::{RowCallback, SHA512};
+use backend::{FileMeta, RowCallback, SHA512};
 use futures::Stream;
+use log::debug;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{DatabaseName, NO_PARAMS, OpenFlags, named_params};
+use sodiumoxide::randombytes::randombytes;
 use crate::backend::{self, UserID, Signature, ItemRow, ItemDisplayRow, Timestamp, ServerUser, QuotaDenyReason};
 
 use failure::{Error, bail, ResultExt};
@@ -1060,6 +1062,110 @@ impl backend::Backend for Connection
         let stream = blocking::Unblock::with_capacity(2, iter);
         let stream = Box::new(stream);
         Ok(Some(FileStream{stream, size}))
+    }
+
+    fn get_attachment_meta(&self, user_id: &UserID, signature: &Signature, file_name: &str) -> Result<Option<backend::FileMeta>, Error> {
+        
+        let mut stmt = self.conn.prepare("
+            SELECT 
+                a.size,
+                a.hash,
+                s.hash IS NOT NULL AS contents_exist
+            FROM item_attachment AS a
+            LEFT OUTER JOIN store AS s USING (hash)
+            WHERE 
+                a.user_id = ?
+                AND a.signature = ?
+                AND a.name = ?
+                AND EXISTS(SELECT user_id FROM known_users WHERE user_id = a.user_id)
+        ")?;
+
+        let mut rows = stmt.query(params![
+            user_id.bytes(),
+            signature.bytes(),
+            file_name
+        ])?;
+
+        let row = match rows.next()? {
+            Some(row) => row,
+            None => return Ok(None),
+        };
+
+        let size = row.get::<_, i64>(0)? as u64;
+        let hash_bytes: Vec<u8> = row.get(1)?;
+        let hash = SHA512::from_hash_bytes(&hash_bytes)?;
+        let exists = row.get(2)?;
+
+        let meta = FileMeta{
+            exists,
+            hash,
+            size,
+            quota_exceeded: false, // TODO
+        };
+
+        Ok(Some(meta))
+    }
+
+    fn save_attachment(&self, size: u64, hash: &SHA512, file: &mut dyn Read) -> Result<(), Error> {
+        // Save to a temporary hash while we stream the data into the database.
+        // Note, this is 31 bytes, which is easily distinguishable from SHA-512's 64-bytes:
+        let temp_hash = randombytes(31);
+
+        // In practice, SQLite's max BLOB size defaults to <1GiB. 
+        // See: https://sqlite.org/limits.html
+        // We'll just rely on this insert failing to tell us what it is:
+        debug!("Inserting zeroblob into 'store'");
+        self.conn.execute(
+            "INSERT INTO store (hash, contents) VALUES(?, zeroblob(?))",
+            params![
+                &temp_hash,
+                size as i64
+            ],
+        )?;
+
+        let row_id: i64 = self.conn.query_row(
+            "SELECT rowid FROM store WHERE hash = ?",
+            params![ &temp_hash ], 
+            |row| row.get(0)
+        )?;
+
+        let mut blob = self.conn.blob_open(
+            DatabaseName::Main,
+            "store",
+            "contents",
+            row_id,
+            false // read_only=false
+        )?; 
+
+        debug!("Copying temp file into sqlite");
+        std::io::copy(file, &mut blob)?;
+        blob.flush()?;
+        debug!("Finished copy.");
+
+        // Check blob hash:
+        // I know the docs say we expect the caller to have performed the hash, but 
+        // getting the wrong content here is annoying so I'm going to do it again anyway:
+        let hash_check = SHA512::from_file(&mut blob)?;
+        debug!("Verified BLOB hash: {}", hash);
+        
+        if &hash_check != hash {
+            bail!("SQLite expected {} but got {}", hash, hash_check);
+        }
+
+        drop(blob);
+
+        // Now that the copy has finished, move the blob into its final location atomically:
+        let updated = self.conn.execute(
+            "UPDATE store SET hash = ? WHERE hash = ?",
+            params![hash.bytes(), &temp_hash],
+        )?;
+
+        if updated != 1 {
+            bail!("Error updating content hash from {:?} to {}", temp_hash, hash);
+        }
+        debug!("save_attachment() done.");
+
+        Ok(())
     }
 }
 

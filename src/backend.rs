@@ -4,14 +4,13 @@ pub(crate) mod sqlite;
 
 use crate::protos::Item;
 use core::str::FromStr;
-use std::marker::PhantomData;
+use std::{fmt::Display, io::{Read, Seek, SeekFrom}, marker::PhantomData};
 use actix_web::{dev::SizedStream, web::Bytes};
 use failure::{Error, ResultExt, bail, format_err};
 use bs58;
 use futures::Stream;
-use futures_core::stream;
 use serde::{Deserialize, de::{self, Visitor}};
-use sodiumoxide::crypto::sign;
+use sodiumoxide::crypto::{hash::sha512, sign};
 
 /// This trait knows how to build a Factory, which in turn can open Backend connections.
 ///
@@ -31,7 +30,7 @@ pub trait FactoryBuilder {
     fn db_upgrade(&self) -> Result<(), Error>;
 }
 /// Knows how to open Backend "connections".
-pub trait Factory: Send
+pub trait Factory: Send + Sync
 {
     /// Create a clone of this Factory.
     /// Like Clone, but can operate on dyn pointers.
@@ -128,7 +127,14 @@ pub trait Backend
     fn quota_check_item(&self, user_id: &UserID, bytes: &[u8], item: &Item) -> Result<Option<QuotaDenyReason>, Error>;
 
     /// Get a Stream of the bytes of the file attachment.
+    // TODO: Take refs.
     fn get_contents(&self, user_id: UserID, signature: Signature, file_name: &str) -> Result<Option<FileStream>, Error>;
+
+    fn get_attachment_meta(&self, user_id: &UserID, signature: &Signature, file_name: &str) -> Result<Option<FileMeta>, Error>;
+
+    /// Save a file attachment to our content store.
+    /// This assumes you have already validated the content's size and hash match those returned by get_attachment_meta().
+    fn save_attachment(&self, size: u64, hash: &SHA512, file: &mut dyn Read) -> Result<(), Error>;
 }
 
 pub struct FileStream {
@@ -137,6 +143,21 @@ pub struct FileStream {
 
     /// Stream of Bytes from the file:
     pub stream: Box<dyn Stream<Item=Result<Bytes, crate::server::SendError>> + Unpin + Send + 'static>,
+}
+
+/// Metadata about a file attachment.
+pub struct FileMeta {
+    /// The hash of the file's contents.
+    pub hash: SHA512,
+    
+    /// Whether the file already exists in our content store.
+    pub exists: bool,
+
+    /// Size of the file in bytes, according to its metadata.
+    pub size: u64,
+
+    /// True iff uploading this attachment would cause the user to exceed their quota.
+    pub quota_exceeded: bool,
 }
 
 /// A callback function used for callback iteration through large database resultsets.
@@ -396,7 +417,38 @@ impl SHA512 {
         bail!("SHA512::from_hash_bytes(): wrong number of bytes: {}", slice.len());
     }
 
+    pub fn from_digest(digest: sha512::Digest) -> Self { 
+        Self { hash: digest }
+    }
+
     pub fn bytes(&self) -> &[u8] {
         return &self.hash.0
+    }
+
+    pub fn from_file<F>(file: &mut F) -> Result<Self, std::io::Error> 
+    where F: Read + Seek
+    {
+        file.seek(SeekFrom::Start(0))?;
+        let mut buf = [0u8; 8 * 1024];
+        let mut hasher = sha512::State::new();
+        let mut bytes = 0;
+        loop {
+            let count = file.read(&mut buf)?;
+            if count == 0 { break; }
+            bytes += count;
+            hasher.update(&buf[..count]);
+        }
+
+        Ok(Self { hash: hasher.finalize() })
+    }
+}
+
+impl Display for SHA512 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SHA512:")?;
+        for b in self.bytes() {
+            write!(f, "{:02x}", b)?;
+        }
+        Ok(())
     }
 }

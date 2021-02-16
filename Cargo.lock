@@ -897,8 +897,7 @@ dependencies = [
  "env_logger",
  "failure",
  "futures",
- "futures-core",
- "futures-util",
+ "log",
  "mime_guess",
  "multihash",
  "protobuf",
@@ -912,6 +911,7 @@ dependencies = [
  "socket2",
  "sodiumoxide",
  "structopt",
+ "tempfile",
  "time",
  "webbrowser",
 ]

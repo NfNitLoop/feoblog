@@ -8,8 +8,7 @@ use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData, net::TcpListener};
 // * etc?
 
 use backend::FactoryBox;
-use futures::Future;
-use futures_util::StreamExt;
+use futures::{Future, StreamExt};
 
 use actix_web::{dev::{HttpResponseBuilder, Service, ServiceRequest, ServiceResponse}, http::{Method, header::ContentType}, middleware::DefaultHeaders, web::Query};
 use actix_web::web::{
@@ -44,6 +43,7 @@ mod attachments;
 pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
 
     env_logger::init();
+    sodiumoxide::init().expect("sodiumoxide::init()");
 
     let ServeCommand{open, backend_options, mut binds} = command;
 
@@ -157,7 +157,6 @@ fn routes(cfg: &mut web::ServiceConfig) {
             web::resource("/u/{user_id}/i/{signature}/files/{file_name}")
             .route(get().to(attachments::get_file))
             .route(put().to(attachments::put_file))
-            .route(route().method(Method::HEAD).to(attachments::head_file))
             .route(route().method(Method::OPTIONS).to(cors_preflight_allow))
             .wrap(cors_ok_headers())
             .wrap_fn(immutable_etag)

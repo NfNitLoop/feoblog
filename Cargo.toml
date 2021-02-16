@@ -10,8 +10,6 @@ actix-web = "3"
 actix-web-codegen = "*"
 # required for reading Actix Payloads:
 futures = "*"
-futures-core = "*"
-futures-util = "*"
 
 # Error handling:
 # TODO: Update to Anyhow
@@ -53,6 +51,7 @@ serde = "*"
 r2d2 = "*"
 r2d2_sqlite = "*"
 
+log = "*"
 env_logger = "*"
 
 askama_actix = "*"
@@ -62,6 +61,8 @@ socket2 = "*"
 
 # A nice library for getting blocking I/O out of the main thread(s)
 blocking = "*"
+
+tempfile = "*"
 
 [dependencies.rusqlite]
 # TODO: Switch to sqlx for async sql support?
