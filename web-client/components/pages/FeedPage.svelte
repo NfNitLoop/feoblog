@@ -3,7 +3,7 @@
 -->
 <!-- Displays the homepage feed in the client. -->
 <div class="feed">
-{#each items as entry (entry) }
+    {#each items as entry (entry) }
     <ItemView 
         userID={entry.userID.toString()}
         signature={entry.signature.toString()}
@@ -11,18 +11,18 @@
         clickable={true}
         {appState}
     />
-{:else}
-<div class="item">
-    {#if !moreItems}
-        Nothing to see here. You may need to <a href="#/my_profile">edit your profile</a>
-        to follow people, or <a href="#/post">write your first post</a>.
     {:else}
-        Loading...
-    {/if}
-</div>
-{/each}
-<VisibilityCheck on:itemVisible={lazyLoader.displayMoreItems} bind:visible={endIsVisible}/>
-</div>
+    <div class="item"><div class="body">
+        {#if !moreItems}
+            Nothing to see here. You may need to <a href="#/my_profile">edit your profile</a>
+            to follow people, or <a href="#/post">write your first post</a>.
+        {:else}
+            Loading...
+        {/if}
+    </div></div>
+    {/each}
+    <VisibilityCheck on:itemVisible={lazyLoader.displayMoreItems} bind:visible={endIsVisible}/>
+</div><!-- feed -->
 
 
 <script lang="ts">

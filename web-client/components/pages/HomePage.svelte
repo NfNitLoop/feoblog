@@ -9,20 +9,18 @@
     />
 {:else}
     {#if !moreItems}
+    <div class="item"><div class="body">
         {#if $appState.loggedInUser }
-        <div class="item">
             Nothing to see here yet. Do you want to <a href="#/post">write a post</a>?
 
             <p>If you see your posts on <a href="#/u/{$appState.loggedInUser}/feed">your feed</a> but not here, 
-            make sure you flag your userID with <code>--homepage</code> like this:
+            make sure you flag your userID with <code>--homepage</code> like this:</p>
 
             <code><pre>blog user add {$appState.loggedInUser} --homepage</pre></code>
-        </div>
         {:else}
-        <div class="item">
             Nothing to see here yet. Do you want to <a href="#/login">log in</a> and write a post?
-        </div>
         {/if}
+    </div></div>
     {/if}
 {/each}
 

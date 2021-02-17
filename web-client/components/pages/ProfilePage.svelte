@@ -4,10 +4,10 @@
 -->
 
 {#await loadedProfile}
-    <div class="item">Loading...</div>
+    <div class="item"><div class="body">Loading...</div></div>
 {:then loaded} 
     {#if loaded.error}
-        <div class="item error">{loaded.error}</div>
+        <div class="item"><div class="body error">{loaded.error}</div></div>
     {:else}
         {#if !loaded.profile}
             <div class="item"><div class="body error">This user has no profile</div></div>
@@ -31,9 +31,9 @@
 
     {/if}
 {:catch e} 
-    <div class="item error">
+    <div class="item"><div class="body error">
         Error loading Profile. (See console)
-    </div>
+    </div></div>
 {/await}
 
 
