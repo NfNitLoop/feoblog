@@ -13,7 +13,7 @@ use crate::protos::Item;
 use actix_web::web::Bytes;
 use backend::{FileMeta, RowCallback, SHA512};
 use futures::Stream;
-use log::debug;
+use log::{debug, warn};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{DatabaseName, NO_PARAMS, OpenFlags, named_params};
 use sodiumoxide::randombytes::randombytes;
@@ -56,6 +56,8 @@ impl backend::FactoryBuilder for FactoryBuilder {
                 Run `feoblog db upgrade` to upgrade it.
             ");
         }
+
+        self.set_wal()?;
 
         Ok(Box::new(self.build_factory()?))
     }
@@ -148,6 +150,28 @@ impl FactoryBuilder {
             ::file(self.sqlite_file.as_str())
             // Note: explicitly NOT SQLITE_OPEN_CREATE
             .with_flags(OpenFlags::SQLITE_OPEN_READ_WRITE)
+    }
+
+    /// Enable write-ahead-logging mode for SQLite.
+    /// This greatly improves write performance, which helps in general, but in particular
+    /// when syncing your feed.
+    /// See: https://sqlite.org/wal.html
+    fn set_wal(&self) -> Result<(), Error> {
+        let conn = self.connection()?;
+        let wal_mode = "wal";
+        let new_mode: String = conn.conn.pragma_update_and_check(
+            None,
+            "journal_mode",
+            &wal_mode,
+            |row| { row.get(0) },
+        )?;
+        if wal_mode != &new_mode {
+            warn!("Could not set journal_mode to WAL mode. Using {}", new_mode);
+        } else {
+            debug!("WAL mode set.");
+        }
+
+        Ok(())
     }
 }
 
