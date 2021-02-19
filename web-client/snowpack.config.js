@@ -32,19 +32,19 @@ module.exports = {
         // TODO: https://www.npmjs.com/package/snowpack-plugin-hash looks nice.
 
         // Use protoc-gen-ts to compile .proto files:
-        // [
-        //     "@snowpack/plugin-run-script",
-        //     {
-        //         cmd: (
-        //             "protoc"
-        //             + ` --plugin=./node_modules/.bin/${npmScript('protoc-gen-ts')}`
-        //             + " --ts_out=protos"
-        //             + " --proto_path=../protobufs/"
-        //             + " feoblog.proto"
-        //         ),
-        //         // TODO: watch?
-        //     },
-        // ],
+        [
+            "@snowpack/plugin-run-script",
+            {
+                cmd: (
+                    "protoc"
+                    + ` --plugin=./node_modules/.bin/${npmScript('protoc-gen-ts')}`
+                    + " --ts_out=protos"
+                    + " --proto_path=../protobufs/"
+                    + " feoblog.proto"
+                ),
+                // TODO: watch?
+            },
+        ],
         ["@snowpack/plugin-svelte"],
         
         // Run svelte-check for Typescript checking

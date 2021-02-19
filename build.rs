@@ -2,13 +2,13 @@
 // use protoc_rust;
 
 fn main() {
-    // TODO: Move this into cargo-make? https://github.com/sagiegurari/cargo-make
-    // protoc_rust::Codegen::new()
-    //     .out_dir("src/protos")
-    //     .inputs(&["protobufs/feoblog.proto"])
-    //     .include("protobufs")
-    //     .run()
-    //     .expect("protoc");
+    // TODO: Specify a rebuild-if
+    protoc_rust::Codegen::new()
+        .out_dir("src/protos")
+        .inputs(&["protobufs/feoblog.proto"])
+        .include("protobufs")
+        .run()
+        .expect("protoc");
 
     // TODO: Do I need to place results here?
     // use std::env;
