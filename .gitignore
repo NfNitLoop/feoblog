@@ -1,4 +1,5 @@
 /target
 **/*.rs.bk
-*.sqlite3
+# Also ignore .sqlite3-shm and .sqlite3-wal, as well as any of your .sqlite3.backup files:
+*.sqlite3*
 /.vscode/

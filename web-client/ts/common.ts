@@ -526,17 +526,20 @@ export function validateServerURL(url: string): string {
 // Give a size in human-readable 
 export function readableSize(bytes: number): string {
     let base = 1024
-    let magitudes = ["bytes", "KiB", "MiB", "GiB", "TiB"]
+    let magnitudes = ["bytes", "KiB", "MiB", "GiB", "TiB"]
     let count = bytes
 
-    while (count > base && magitudes.length > 1) {
+    while (count > base && magnitudes.length > 1) {
         count = count / base
-        magitudes.shift()
+        magnitudes.shift()
     }
+    let magnitude = magnitudes[0]
 
     // Show 3 significant digits:
     let out
-    if (count < 10) {
+    if (magnitude === "bytes") {
+        out = count
+    }else if (count < 10) {
         out = count.toFixed(2)
     } else if (count < 100) {
         out = count.toFixed(1)
@@ -544,7 +547,7 @@ export function readableSize(bytes: number): string {
         out = count.toFixed(0)
     }
 
-    return `${out} ${magitudes[0]}`
+    return `${out} ${magnitude}`
 }
 
 export function bytesToHex(bytes: Uint8Array): string {
@@ -631,7 +634,6 @@ export class Mutex {
     // Can be set to a callback that gets called when .locked changes.
     lockNotifier: ((locked: boolean) => void)|undefined
     
-
     // Run a single callback with the locked mutex.
     // Will wait until a lock is available.
     run<T>(callback: () => Promise<T>): Promise<T> {
@@ -675,4 +677,3 @@ export class Mutex {
         }
     }
 }
-

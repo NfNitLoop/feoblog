@@ -112,8 +112,6 @@ Should accept a `before` parameter, which allows paginating through results.
 `/u/<userID>/i/<signature>/files/*`
 -----------------------------------
 
-Note: Not yet implemented.
-
 Some post types may allow the user to attach files. For example, a blog post
 may contain photos which the user wants to display inline.
 
@@ -127,7 +125,13 @@ within the `files/` URL.
 Clients/servers may PUT files to these locations after the raw Protobuf data has
 been published (at `/<userID>/<signature>/proto3`). The server must verify
 that the posted data matches the corresponding hash and size as specified in the
-Protobuf data. (TODO: Not yet implemented.)
+Protobuf data.
+
+Clients may HEAD a file URL to check whether the file attachment already exists
+on the server. The server may return an `X-FB-Quota-Exceeded` HTTP header with a
+value of 1/0 for true/false, to indicate whether attempting to PUT the file
+would cause the user's quota to be exceeded. This can be used to short-cut
+otherwise expensive file copies during sync.
 
 `/u/<userID>/feed/proto3`
 -------------------------

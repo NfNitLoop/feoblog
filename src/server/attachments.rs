@@ -3,7 +3,7 @@
 
 use std::io::{BufReader, BufWriter, Seek, SeekFrom};
 
-use actix_web::{HttpRequest, HttpResponse, Responder, client::HttpError, dev::{SizedStream}, http::header::CONTENT_LENGTH, web::{Data, Path, Payload}};
+use actix_web::{HttpRequest, HttpResponse, Responder, client::HttpError, dev::{SizedStream}, http::header::{self, CONTENT_LENGTH}, web::{Data, Path, Payload}};
 use failure::ResultExt;
 use futures::{AsyncSeekExt, AsyncWriteExt, StreamExt};
 use mime_guess::mime;
@@ -182,3 +182,39 @@ pub(crate) async fn put_file(
     );
 }
 
+pub(crate) async fn head_file(
+    data: Data<AppData>,
+    Path((user_id, signature, file_name)): Path<(UserID, Signature, String)>,
+    req: HttpRequest,
+) -> Result<HttpResponse, Error> {
+    let backend = data.backend_factory.open().compat()?;
+
+    let metadata = backend.get_attachment_meta(&user_id, &signature, &file_name).compat()?;
+    let metadata = backend.get_attachment_meta(&user_id, &signature, &file_name).compat()?;
+
+    let metadata = match metadata {
+        Some(d) => d,
+        None => {
+            // Note: a 404 doesn't necessarily mean that you can upload.
+            // Ex: If the item doesn't yet exist, you can't upload a file here.
+            return Ok(
+                HttpResponse::NotFound().body("")
+            );
+        }
+    };
+    
+    if metadata.exists {
+        return Ok(
+            HttpResponse::Ok()
+            .header(header::CONTENT_LENGTH, metadata.size)
+            .body("")
+        );
+    }
+
+    let mut response = HttpResponse::NotFound();
+    if metadata.quota_exceeded {
+        response.set_header("X-FB-Quota-Exceeded", 1u64);
+    }
+
+    Ok(response.body(""))
+}

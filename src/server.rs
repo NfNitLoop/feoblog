@@ -25,6 +25,8 @@ use actix_web::web::{
 use actix_web::{App, HttpServer, Responder};
 use askama::Template;
 use failure::{ResultExt, format_err};
+use log::debug;
+use logging_timer::timer;
 use rust_embed::RustEmbed;
 use serde::Deserialize;
 
@@ -157,6 +159,7 @@ fn routes(cfg: &mut web::ServiceConfig) {
             web::resource("/u/{user_id}/i/{signature}/files/{file_name}")
             .route(get().to(attachments::get_file))
             .route(put().to(attachments::put_file))
+            .route(route().method(Method::HEAD).to(attachments::head_file))
             .route(route().method(Method::OPTIONS).to(cors_preflight_allow))
             .wrap(cors_ok_headers())
             .wrap_fn(immutable_etag)
@@ -815,6 +818,8 @@ async fn put_item(
     mut body: Payload,
 ) -> Result<HttpResponse, Error> 
 {
+    let _timer = timer!("put_item()");
+
     let (user_path, sig_path) = path.into_inner();
     let user = UserID::from_base58(user_path.as_str()).context("decoding user ID").compat()?;
     let signature = Signature::from_base58(sig_path.as_str()).context("decoding signature").compat()?;
@@ -908,7 +913,9 @@ async fn put_item(
         item_bytes: bytes,
     };
 
+    let timer = timer!("save_user_item");
     backend.save_user_item(&row, &item).context("Error saving user item").compat()?;
+    drop(timer);
 
     let response = HttpResponse::Created()
         .content_type(PLAINTEXT)

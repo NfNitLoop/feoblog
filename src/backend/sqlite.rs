@@ -24,7 +24,7 @@ use rusqlite::{params, OptionalExtension, Row};
 
 use super::FileStream;
 
-const CURRENT_VERSION: u32 = 6;
+const CURRENT_VERSION: u32 = 7;
 
 type Pool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
 type PConn = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
@@ -1250,7 +1250,7 @@ fn save_attachment_rows(conn: &rusqlite::Connection, rows: Vec<AttachmentRow>) -
     }
 
     let mut stmt = conn.prepare("
-        INSERT INTO item_attachment(user_id, signature, name, hash, size)
+        INSERT OR REPLACE INTO item_attachment(user_id, signature, name, hash, size)
         VALUES (?,?,?,?,?)
     ")?;
 

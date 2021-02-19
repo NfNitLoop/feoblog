@@ -18,6 +18,7 @@ impl Upgraders {
             Box::new(From3To4),
             Box::new(From4To5),
             Box::new(From5To6),
+            Box::new(From6To7),
         ]}
     }
 
@@ -317,6 +318,29 @@ impl Upgrader for From5To6 {
                 
         }
 
+        conn.set_version(self.to_version())?;
+        Ok(())
+    }
+}
+
+// Changes some indexes to UNIQUE that should have been.
+struct From6To7;
+impl Upgrader for From6To7 {
+    fn from_version(&self) -> u32 { 6 }
+    fn to_version(&self) -> u32 { 7 }
+    fn upgrade(&self, conn: &Connection) -> Result<(), Error> {
+        conn.run("DROP INDEX IF EXISTS item_attachment_item_idx")?;
+        conn.run("
+            CREATE UNIQUE INDEX item_attachment_item_idx
+            ON item_attachment(user_id, signature, name)
+        ")?;
+
+        conn.run("DROP INDEX IF EXISTS store_hash_idx")?;
+        conn.run("
+            CREATE UNIQUE INDEX store_hash_idx
+            ON store(hash)
+        ")?;
+    
         conn.set_version(self.to_version())?;
         Ok(())
     }

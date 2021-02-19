@@ -13,16 +13,21 @@ export class Client {
         this.base_url = config.base_url
     }
 
+    // A human-readable representation of the server we're talking to. 
+    get url() {
+        return this.base_url || "local server"
+    }
+
     // Load an Item from the server, if it exists.
     // Validates the signature of the Item before returning it.
-    async getItem(userID: UserID|string, signature: Signature|string): Promise<Item|null> {
-        let bytes = await this.getItemBytes(userID, signature)
+    async getItem(userID: UserID|string, signature: Signature|string, options?: GetItemOptions): Promise<Item|null> {
+        let bytes = await this.getItemBytes(userID, signature, options)
         if (bytes === null) return null
         return Item.deserialize(bytes)
     }
 
     // Like getItem(), but returns the item bytes so that the signature remains valid over the bytes.
-    async getItemBytes(userID: UserID|string, signature: Signature|string): Promise<Uint8Array|null> {
+    async getItemBytes(userID: UserID|string, signature: Signature|string, options?: GetItemOptions): Promise<Uint8Array|null> {
         
         // Perform validation of these before sending:
         if (typeof userID === "string") {
@@ -58,12 +63,10 @@ export class Client {
         // Note: This is a bit expensive when we're bulk-loading items.
         // But, if we don't check them when we load them from the server, what's the
         // point of having the signatures?
-        // We could refactor things to allow signatures to be optionally checked, but 
-        // when would we want to display non-valid data?
-        // TODO: We could (ab?)use WebWorkers to do validation in a separate thread. That would allow
-        // us to `await` the verification without tying up the main thread.
-        if (!await signature.isValid(userID, bytes)) {
-            throw `Invalid signature for ${url}`
+        if (!options?.skipSignatureCheck) {
+            if (!await signature.isValid(userID, bytes)) {
+                throw `Invalid signature for ${url}`
+            }
         }
 
         return bytes
@@ -94,8 +97,7 @@ export class Client {
     }
 
     async putAttachment(userID: UserID, signature: Signature, fileName: string, blob: Blob): Promise<Response> {
-        let url = `${this.base_url}/u/${userID}/i/${signature}/files/${fileName}`
-        
+        let url = this.attachmentURL(userID, signature, fileName)
         let response: Response
         try {
             response = await fetch(url, {
@@ -112,6 +114,40 @@ export class Client {
         }
 
         return response
+    }
+
+    private attachmentURL(userID: UserID, signature: Signature, fileName: string) {
+        return `${this.base_url}/u/${userID}/i/${signature}/files/${fileName}`
+    }
+
+    async headAttachment(userID: UserID, signature: Signature, fileName: string): Promise<AttachmentMeta> {
+        let url = this.attachmentURL(userID, signature, fileName)
+        let response = await fetch(url, {
+            method: "HEAD",
+        })
+
+        let exists = false
+        if (response.status == 200) {
+            exists = true
+        } else if (response.status != 404) {
+            throw `Unexpected response status: ${response.status}: ${response.statusText}`
+        }
+
+        let exceedsQuota = response.headers.get("X-FB-Quota-Exceeded") == "1"
+
+        return { exists, exceedsQuota }
+    }
+
+    async getAttachment(userID: UserID, signature: Signature, fileName: string): Promise<ArrayBuffer|null> {
+        let url = this.attachmentURL(userID, signature, fileName)
+        let response = await fetch(url)
+        if (response.status == 404) {
+            return null
+        }
+        if (!response.ok) {
+            throw `Error: ${response.status}: ${response.statusText}`
+        }
+        return await response.arrayBuffer()
     }
 
     // Like getItem, but just gets the latest profile that a server knows about for a given user ID.
@@ -292,6 +328,20 @@ export class Client {
         let bytes = new Uint8Array(buf)
         return ItemList.deserialize(bytes)
     }
+}
+
+export type AttachmentMeta = {
+    // The attachment already exists at the target location.
+    exists: boolean,
+    // Sending the attachment would exceed the user's quota:
+    exceedsQuota: boolean,
+}
+
+export type GetItemOptions = {
+    // When syncing items from one server to another, the receiving server MUST 
+    // perform the verificiation, so verifying in the client is redundant and slow.
+    // Set this flag to skip it.
+    skipSignatureCheck?: boolean
 }
 
 // When we load a profile, we don't know its signature until it's loaded.

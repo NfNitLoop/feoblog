@@ -53,6 +53,7 @@ r2d2_sqlite = "*"
 
 log = "*"
 env_logger = "*"
+logging_timer = "*"
 
 askama_actix = "*"
 

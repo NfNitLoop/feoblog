@@ -851,7 +851,7 @@ checksum = "ea1063915fd7ef4309e222a5a07cf9c319fb9c7836b1f89b85458672dbb127e1"
 dependencies = [
  "proc-macro2 0.4.30",
  "quote 0.6.12",
- "syn 0.15.35",
+ "syn 0.15.44",
  "synstructure",
 ]
 
@@ -898,6 +898,7 @@ dependencies = [
  "failure",
  "futures",
  "log",
+ "logging_timer",
  "mime_guess",
  "multihash",
  "protobuf",
@@ -1334,6 +1335,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fabed175da42fed1fa0746b0ea71f412aa9d35e76e95e59b192c64b9dc2bf8b"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "logging_timer"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40d0c249955c17c2f8f86b5f501b16d2509ebbe775f7b1d1d2b1ba85ade2a793"
+dependencies = [
+ "log",
+ "logging_timer_proc_macros",
+]
+
+[[package]]
+name = "logging_timer_proc_macros"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "482c2c28e6bcfe7c4274f82f701774d755e6aa873edfd619460fcd0966e0eb07"
+dependencies = [
+ "log",
+ "proc-macro2 0.4.30",
+ "quote 0.6.12",
+ "syn 0.15.44",
 ]
 
 [[package]]
@@ -2308,9 +2331,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "0.15.35"
+version = "0.15.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "641e117d55514d6d918490e47102f7e08d096fdde360247e4a10f7a91a8478d3"
+checksum = "9ca4b3b69a77cbe1ffc9e198781b7acb0c7365a883670e8f1c1bc66fba79a5c5"
 dependencies = [
  "proc-macro2 0.4.30",
  "quote 0.6.12",
@@ -2336,7 +2359,7 @@ checksum = "02353edf96d6e4dc81aea2d8490a7e9db177bf8acb0e951c24940bf866cb313f"
 dependencies = [
  "proc-macro2 0.4.30",
  "quote 0.6.12",
- "syn 0.15.35",
+ "syn 0.15.44",
  "unicode-xid 0.1.0",
 ]
 
