@@ -28,6 +28,7 @@ jobs:
     - uses: arduino/setup-protoc@64c0c85d18e984422218383b81c52f8b077404d3
       with: 
         version: '3.x'
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Install NPM dependencies
       working-directory: ./web-client
