@@ -42,7 +42,7 @@ jobs:
     - name: Save result
       uses: actions/upload-artifact@v2
       with:
-        name: "FeoBlog"
+        name: "FeoBlog-${{ matrix.os }}"
         path: |
           ./target/release/feoblog
           ./target/release/feoblog.exe
