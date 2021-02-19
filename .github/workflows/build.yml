@@ -25,7 +25,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - uses: actions/setup-protoc@64c0c85d18e984422218383b81c52f8b077404d3
+    - uses: arduino/setup-protoc@64c0c85d18e984422218383b81c52f8b077404d3
       with: 
         version: '3.x'
 
