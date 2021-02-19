@@ -1,0 +1,49 @@
+name: Build
+
+on:
+  push:
+    branches: [ develop, release ]
+  pull_request:
+    branches: [ develop, release ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os:
+        - ubuntu-18.04
+        - windows-latest
+        - macos-latest
+        node: [10]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install NPM dependencies
+      working-directory: ./web-client
+      run: npm run install
+
+    - name: Build JavaScript Client
+      working-directory: ./web-client
+      run: npm run build
+    
+    - name: Run tests
+      run: cargo test --verbose
+
+    - name: Build Rust
+      run: cargo build --release
+
+    - name: Save result
+      uses: actions/upload-artifact@v2
+      with:
+        name: "FeoBlog"
+        path: |
+          ./target/release/feoblog
+          ./target/release/feoblog.exe
+          
