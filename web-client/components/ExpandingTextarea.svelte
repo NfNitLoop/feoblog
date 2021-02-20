@@ -10,7 +10,7 @@
 
 
 <script lang="ts">
-import { tick } from "svelte";
+import { createEventDispatcher, tick } from "svelte";
 
 
 export let value: string
@@ -18,6 +18,8 @@ export let disabled = false
 export let placeholder = ""
 
 export let size: "medium"|"small"|"oneLine" = "medium"
+
+let dispatcher = createEventDispatcher()
 
 $: medium = size == "medium"
 $: small = size == "small"
@@ -38,6 +40,16 @@ function expandTextarea(textarea: HTMLElement) {
         let borderHeight = textarea.offsetHeight - textarea.clientHeight
         textarea.style.height = (textarea.scrollHeight + borderHeight).toString()
     }
+}
+
+$: {
+    if (textarea) {
+        textarea.addEventListener("paste", onPaste)
+    }
+}
+
+function onPaste(event: ClipboardEvent) {
+    dispatcher("paste", event)
 }
 
 // Treating the text as Markdown, add a link to it, respecting the current position.

@@ -9,7 +9,12 @@
             bind:offsetMinutes
             bind:errors={timestampErrors}
         />
-        <ExpandingTextarea bind:value={text} bind:this={textarea} placeholder="Your post here 😊"/>
+        <ExpandingTextarea
+            bind:value={text}
+            bind:this={textarea}
+            on:paste={onPaste}
+            placeholder="Your post here 😊"
+        />
         <FileAttachments bind:files on:fileAdded={fileAdded}/>
     </div>
 </div>
@@ -21,7 +26,7 @@ import TimestampEditor from "./TimestampEditor.svelte"
 import { Attachments, File, Item, Post } from "../protos/feoblog";
 import moment from "moment";
 import FileAttachments from "./FileAttachments.svelte"
-import type {FileInfo} from "../ts/common"
+import {FileInfo} from "../ts/common"
 
 export let files: FileInfo[] = []
 
@@ -74,6 +79,7 @@ $: validationErrors = function(): string[] {
     return errs
 }()
 
+// A file was added via FileAttachments drag & drop.
 function fileAdded(event: CustomEvent<FileInfo>) {
     let fi = event.detail
 
@@ -82,6 +88,33 @@ function fileAdded(event: CustomEvent<FileInfo>) {
         href: `files/${fi.name}`,
         asImage: fi.isImage
     })
+}
+
+// Manually add a file:
+function addFile(fi: FileInfo) {
+    files = [...files, fi]
+    textarea.addLink({
+        text: fi.name,
+        href: `files/${fi.name}`,
+        asImage: fi.isImage
+    })
+}
+
+async function onPaste(event: CustomEvent<ClipboardEvent>) {
+    let data = event.detail.clipboardData
+    if (!data) return;
+
+    for (let i = 0; i < data.files.length; i++) {
+        let file = data.files[i]
+        if (file.type == "image/png") {
+            let fileInfo = await FileInfo.from(file)
+            // Firefox just gives us a generic "image.png" which could easily be a duplicate:
+            fileInfo.name = `paste_${file.lastModified}.png`
+            addFile(fileInfo)            
+        } else {
+            console.warn("Pasted unknown file type:", file.type)
+        }
+    }
 }
 
 </script>

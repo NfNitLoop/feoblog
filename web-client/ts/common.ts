@@ -561,16 +561,18 @@ export function bytesToHex(bytes: Uint8Array): string {
 // Wraps a (browser) File with some extra info.
 export class FileInfo {
     readonly file: File
+    name: string
     readonly objectURL: string
     hash: Hash
 
-    private constructor(file: File) {
+    private constructor(file: File, name: string) {
         this.file = file
+        this.name = name
         this.objectURL = URL.createObjectURL(file)
     }
 
     static async from(file: File): Promise<FileInfo> {
-        let fi = new FileInfo(file)
+        let fi = new FileInfo(file, file.name)
         
         // TODO: Not supported in Safari?
         let bytes = await file.arrayBuffer()
@@ -579,7 +581,6 @@ export class FileInfo {
         return fi
     }
 
-    get name() { return this.file.name }
     get type() { return this.file.type }
     get size() { return this.file.size }
 
