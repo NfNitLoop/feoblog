@@ -2,51 +2,51 @@
 <div class="body">
 
     <h1>Sync</h1>
-    <p>Synchronize your posts (and your feed) from/to multiple servers</p>
+    <p>Synchronize your posts (and your feed) from/to other servers</p>
+    <ul>
+        <li><strong>Pull My Feed</strong>: Copies posts of those you follow from their various servers onto this one.</li>
+        <li><strong>Push My Posts</strong>: Copies posts you've made on this server to any servers you've listed in your profile.</li>
+    </ul>
 </div>
 </div>
 
 
 <div class="item">
 <div class="body">
-    <h1>Sync My Feed</h1>
-    <p>Copies your own posts, and posts of those you follow, from any remote servers to this one.</p>
-
     <InputBox 
         label="Server URL"
         placeholder="(Optional. Default: Servers listed in profiles)"
         validationCallback={validateServerURL}
-        disabled={syncMyFeedTracker.isRunning}
+        disabled={taskTracker.isRunning}
         bind:errorMessage={serverURLError}
         bind:value={serverURL}
     />
-    <Button 
-        on:click={syncMyFeed} 
-        disabled={syncMyFeedTracker.isRunning || serverURLError != ""}
-    >Sync</Button>
 
-    <TaskTrackerView bind:tracker={syncMyFeedTracker}/>
+    <div class="buttons">
+        <Button 
+            on:click={syncMyFeed} 
+            disabled={taskTracker.isRunning || serverURLError != ""}
+        >Pull My Feed</Button>
+
+        <Button
+            on:click={publishMyPosts}
+            disabled={taskTracker.isRunning || serverURLError != ""}
+        >Push My Posts</Button>
+    </div>
+
+    <TaskTrackerView bind:tracker={taskTracker}/>
 </div>
 </div>
 
-<div class="item">
-<div class="body">
-        <h1>Publish My Posts</h1>
-    <p>Copy your posts (and profile updates, etc.) from this server to all servers listed in your profile</p>
-
-    <Button on:click={publishMyPosts}>Sync</Button>
-
-    <TaskTrackerView bind:tracker={publishMyPostsTracker}/>
-</div>
-</div>
-
+<style>
+.buttons { margin: 1rem 0rem; }
+</style>
 
 <script language="ts">
-import type { Task } from "svelte/internal";
-
 import type { Writable } from "svelte/store"
 import type { Item, ItemListEntry, Profile } from "../../protos/feoblog";
 import type { AppState } from "../../ts/app"
+import type { AttachmentMeta } from "../../ts/client"
 import { Client, Signature, UserID } from "../../ts/client"
 import { readableSize, TaskTracker, validateServerURL } from "../../ts/common";
 import Button from "../Button.svelte"
@@ -66,12 +66,12 @@ $: userID = function() {
 let serverURL = ""
 let serverURLError = ""
 
-let syncMyFeedTracker = new TaskTracker()
+let taskTracker = new TaskTracker()
 
 
 
 function syncMyFeed() {
-    syncMyFeedTracker.run("Syncing my feed", syncMyFeedTask)
+    taskTracker.run("Syncing my feed", syncMyFeedTask)
 }
 
 async function syncMyFeedTask(tracker: TaskTracker) {
@@ -295,6 +295,7 @@ type SyncAttachmentParams = {
     tracker: TaskTracker
 }
 
+// When pulling attachments to this server, sync from possibly multiple `fromServers`.
 async function syncAttachment({userID, signature, fileName, to, fromServers, tracker}: SyncAttachmentParams): Promise<number> {
     let bytesCopied = 0
 
@@ -342,6 +343,100 @@ async function syncAttachment({userID, signature, fileName, to, fromServers, tra
         bytesCopied += buffer.byteLength
         tracker.log(`Copied ${readableSize(bytesCopied)}`)
         
+        return bytesCopied
+    })
+}
+
+// When syncing local attachments to remote servers, send the attachment to multiple servers.
+// We can even do it simultaneously. Handy.
+type SendAttachmentMultiParams = {
+    userID: UserID,
+    signature: Signature,
+    fileName: string,
+    from: Client,
+    toServers: Set<string>,
+    tracker: TaskTracker
+}
+
+async function sendAttachmentMulti({userID, signature, fileName, toServers, from, tracker}: SendAttachmentMultiParams): Promise<number> {
+    let bytesCopied = 0
+
+    let destServers: Client[] = []
+    for (let base_url of toServers) {
+        destServers.push(new Client({base_url}))
+    }
+
+    let heads: [Client, Promise<AttachmentMeta>][] = []
+    for (let dest of destServers) {
+        let meta = dest.headAttachment(userID, signature, fileName)
+        heads.push([dest, meta])
+    }
+
+    let needTheAttachment: Client[] = []
+    for (let [dest, metaPromise] of heads) {
+        let meta
+        try {
+            meta = await metaPromise
+        } catch (e) {
+            tracker.error(`Error from ${dest.url} : ${e}`)
+            continue
+        }
+        if (meta.exists) continue;
+        if (meta.exceedsQuota) {
+            tracker.warn(`Sending to ${dest.url} would exceed quota.`)
+            continue
+        }
+        needTheAttachment.push(dest)
+    }
+
+    if (needTheAttachment.length == 0) {
+        // Nobody needs this file, no point in loading it:
+        return bytesCopied
+    }
+
+    return tracker.runSubtask(`Syncing ${fileName}`, async (tracker) => {
+        tracker.log(`For Item ${signature}`)
+        let bytesCopied = 0
+
+        let bufPromise = tracker.runSubtask(`Loading ${fileName} from ${from.url}`, async (tracker) => {
+            return from.getAttachment(userID, signature, fileName)
+        })
+
+        let buffer: ArrayBuffer|null
+        try {
+            buffer = await bufPromise
+        } catch (e) {
+            // Will already be tracked as an error by the subtask.
+            // But without this file, we can't proceed:
+            return bytesCopied
+        }
+    
+        if (!buffer) {
+            return bytesCopied // for the same reason
+        }
+        
+        let blob = new Blob([buffer])
+        let fileSize = buffer.byteLength
+
+        let uploads: Promise<number>[] = []
+        for (let client of needTheAttachment) {
+            let task = tracker.runSubtask(`Sending to ${client.url}`, async (tracker) => {
+                await client.putAttachment(userID, signature, fileName, blob)
+                tracker.log(`Sent ${readableSize(fileSize)}`)
+                return fileSize
+            })
+            uploads.push(task)
+        }
+
+        for (let upload of uploads) {
+            try {
+                bytesCopied += await upload
+            } catch (e) {
+                // Already logged by the tracker.
+            }
+        }
+
+        tracker.log(`Copied ${readableSize(bytesCopied)}`)
         return bytesCopied
     })
 }
@@ -516,10 +611,6 @@ async function syncUserItem({userID, signature, to, from, tracker}: SyncUserItem
     await to.putItem(userID, signature, bytes)
 }
 
-
-
-
-
 // Return only valid servers from a Profile.
 function serversFromProfile(profile: Profile|undefined|null, tracker = new TaskTracker()): Set<string> {
     if (!profile) return new Set()
@@ -536,10 +627,9 @@ function serversFromProfile(profile: Profile|undefined|null, tracker = new TaskT
     )
 }
 
-let publishMyPostsTracker = new TaskTracker()
 
 function publishMyPosts() {
-    publishMyPostsTracker.run("Publish my posts", publishMyPostsTask)
+    taskTracker.run("Publish my posts", publishMyPostsTask)
 }
 
 async function publishMyPostsTask(tracker: TaskTracker) {
@@ -548,7 +638,12 @@ async function publishMyPostsTask(tracker: TaskTracker) {
     if (!result) throw `Current user does not have a local profile.`
 
     let profile = result.item.profile
-    let servers = serversFromProfile(profile)
+    let servers: Set<string>
+    if (serverURL) {
+        servers = new Set([serverURL])
+    } else {
+        servers = serversFromProfile(profile)
+    }
     if (servers.size === 0) {
         throw `User profile doesn't specify any servers.`
     }
@@ -557,29 +652,60 @@ async function publishMyPostsTask(tracker: TaskTracker) {
     // TODO: as above, we could limit this to some shorter timespan by default.
     let localItems = await loadItemEntries(local, userID)
 
-    for (let server of servers) {
-        try {
-            let remote = new Client({base_url: server})
-            // Loading full list because I'm lazy. We could order local/remote items and then iterate.
-            let remoteSigs = await loadItemEntries(remote, userID)
-            for (let [sig, entry] of localItems) {
-                if (remoteSigs.has(sig)) continue
-                await syncUserItem({
-                    userID,
-                    signature: entry.signature,
-                    from: local,
-                    to: remote,
-                    tracker
-                })
+    await tracker.runSubtask("Syncing Items", async (tracker) => {
+        for (let server of servers) {
+            await tracker.runSubtask(`Syncing to ${server}`, async (tracker) => {
+                try {
+                    let remote = new Client({base_url: server})
+                    // Loading full list because I'm lazy. We could order local/remote items and then iterate.
+                    let remoteSigs = await loadItemEntries(remote, userID)
+                    for (let [sig, entry] of localItems) {
+                        if (remoteSigs.has(sig)) continue
+                        await syncUserItem({
+                            userID,
+                            signature: entry.signature,
+                            from: local,
+                            to: remote,
+                            tracker
+                        })
+                    }
+
+                } catch (e) {
+                    tracker.error(`${e}`)
+                    tracker.warn("Skipping this server")
+                }
+            }) // syncing to server
+        } // for server
+    }) // syncing items
+
+   
+
+    
+    await tracker.runSubtask(`Syncing file attachments`, async (tracker) => {
+        let bytesCopied = 0
+
+        for (let entry of localItems.values()) {
+            if (entry.type && entry.type != "post") continue // for now, only posts have attachments.
+            let item = await local.getItem(entry.userID, entry.signature, {skipSignatureCheck: true})
+            if (!item) {
+                tracker.error(`Couldn't fetch ${entry.signature} from the local server!?`)
+                continue
             }
 
-        } catch (e) {
-            tracker.error(`${e}`)
-            tracker.warn("Skipping this server")
-        }
-    }
+            for (let attachment of getAttachments(item)) {
+                bytesCopied += await sendAttachmentMulti({
+                    userID: entry.userID,
+                    signature: entry.signature,
+                    fileName: attachment.name,
+                    from: local,
+                    toServers: servers,
+                    tracker,
+                })
+            } // for attachments
+        } // for localItems
 
-    // TODO: Sync files.
+        tracker.log(`Copied ${readableSize(bytesCopied)}`)
+    })
 }
 
 

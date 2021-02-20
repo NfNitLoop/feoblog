@@ -18,7 +18,6 @@ jobs:
         - ubuntu-18.04
         - windows-latest
         - macos-latest
-        node: [10]
 
     runs-on: ${{ matrix.os }}
 
