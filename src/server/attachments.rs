@@ -3,7 +3,7 @@
 
 use std::io::{BufReader, BufWriter, Seek, SeekFrom};
 
-use actix_web::{HttpRequest, HttpResponse, Responder, client::HttpError, dev::{SizedStream}, http::header::{self, CONTENT_LENGTH}, web::{Data, Path, Payload}};
+use actix_web::{HttpRequest, HttpResponse, Responder, client::HttpError, dev::{SizedStream}, http::{HeaderName, HeaderValue, header::{self, CONTENT_LENGTH}}, web::{Data, Path, Payload}};
 use failure::ResultExt;
 use futures::{AsyncSeekExt, AsyncWriteExt, StreamExt};
 use mime_guess::mime;
@@ -196,25 +196,27 @@ pub(crate) async fn head_file(
         Some(d) => d,
         None => {
             // Note: a 404 doesn't necessarily mean that you can upload.
-            // Ex: If the item doesn't yet exist, you can't upload a file here.
+            // The item doesn't yet exist, you can't upload a file here.
             return Ok(
-                HttpResponse::NotFound().body("")
+                HttpResponse::NotFound().finish()
             );
         }
     };
     
     if metadata.exists {
-        return Ok(
-            HttpResponse::Ok()
-            .header(header::CONTENT_LENGTH, metadata.size)
-            .body("")
-        );
+        // I'd love to set a content-length here, but apparently Actix just won't let you for a HEAD?
+        // See: https://github.com/actix/actix-web/issues/1439
+        let response = HttpResponse::Ok().finish();
+        return Ok(response);
     }
 
-    let mut response = HttpResponse::NotFound();
-    if metadata.quota_exceeded {
-        response.set_header("X-FB-Quota-Exceeded", 1u64);
-    }
+    let exceeded: u64 = if metadata.quota_exceeded { 1 } else { 0 };
 
-    Ok(response.body(""))
+    let response = HttpResponse::NotFound()
+        // You can treat a 0 here as a "Yes, we would like this file".
+        // i.e.: It's not a plain 404. We have metadata for it, and uploading it wouldn't exceed quota.
+        .set_header("X-FB-Quota-Exceeded", exceeded)
+        .finish();
+
+    Ok(response)
 }
