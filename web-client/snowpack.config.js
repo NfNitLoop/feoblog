@@ -12,7 +12,7 @@ module.exports = {
 
     ],
 
-    installOptions: {
+    packageOptions: {
         // bs58 -> safe-buffers -> buffer, needs polyfill:
         polyfillNode: true,
         rollup: {
@@ -26,7 +26,6 @@ module.exports = {
                 })
             ]
         }
-
     },
     plugins: [
         // TODO: https://www.npmjs.com/package/snowpack-plugin-hash looks nice.
@@ -61,7 +60,7 @@ module.exports = {
     ],
     buildOptions: {
         clean: true,
-    }
+    },
 }
 
 function npmScript(name) {
