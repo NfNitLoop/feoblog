@@ -18,6 +18,9 @@ jobs:
         - ubuntu-18.04
         - windows-latest
         - macos-latest
+      # Don't fail fast, if we have a failure on a specific matrix type
+      # we want to know which ones:
+      fail-fast: false
 
     runs-on: ${{ matrix.os }}
 

@@ -1,5 +1,4 @@
-use std::{fs::DirEntry, io, os::windows::prelude::MetadataExt, path::Path};
-
+use std::{fs::DirEntry, io, path::Path};
 
 // TODO: These are equivalent and bs58 seems better. migrate.
 // Test that our base58 encoder can encode/decode arbitrary bytes.
@@ -121,7 +120,7 @@ fn no_ntfs_ads() -> Result<(), failure::Error> {
         // I don't see any way in std:: to directly list NTFS data streams, but
         // Windows/Rust report file sizes w/o alternate data streams, so I'm
         // using this as a proxy for that.  
-        if md.file_size() == 0 {
+        if md.len() == 0 {
             println!("ERROR: 0 byte file: {}", entry.path().to_str().unwrap_or("Unknown file"));
             found_files += 1;
         }
