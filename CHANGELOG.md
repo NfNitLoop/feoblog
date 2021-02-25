@@ -1,6 +1,52 @@
 Changelog
 =========
 
+Version 0.3.0
+=============
+
+Released: Feb. 25, 2021
+
+New Features
+------------
+
+ * Attachments!  
+   You can now attach files to posts by dragging them onto the post editor. A
+   link to the file will be automatically generated for you. If the file is an
+   image, it'll be inlined in your post by default. Syncing between servers will
+   also sync file attachments.
+ * Release automation.  
+   This is more for me than for y'all, but the result of this is that releases should be regularly available via the [releases] page.
+
+[releases]: https://github.com/NfNitLoop/feoblog/releases
+
+Note: There's a known issue ([Bug #16]) that is preventing Windows builds from working at the moment. I'll enable Windows builds when that's fixed.
+
+[Bug #16]: https://github.com/NfNitLoop/feoblog/issues/16
+
+
+Improvements
+------------
+
+ * Switched to comrak for server-side (plain HTML) rendering of Markdown.  
+   Users shouldn't notice any changes, but this library operates in a "safe by
+   default" mode which is nice.
+ * Improved browser caching.   
+   Protobuf "Items" (and file attachments) are now served with HTTP headers to
+   allow browsers to cache them indefinitely, since they should never change.
+ * SQLite's "Write Ahead Logging" ("WAL") mode is now enabled when available,
+   which greatly increases write throughput when syncing. This also means that
+   reads and writes do not block each other.
+ * Disable in-browser signature verification during sync.  
+   This further improves sync speed, since in-browser crypto is particularly slow.
+   The server will still validate that the objects it receives are cryptographically
+   signed. (And the in-browser client still always verifies content signatures before
+   displaying them.)
+  
+
+Bug Fixes
+---------
+
+ * Fixed some minor rendoring issues when viewing a server w/ no posts.
 
 Version 0.2.2
 =============
