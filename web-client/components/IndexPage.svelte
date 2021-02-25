@@ -68,9 +68,8 @@ let routes = function() {
 // Dynamically load a page of the app, and also pass through a reference to appState.
 function appPage(templatePath: string) {
 
-    // Weird. with wrap(), we can import Foo.svelte, but with appPage(), 
-    // it needs .js.
-    templatePath = templatePath.replace(/[.]svelte$/, ".js")
+    // Snowpack now creates .svelte.js files:
+    templatePath = templatePath.replace(/[.]svelte$/, ".svelte.js")
 
     return wrap({
         asyncComponent: () => import(templatePath),
