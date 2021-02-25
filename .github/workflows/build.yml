@@ -57,6 +57,7 @@ jobs:
 
   show_paths:
     name: Show paths
+    needs: build
     runs-on: ubuntu-latest
     steps:
     - name: Download build artifacts
