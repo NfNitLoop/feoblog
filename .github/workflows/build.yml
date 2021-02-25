@@ -54,4 +54,20 @@ jobs:
         path: |
           ./target/release/feoblog
           ./target/release/feoblog.exe
-          
+
+  show_paths:
+    name: Show paths
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download build artifacts
+      id: download
+      uses: actions/download-artifact@v2
+    - name: list artifacts
+      run: |
+        echo pwd:
+        pwd
+
+        echo download path: ${{ steps.download.outputs.download-path }}
+        dir -R ${{ steps.download.outputs.download-path }}
+
+      
