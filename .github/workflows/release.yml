@@ -1,0 +1,108 @@
+# I don't see a way to reference jobs from other workflow files, so this is
+# mostly a copy of build.yml, with extra steps to publish the results to a release tag.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os:
+        - ubuntu-18.04
+        - macos-latest
+        # Windows builds are broken, waiting on https://github.com/NfNitLoop/feoblog/issues/16
+        # - windows-latest
+      # Don't fail fast, if we have a failure on a specific matrix type
+      # we want to know which ones:
+      fail-fast: false
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - uses: arduino/setup-protoc@64c0c85d18e984422218383b81c52f8b077404d3
+      with: 
+        version: '3.x'
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Install NPM dependencies
+      working-directory: ./web-client
+      run: npm install
+
+    - name: Build JavaScript Client
+      working-directory: ./web-client
+      run: npm run build
+    
+    - name: Run Rust Tests
+      run: cargo test
+
+    - name: Build Rust
+      run: cargo build --release
+
+    - name: Save result
+      uses: actions/upload-artifact@v2
+      with:
+        name: "FeoBlog-${{ matrix.os }}"
+        path: |
+          ./target/release/feoblog
+          ./target/release/feoblog.exe
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v2
+      
+      - name: Create MacOS artifact
+        working-directory: FeoBlog-macos-latest
+        run: zip -9 release.zip feoblog
+
+      - name: Create MacOS artifact
+        working-directory: FeoBlog-ubuntu-18.04-latest
+        run: zip -9 release.zip feoblog
+
+      # TODO: Windows, once that's fixed.
+      
+
+      - name: Create the release
+        id: release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          prerelease: contains(github.ref, '-rc')
+          body: |
+            See CHANGELOG.md for full release notes:
+            <https://github.com/NfNitLoop/feoblog/blob/${{ github.ref }}/CHANGELOG.md>
+          
+      - name: Attach MacOS Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.release.outputs.upload_url }}
+          asset_path: ./FeoBlog-macos-latest/release.zip
+          asset_name: feoblog-macos-${{ github.ref }}.zip
+          asset_content_type: application/zip
+
+      - name: Attach Linux (Ubuntu) Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.release.outputs.upload_url }}
+          asset_path: ./FeoBlog-ubuntu-18.04/release.zip
+          asset_name: feoblog-linux-${{ github.ref }}.zip
+          asset_content_type: application/zip
+
