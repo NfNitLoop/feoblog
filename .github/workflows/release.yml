@@ -69,12 +69,11 @@ jobs:
         working-directory: ${{ steps.download.outputs.download-path}}/FeoBlog-macos-latest
         run: zip -9 release.zip feoblog
 
-      - name: Create MacOS artifact
-        working-directory: ${{ steps.download.outputs.download-path}}/FeoBlog-ubuntu-18.04-latest
+      - name: Create Linux artifact
+        working-directory: ${{ steps.download.outputs.download-path}}/FeoBlog-ubuntu-18.04
         run: zip -9 release.zip feoblog
 
       # TODO: Windows, once that's fixed.
-      
 
       - name: Create the release
         id: release
@@ -95,7 +94,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.release.outputs.upload_url }}
-          asset_path: ${{ steps.download.outputs.download-path}}//FeoBlog-macos-latest/release.zip
+          asset_path: ${{ steps.download.outputs.download-path}}/FeoBlog-macos-latest/release.zip
           asset_name: feoblog-macos-${{ github.ref }}.zip
           asset_content_type: application/zip
 
@@ -105,7 +104,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.release.outputs.upload_url }}
-          asset_path: ${{ steps.download.outputs.download-path}}//FeoBlog-ubuntu-18.04/release.zip
+          asset_path: ${{ steps.download.outputs.download-path}}/FeoBlog-ubuntu-18.04/release.zip
           asset_name: feoblog-linux-${{ github.ref }}.zip
           asset_content_type: application/zip
 
