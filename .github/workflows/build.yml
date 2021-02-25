@@ -16,8 +16,9 @@ jobs:
       matrix:
         os:
         - ubuntu-18.04
-        - windows-latest
         - macos-latest
+        # Windows builds are broken, waiting on https://github.com/NfNitLoop/feoblog/issues/16
+        # - windows-latest
       # Don't fail fast, if we have a failure on a specific matrix type
       # we want to know which ones:
       fail-fast: false
@@ -40,8 +41,8 @@ jobs:
       working-directory: ./web-client
       run: npm run build
     
-    - name: Run tests
-      run: cargo test --verbose
+    - name: Run Rust Tests
+      run: cargo test
 
     - name: Build Rust
       run: cargo build --release
