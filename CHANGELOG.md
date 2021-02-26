@@ -4,7 +4,8 @@ Changelog
 Version 0.3.0
 =============
 
-Released: Feb. 25, 2021
+Released: Feb. 25, 2021  
+<https://github.com/NfNitLoop/feoblog/releases/tag/v0.3.0>
 
 New Features
 ------------
@@ -46,7 +47,7 @@ Improvements
 Bug Fixes
 ---------
 
- * Fixed some minor rendoring issues when viewing a server w/ no posts.
+ * Fixed some minor rendering issues when viewing a server w/ no posts.
 
 Version 0.2.2
 =============
