@@ -19,7 +19,7 @@ use rusqlite::{DatabaseName, NO_PARAMS, OpenFlags, named_params};
 use sodiumoxide::randombytes::randombytes;
 use crate::backend::{self, UserID, Signature, ItemRow, ItemDisplayRow, Timestamp, ServerUser, QuotaDenyReason};
 
-use failure::{Error, bail, ResultExt};
+use anyhow::{Error, bail, Context};
 use rusqlite::{params, OptionalExtension, Row};
 
 use super::FileStream;
@@ -799,7 +799,7 @@ impl backend::Backend for Connection
             let on_homepage = on_homepage != 0;
 
             let user = ServerUser {
-                user: UserID::from_vec(row.get(0)?).compat()?,
+                user: UserID::from_vec(row.get(0)?)?,
                 notes: row.get(1)?,
                 on_homepage,
             };

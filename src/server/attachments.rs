@@ -4,7 +4,7 @@
 use std::io::{BufReader, BufWriter, Seek, SeekFrom};
 
 use actix_web::{HttpRequest, HttpResponse, Responder, client::HttpError, dev::{SizedStream}, http::{HeaderName, HeaderValue, header::{self, CONTENT_LENGTH}}, web::{Data, Path, Payload}};
-use failure::ResultExt;
+use anyhow::Context;
 use futures::{AsyncSeekExt, AsyncWriteExt, StreamExt};
 use mime_guess::mime;
 use sodiumoxide::crypto::hash::sha512;
@@ -20,9 +20,9 @@ pub(crate) async fn get_file(
     data: Data<AppData>,
     Path((user_id, signature, file_name)): Path<(UserID, Signature, String)>,
 ) -> Result<HttpResponse, Error> {
-    let backend = data.backend_factory.open().compat()?;
+    let backend = data.backend_factory.open()?;
 
-    let contents = backend.get_contents(user_id, signature, file_name.as_str()).compat()?;
+    let contents = backend.get_contents(user_id, signature, file_name.as_str())?;
     let contents = match contents {
         None => return Ok(
             file_not_found("File not found").await
@@ -58,9 +58,9 @@ pub(crate) async fn put_file(
     req: HttpRequest,
     mut body: Payload,
 ) -> Result<HttpResponse, Error> {
-    let backend = data.backend_factory.open().compat()?;
+    let backend = data.backend_factory.open()?;
 
-    let metadata = backend.get_attachment_meta(&user_id, &signature, &file_name).compat()?;
+    let metadata = backend.get_attachment_meta(&user_id, &signature, &file_name)?;
 
     let metadata = match metadata {
         Some(d) => d,
@@ -103,8 +103,8 @@ pub(crate) async fn put_file(
     };
 
     let size = length
-        .to_str().context("Parsing http Length header").compat()?
-        .parse::<u64>().context("Parsing http Length header").compat()?;
+        .to_str().context("Parsing http Length header")?
+        .parse::<u64>().context("Parsing http Length header")?;
 
     if metadata.size != size {
         return Ok(
@@ -119,7 +119,7 @@ pub(crate) async fn put_file(
     // Drop our pooled connection while we wait for bytes, which could be slow:
     drop(backend);
 
-    let file = tempfile().context("Error opening temp file").compat()?;
+    let file = tempfile().context("Error opening temp file")?;
 
     // Unblock's default buffer for I/O is *8MiB*!?  32k at a time seems fine.
     let mut file = blocking::Unblock::with_capacity(32 * 1024, file);
@@ -130,7 +130,7 @@ pub(crate) async fn put_file(
     debug!("Receiving and hashing file: {}", &file_name);
     
     while let Some(chunk) = body.next().await {
-        let chunk = chunk.context("Error parsing chunk").compat()?;
+        let chunk = chunk.context("Error parsing chunk")?;
 
         file.write_all(&chunk).await?;
         written += chunk.len() as u64;
@@ -169,12 +169,12 @@ pub(crate) async fn put_file(
     // Just grab the inner file to simplify types for the Backend:
     let mut file = file.into_inner().await;
 
-    blocking::unblock(move || -> Result<(), failure::Error> {
+    blocking::unblock(move || -> Result<(), anyhow::Error> {
         file.seek(SeekFrom::Start(0))?;
-        let backend = data.backend_factory.open().compat()?;
+        let backend = data.backend_factory.open()?;
         backend.save_attachment(metadata.size, &metadata.hash, &mut file)?;
         Ok(())
-    }).await.compat()?;
+    }).await?;
 
     return Ok(
         HttpResponse::Created()
@@ -187,10 +187,10 @@ pub(crate) async fn head_file(
     Path((user_id, signature, file_name)): Path<(UserID, Signature, String)>,
     req: HttpRequest,
 ) -> Result<HttpResponse, Error> {
-    let backend = data.backend_factory.open().compat()?;
+    let backend = data.backend_factory.open()?;
 
-    let metadata = backend.get_attachment_meta(&user_id, &signature, &file_name).compat()?;
-    let metadata = backend.get_attachment_meta(&user_id, &signature, &file_name).compat()?;
+    let metadata = backend.get_attachment_meta(&user_id, &signature, &file_name)?;
+    let metadata = backend.get_attachment_meta(&user_id, &signature, &file_name)?;
 
     let metadata = match metadata {
         Some(d) => d,

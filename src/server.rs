@@ -24,7 +24,7 @@ use actix_web::web::{
 };
 use actix_web::{App, HttpServer, Responder};
 use askama::Template;
-use failure::{ResultExt, format_err};
+use anyhow::{Context, format_err};
 use log::debug;
 use logging_timer::timer;
 use rust_embed::RustEmbed;
@@ -42,7 +42,7 @@ use crate::protos::{Item, ProtoValid};
 mod filters;
 mod attachments;
 
-pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
+pub(crate) fn serve(command: ServeCommand) -> Result<(), anyhow::Error> {
 
     env_logger::init();
     sodiumoxide::init().expect("sodiumoxide::init()");
@@ -74,7 +74,7 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
     let mut server = HttpServer::new(app_factory); 
     
     for bind in &binds {
-        let socket = open_socket(bind).with_context(|_| {
+        let socket = open_socket(bind).with_context(|| {
             format!("Error binding to address/port: {}", bind)
         })?;
         server = server.listen(socket)?;
@@ -101,7 +101,7 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), failure::Error> {
 }
 
 // Work around https://github.com/actix/actix-web/issues/1913
-fn open_socket(bind: &str) -> Result<TcpListener, failure::Error> {
+fn open_socket(bind: &str) -> Result<TcpListener, anyhow::Error> {
     use socket2::{Domain, Protocol, Socket, Type};
     use std::net::SocketAddr;
     
@@ -352,8 +352,8 @@ async fn view_homepage(
     let max_time = pagination.before
         .map(|t| Timestamp{ unix_utc_ms: t})
         .unwrap_or_else(|| Timestamp::now());
-    let backend = data.backend_factory.open().compat()?;
-    backend.homepage_items(max_time, &mut item_callback).compat()?;
+    let backend = data.backend_factory.open()?;
+    backend.homepage_items(max_time, &mut item_callback)?;
 
     let display_message = if items.is_empty() {
         if pagination.before.is_none() {
@@ -428,7 +428,7 @@ async fn homepage_item_list(
 
     let mut paginator = Paginator::new(
         pagination,
-        |row: ItemDisplayRow| -> Result<ItemListEntry,failure::Error> {
+        |row: ItemDisplayRow| -> Result<ItemListEntry,anyhow::Error> {
             let mut item = Item::new();
             item.merge_from_bytes(&row.item.item_bytes)?;
             Ok(item_to_entry(&item, &row.item.user, &row.item.signature))
@@ -440,8 +440,8 @@ async fn homepage_item_list(
     // We're only holding ItemListEntries in memory, so we can up this limit and save some round trips.
     paginator.max_items = 1000;
 
-    let backend = data.backend_factory.open().compat()?;
-    backend.homepage_items(paginator.before(), &mut paginator.callback()).compat()?;
+    let backend = data.backend_factory.open()?;
+    backend.homepage_items(paginator.before(), &mut paginator.callback())?;
 
     let mut list = ItemList::new();
     list.no_more_items = !paginator.has_more;
@@ -488,7 +488,7 @@ async fn feed_item_list(
 ) -> Result<HttpResponse, Error> {
     let mut paginator = Paginator::new(
         pagination,
-        |row: ItemDisplayRow| -> Result<ItemListEntry,failure::Error> {
+        |row: ItemDisplayRow| -> Result<ItemListEntry,anyhow::Error> {
             let mut item = Item::new();
             item.merge_from_bytes(&row.item.item_bytes)?;
             Ok(item_to_entry(&item, &row.item.user, &row.item.signature))
@@ -499,12 +499,12 @@ async fn feed_item_list(
     // save some round trips.
     paginator.max_items = 1000;
 
-    let backend = data.backend_factory.open().compat()?;
+    let backend = data.backend_factory.open()?;
 
     // Note: user_feed_items is doing a little bit of extra work to fetch
     // display_name, which we then throw away. We *could* make a more efficient
     // version that we use for just this case, but eh, reuse is nice.
-    backend.user_feed_items(&user_id, paginator.before(), &mut paginator.callback()).compat()?;
+    backend.user_feed_items(&user_id, paginator.before(), &mut paginator.callback())?;
 
     let mut list = ItemList::new();
     list.no_more_items = !paginator.has_more;
@@ -522,7 +522,7 @@ async fn user_item_list(
 ) -> Result<HttpResponse, Error> {
     let mut paginator = Paginator::new(
         pagination,
-        |row: ItemRow| -> Result<ItemListEntry,failure::Error> {
+        |row: ItemRow| -> Result<ItemListEntry,anyhow::Error> {
             let mut item = Item::new();
             item.merge_from_bytes(&row.item_bytes)?;
             Ok(item_to_entry(&item, &row.user, &row.signature))
@@ -533,12 +533,12 @@ async fn user_item_list(
     // save some round trips.
     paginator.max_items = 1000;
 
-    let backend = data.backend_factory.open().compat()?;
+    let backend = data.backend_factory.open()?;
 
     // Note: user_feed_items is doing a little bit of extra work to fetch
     // display_name, which we then throw away. We *could* make a more efficient
     // version that we use for just this case, but eh, reuse is nice.
-    backend.user_items(&user_id, paginator.before(), &mut paginator.callback()).compat()?;
+    backend.user_items(&user_id, paginator.before(), &mut paginator.callback())?;
 
     let mut list = ItemList::new();
     list.no_more_items = !paginator.has_more;
@@ -556,7 +556,7 @@ async fn item_reply_list(
 ) -> Result<HttpResponse, Error> {
     let mut paginator = Paginator::new(
         pagination,
-        |row: ItemRow| -> Result<ItemListEntry,failure::Error> {
+        |row: ItemRow| -> Result<ItemListEntry,anyhow::Error> {
             let mut item = Item::new();
             item.merge_from_bytes(&row.item_bytes)?;
             Ok(item_to_entry(&item, &row.user, &row.signature))
@@ -567,12 +567,12 @@ async fn item_reply_list(
     // save some round trips.
     paginator.max_items = 1000;
 
-    let backend = data.backend_factory.open().compat()?;
+    let backend = data.backend_factory.open()?;
 
     // Note: user_feed_items is doing a little bit of extra work to fetch
     // display_name, which we then throw away. We *could* make a more efficient
     // version that we use for just this case, but eh, reuse is nice.
-    backend.reply_items(&user_id, &signature, paginator.before(), &mut paginator.callback()).compat()?;
+    backend.reply_items(&user_id, &signature, paginator.before(), &mut paginator.callback())?;
 
     let mut list = ItemList::new();
     list.no_more_items = !paginator.has_more;
@@ -700,7 +700,7 @@ async fn get_user_feed(
 ) -> Result<impl Responder, Error> {
     let mut paginator = Paginator::new(
         pagination,
-        |row: ItemDisplayRow| -> Result<IndexPageItem,failure::Error> {
+        |row: ItemDisplayRow| -> Result<IndexPageItem,anyhow::Error> {
             let mut item = Item::new();
             item.merge_from_bytes(&row.item.item_bytes)?;
             Ok(IndexPageItem{row, item})
@@ -713,8 +713,8 @@ async fn get_user_feed(
     let max_time = paginator.params.before
         .map(|t| Timestamp{ unix_utc_ms: t})
         .unwrap_or_else(|| Timestamp::now());
-    let backend = data.backend_factory.open().compat()?;
-    backend.user_feed_items(&user_id, max_time, &mut paginator.callback()).compat()?;
+    let backend = data.backend_factory.open()?;
+    backend.user_feed_items(&user_id, max_time, &mut paginator.callback())?;
 
     let mut nav = vec![
         Nav::Text("User Feed".into()),
@@ -741,7 +741,7 @@ async fn get_user_items(
     let max_items = 10;
     let mut items = Vec::with_capacity(max_items);
 
-    let mut collect_items = |row: ItemRow| -> Result<bool, failure::Error>{
+    let mut collect_items = |row: ItemRow| -> Result<bool, anyhow::Error>{
         let mut item = Item::new();
         item.merge_from_bytes(&row.item_bytes)?;
 
@@ -764,12 +764,12 @@ async fn get_user_items(
     let max_time = Timestamp::now();
 
     let (user,) = path.into_inner();
-    let backend = data.backend_factory.open().compat()?;
-    backend.user_items(&user, max_time, &mut collect_items).compat()?;
+    let backend = data.backend_factory.open()?;
+    backend.user_items(&user, max_time, &mut collect_items)?;
 
     
     let mut nav = vec![];
-    let profile = backend.user_profile(&user).compat()?;
+    let profile = backend.user_profile(&user)?;
     if let Some(row) = profile {
         let mut item = Item::new();
         item.merge_from_bytes(&row.item_bytes)?;
@@ -821,8 +821,8 @@ async fn put_item(
     let _timer = timer!("put_item()");
 
     let (user_path, sig_path) = path.into_inner();
-    let user = UserID::from_base58(user_path.as_str()).context("decoding user ID").compat()?;
-    let signature = Signature::from_base58(sig_path.as_str()).context("decoding signature").compat()?;
+    let user = UserID::from_base58(user_path.as_str()).context("decoding user ID")?;
+    let signature = Signature::from_base58(sig_path.as_str()).context("decoding signature")?;
 
     let length = match req.headers().get("content-length") {
         Some(length) => length,
@@ -855,10 +855,10 @@ async fn put_item(
         );
     }
 
-    let mut backend = data.backend_factory.open().compat()?;
+    let mut backend = data.backend_factory.open()?;
 
     // If the content already exists, do nothing.
-    if backend.user_item_exists(&user, &signature).compat()? {
+    if backend.user_item_exists(&user, &signature)? {
         return Ok(
             HttpResponse::Accepted()
             .content_type(PLAINTEXT)
@@ -866,7 +866,7 @@ async fn put_item(
         );
     }
 
-    if !backend.user_known(&user).compat()? {
+    if !backend.user_known(&user)? {
         return Ok(
             HttpResponse::Forbidden()
             .content_type(PLAINTEXT)
@@ -876,12 +876,12 @@ async fn put_item(
     
     let mut bytes: Vec<u8> = Vec::with_capacity(length);
     while let Some(chunk) = body.next().await {
-        let chunk = chunk.context("Error parsing chunk").compat()?;
+        let chunk = chunk.context("Error parsing chunk")?;
         bytes.extend_from_slice(&chunk);
     }
 
     if !signature.is_valid(&user, &bytes) {
-        Err(format_err!("Invalid signature").compat())?;
+        Err(format_err!("Invalid signature"))?;
     }
 
     let mut item: Item = Item::new();
@@ -896,7 +896,7 @@ async fn put_item(
         )
     }
 
-    if let Some(deny_reason) = backend.quota_check_item(&user, &bytes, &item).compat()? {
+    if let Some(deny_reason) = backend.quota_check_item(&user, &bytes, &item)? {
         return Ok(
             HttpResponse::InsufficientStorage()
             .body(format!("{}", deny_reason))
@@ -914,7 +914,7 @@ async fn put_item(
     };
 
     let timer = timer!("save_user_item");
-    backend.save_user_item(&row, &item).context("Error saving user item").compat()?;
+    backend.save_user_item(&row, &item).context("Error saving user item")?;
     drop(timer);
 
     let response = HttpResponse::Created()
@@ -932,8 +932,8 @@ async fn show_item(
 ) -> Result<HttpResponse, Error> {
 
     let (user_id, signature) = path.into_inner();
-    let backend = data.backend_factory.open().compat()?;
-    let row = backend.user_item(&user_id, &signature).compat()?;
+    let backend = data.backend_factory.open()?;
+    let row = backend.user_item(&user_id, &signature)?;
     let row = match row {
         Some(row) => row,
         None => { 
@@ -951,7 +951,7 @@ async fn show_item(
     let mut item = Item::new();
     item.merge_from_bytes(row.item_bytes.as_slice())?;
 
-    let row = backend.user_profile(&user_id).compat()?;
+    let row = backend.user_profile(&user_id)?;
     let display_name = {
         let mut item = Item::new();
         if let Some(row) = row {
@@ -1004,8 +1004,8 @@ async fn get_item(
     path: Path<(UserID, Signature,)>,
 ) -> Result<HttpResponse, Error> {
     let (user_id, signature) = path.into_inner();
-    let backend = data.backend_factory.open().compat()?;
-    let item = backend.user_item(&user_id, &signature).compat()?;
+    let backend = data.backend_factory.open()?;
+    let item = backend.user_item(&user_id, &signature)?;
     let item = match item {
         Some(item) => item,
         None => { 
@@ -1032,8 +1032,8 @@ async fn get_profile_item(
     Path((user_id,)): Path<(UserID,)>,
 ) -> Result<HttpResponse, Error> {
     
-    let backend = data.backend_factory.open().compat()?;
-    let item = backend.user_profile(&user_id,).compat()?;
+    let backend = data.backend_factory.open()?;
+    let item = backend.user_profile(&user_id,)?;
     let item = match item {
         Some(item) => item,
         None => { 
@@ -1068,9 +1068,9 @@ async fn show_profile(
 ) -> Result<HttpResponse, Error> 
 {
     let (user_id,) = path.into_inner();
-    let backend = data.backend_factory.open().compat()?;
+    let backend = data.backend_factory.open()?;
 
-    let row = backend.user_profile(&user_id).compat()?;
+    let row = backend.user_profile(&user_id)?;
 
     let row = match row {
         Some(r) => r,
@@ -1098,7 +1098,7 @@ async fn show_profile(
     let follows = std::mem::take(&mut item.get_profile()).follows.to_vec();
     let follows = follows.into_iter().map(|mut follow: crate::protos::Follow | -> Result<ProfileFollow, Error>{
         let mut user = std::mem::take(follow.mut_user());
-        let user_id = UserID::from_vec(std::mem::take(&mut user.bytes)).compat()?;
+        let user_id = UserID::from_vec(std::mem::take(&mut user.bytes))?;
         let display_name = follow.display_name;
         Ok(
             ProfileFollow{user_id, display_name}
@@ -1238,11 +1238,11 @@ impl fmt::Display for Error {
 impl actix_web::error::ResponseError for Error {}
 
 impl <E> From<E> for Error
-where E: std::error::Error + 'static
+where E: Into<Box<dyn std::error::Error + 'static>>
 {
-    fn from(err: E) -> Self {
+    fn from(inner: E) -> Self {
         Error{
-            inner: err.into()
+            inner: inner.into()
         }
     }
 }

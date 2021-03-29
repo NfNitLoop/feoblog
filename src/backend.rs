@@ -6,7 +6,7 @@ use crate::protos::Item;
 use core::str::FromStr;
 use std::{fmt::Display, io::{Read, Seek, SeekFrom}, marker::PhantomData};
 use actix_web::{dev::SizedStream, web::Bytes};
-use failure::{Error, ResultExt, bail, format_err};
+use anyhow::{Error, Context, bail, format_err};
 use bs58;
 use futures::Stream;
 use serde::{Deserialize, de::{self, Visitor}};
@@ -59,7 +59,7 @@ impl Clone for FactoryBox {
 /// with it.
 pub trait Backend
 {
-    // TODO: Remove reliance on failure::Error. We should define our own error
+    // TODO: Remove reliance on anyhow::Error. We should define our own error
     // type here. Should probably impl Error, which requires changes in sqlite.
     // Maybe Box<dyn Error> is sufficient? https://github.com/dtolnay/anyhow/issues/25
     
@@ -202,7 +202,7 @@ impl UserID {
 
 /// Allows easy destructuring from URLs.
 impl FromStr for UserID {
-    type Err = failure::Error;
+    type Err = anyhow::Error;
     fn from_str(value: &str) -> Result<Self, Self::Err> { 
         UserID::from_base58(value)
     }
@@ -252,7 +252,7 @@ impl Signature {
 
 /// Allows easy destructuring from URLs. (in Warp)
 impl FromStr for Signature {
-    type Err = failure::Error;
+    type Err = anyhow::Error;
     fn from_str(value: &str) -> Result<Self, Self::Err> { 
         Signature::from_base58(value)
     }
@@ -300,7 +300,7 @@ impl <'de, T: FromStr<Err=Error>> Visitor<'de> for FromStrVisitor<T>
     -> Result<Self::Value, E>
     where E: de::Error
     {
-        T::from_str(v).map_err(|e| de::Error::custom(format!("{}", e.compat())))
+        T::from_str(v).map_err(|e| de::Error::custom(format!("{}", e)))
     }
 }
 

@@ -6,7 +6,7 @@
 mod tests;
 
 use crate::backend::{ServerUser, Factory, UserID, sqlite};
-use failure::{Error, bail};
+use anyhow::{Error, bail};
 use structopt::StructOpt;
 
 mod backend;

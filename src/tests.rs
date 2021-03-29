@@ -101,7 +101,7 @@ fn time_duration() {
 /// In particular, they break RustEmbed being able to properly embed the file in the 
 /// release build.
 #[test]
-fn no_ntfs_ads() -> Result<(), failure::Error> {
+fn no_ntfs_ads() -> Result<(), anyhow::Error> {
     use std::path::Path;
     use std::fs::{metadata};
     let client_build_dir = Path::new("web-client/build");

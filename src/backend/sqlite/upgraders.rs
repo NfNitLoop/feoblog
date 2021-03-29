@@ -1,6 +1,6 @@
 //! Types that know how to upgrade the SQLite database.
 
-use failure::{Error, bail};
+use anyhow::{Error, bail};
 use protobuf::Message;
 use rusqlite::params;
 
