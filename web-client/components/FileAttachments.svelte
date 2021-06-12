@@ -3,9 +3,9 @@
     Provides an API for common file-attachment operations.
 -->
 
-{#if hasFiles}
 <h2>Attachments</h2>
 
+{#if hasFiles}
 <div class="inputsGreyBox">
 <table class="attachments">
     {#each files as file (file)}
@@ -24,12 +24,24 @@
 </div>
 {/if}
 
+<div>
+    <!-- TODO: Attach button -->
+    <Button>Attach File</Button>
+    {#if !showRecorder}<Button on:click={() => {showRecorder = true}}>Record Audio</Button>{/if}
+</div>
+
+{#if showRecorder}
+    <AudioRecorder on:savedAudio={userSavedAudio}></AudioRecorder>
+{/if}
+
+
 <svelte:window on:dragover={onDragOver} on:drop={onDrop}/>
 
 <script lang="ts">
 import { createEventDispatcher } from "svelte"
 import {FileInfo} from "../ts/common"
 import Button from "./Button.svelte"
+import AudioRecorder, { AudioFile } from "./AudioRecorder.svelte"
 
 
 export let files: FileInfo[] = []
@@ -37,6 +49,7 @@ $: hasFiles = files.length  > 0
 
 let dispatcher = createEventDispatcher()
 
+let showRecorder = false
 
 
 function onDragOver(e: DragEvent) {
@@ -95,6 +108,13 @@ export async function addFile(file: File) {
 
 function removeFile(file: FileInfo) {
     files = files.filter((f) => { return f !== file })
+}
+
+function userSavedAudio(event: any) {
+    let audio: AudioFile = event.detail
+    let file = new File([audio.blob], audio.name)
+    addFile(file)
+    showRecorder = false
 }
 
 

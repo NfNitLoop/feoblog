@@ -47,7 +47,7 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), anyhow::Error> {
     env_logger::init();
     sodiumoxide::init().expect("sodiumoxide::init()");
 
-    let ServeCommand{open, backend_options, mut binds} = command;
+    let ServeCommand{open, backend_options, mut binds, qr_code} = command;
 
     let factory_box = FactoryBox{
         factory: backend_options.factory_builder()?.factory()?
@@ -91,7 +91,11 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), anyhow::Error> {
     }
 
     for bind in &binds {
-        println!("Started at: http://{}/", bind);
+        let url = format!("http://{}/", bind);
+        println!("Started at: {}", url);
+        if qr_code {
+            qr2term::print_qr(url.as_str()).expect("Printing QR code");
+        }
     }
  
     let mut system = actix_web::rt::System::new("web server");

@@ -11,7 +11,7 @@ import { push as navigateTo } from "svelte-spa-router"
 import { UserID} from "../ts/client"
 import { markdownToHtml, fixLinks, FileInfo} from "../ts/common"
 import Button from "./Button.svelte"
-import type { Item } from "../protos/feoblog"
+import type { Attachments, Item } from "../protos/feoblog"
 import type { AppState } from "../ts/app"
 import UserIdView from "./UserIDView.svelte"
 import CommentView from "./CommentView.svelte"
@@ -173,6 +173,12 @@ function onClick(event: Event) {
                 JSON representation of Protobuf Item:
                 <code><pre>{JSON.stringify(item.toObject(), null, 4)}</pre></code>
             {/if}
+
+            {#each item.post.attachments?.file || [] as attachment (attachment)}
+                {#if attachment.name.endsWith(".opus")}
+                    <audio controls src={`/u/${userID}/i/${signature}/files/${attachment.name}`}/>
+                {/if}
+            {/each}
 
             {#if showDetail}
             <div>

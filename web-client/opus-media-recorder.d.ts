@@ -1,0 +1,1 @@
+declare module "opus-media-recorder" // any

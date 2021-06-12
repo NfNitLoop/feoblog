@@ -56,10 +56,14 @@ struct ServeCommand {
     #[structopt(long)]
     open: bool,
 
-    /// Bind to this local address.
+    /// Bind to this address.
     /// If unspecified, will try to bind to some port on localhost.
     #[structopt(long="bind")]
-    binds: Vec<String>
+    binds: Vec<String>,
+    
+    /// Display a QR code for the URLs we've started serving on.
+    #[structopt(long)]
+    qr_code: bool,
 }
 
 #[derive(StructOpt, Debug, Clone)]

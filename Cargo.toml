@@ -64,6 +64,9 @@ blocking = "*"
 
 tempfile = "*"
 
+# Display QR codes in the terminal.  For --qr-code
+qr2term = "*"
+
 [dependencies.rusqlite]
 # TODO: Switch to sqlx for async sql support?
 version = "0.24"
