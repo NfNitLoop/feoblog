@@ -18,100 +18,75 @@
         {error}
     </div>
     {:else if audioFileURL}
+        <!--
+            We've already recorded the audio, show a preview:
+        -->
         <!-- svelte-ignore a11y-media-has-caption -->
-        <audio kind="audio" controls src={audioFileURL}/>
+        <AudioPlayer src={audioFileURL}/>
         <div class="buttons">
             <Button on:click={saveAudio}>Save</Button>
             <Button on:click={reset}>Reset</Button>
         </div>
-    {:else if !recorder} 
-    <div>
-        ⚠ You must first allow access to your microphone.
-    </div>
     {:else}
-    <div class="buttons">
-        {#if !isRecording}
-            <Button on:click={startRecording}>⏺ Record</Button>
-        {:else}
-            <div class="inline pulsing">Recording ...</div>
-            <Button on:click={finishRecording}>⏹ Stop</Button>
+        <div>
+            <select bind:value={quality} disabled={isRecording || awaitingAudioDevice}>
+                {#each qualityOptions as option (option)}
+                    <option value={option}>{option.name}</option>
+                {/each}
+            </select>
+        </div>
+        <div class="buttons">
+            <div class="inline" class:pulsing={isRecording}>
+                <Button on:click={startRecording} disabled={isRecording || awaitingAudioDevice}>🔴 Record</Button>
+            </div>
+            <Button on:click={finishRecording} disabled={!isRecording}>⬛ Stop</Button>
+        </div>
+        {#if awaitingAudioDevice}
+        <div class="warning">
+            Waiting for permission to your microphone.
+        </div>
         {/if}
+    {/if}
+    {#if isRecording || recordedBytes > 0}
+    <div>
+        Recorded: {readableSize(recordedBytes)}
     </div>
     {/if}
-    {#each supportedTypes as sType (sType)}
-        {sType}<br/>
-    {/each}
-
-
 </div>
 
 <script lang="ts" context="module">
 import Button from "./Button.svelte"
 
-// See: https://github.com/microsoft/TypeScript/issues/34728
-// Using the third-party types didn't work for me. (Do I need to import them somehow?)
-declare var MediaRecorder: any;
-
-// Wikipedia says: 
-// "Opus was originally specified for encapsulation in Ogg containers, specified as audio/ogg; codecs=opus, 
-// and for Ogg Opus files the .opus filename extension is recommended."
-// const audioType = "audio/ogg; codecs=opus"
-// const fileExtension = ".opus"
-// However, this is only supported in FireFox.
-// Additionally, when I tried it, the last few seconds of recording would always get cut off,
-// but that issue does not happen when I use the webm container.
-
-const audioType = "audio/webm; codecs=opus"
-// Technically, only the .webm container is required, but that's an ambiguous type.
-// Let's make it explicit that this is just a single Opus audio stream encoded in WebM:
-const fileExtension = ".opus.webm"
-
-const knownAudioTypes = [
-    "audio/webm; codecs=opus",
-    "audio/webm;codecs=opus",
-    "audio/mp4",
-    "audio/mp3",
-
-    "audio/wave",
-    "audio/wav",
-    "audio/ogg",
-    "audio/webm",
-    "audio/ogg;codecs=opus",
-]
-
-// TODO: Use https://jsfiddle.net/kbumsik/v3wpnxao/
+// Use opus-media-recorder:
 // See: https://github.com/kbumsik/opus-media-recorder#javascript
 // Browser support for opus + containers is not good.
 // * I found bugs recording directly to ogg/opus in FireFox. (Last seconds of audio were always lost)
 // * Chrome only supoprts webm/opus
 // * Safari only supports CAF/Opus (Core Audio File).
+// * Firefox couldn't tell how long opus files were, but opus-media-recorder output works.
 // So we'll use opus-media-recorder to provide consistent recording in all WASM-enabled browsers:
-// https://github.com/kbumsik/opus-media-recorder#javascript
-// I prefer ogg/opus since Opus was supposedly designed with that in mind.
-// Plus, that lets us use the unambiguous .opus file extension.
-// TODO:
+
+// Wikipedia says: 
+// "Opus was originally specified for encapsulation in Ogg containers, specified as audio/ogg; codecs=opus, 
+// and for Ogg Opus files the .opus filename extension is recommended."
+const audioType = "audio/ogg; codecs=opus"
+const fileExtension = ".opus"
 
 
 // TODO: Separate decoder for playback:
-// // For playback, this looks like a 
+// // For playback, this looks like a possibility:
 // https://github.com/audiocogs/aurora.js
 
 
-// import OMRecorder from 'opus-media-recorder';
-// // Use worker-loader
-// import EncoderWorker from 'worker-loader!opus-media-recorder/encoderWorker.js';
-// // You should use file-loader in webpack.config.js.
-// // See webpack example link in the above section for more detail.
-// import OggOpusWasm from 'opus-media-recorder/OggOpusEncoder.wasm';
-// import WebMOpusWasm from 'opus-media-recorder/WebMOpusEncoder.wasm';
+import OpusRecorder from 'opus-media-recorder';
 
-// // Non-standard options
-// const workerOptions = {
-//   encoderWorkerFactory: _ => new EncoderWorker(),
-//   OggOpusEncoderWasmPath: OggOpusWasm,
-//   WebMOpusEncoderWasmPath: WebMOpusWasm
-// };
-
+const omrPath = "/client/opus-media-recorder"
+const workerOptions = {
+  // Note: OpusRecorder stops the worker when it's finished, so we must
+  // construct a new one each time:
+  encoderWorkerFactory: () => new Worker(`${omrPath}/encoderWorker.umd.js`),
+  OggOpusEncoderWasmPath: `${omrPath}/OggOpusEncoder.wasm`,
+};
 
 export class AudioFile {
     name: string
@@ -122,6 +97,8 @@ export class AudioFile {
 
 <script lang="ts">
 import { createEventDispatcher } from "svelte";
+import { readableSize } from "../ts/common";
+import AudioPlayer from "./AudioPlayer.svelte";
 
 
 export let title = "Record Audio"
@@ -130,13 +107,54 @@ let stream: MediaStream|null = null
 let recorder: any = null
 let isRecording = false
 
-// Calculated from knownAudioTypes in onLoad():
-let supportedTypes: string[] = []
+// This state is enabled when we've asked the user for a Stream (microphone)
+// but they haven't yet approved it.
+let awaitingAudioDevice = false
+
+
+type AudioQuality = {
+    name: string,
+    bitsPerSec: number,
+    stereo: boolean
+}
+
+const qualityOptions: AudioQuality[] = [
+    {
+        name: "High Quality (Stereo, 128kb/s)",
+        bitsPerSec: 128000,
+        stereo: true,
+    },
+    {
+        name: "High Quality (Mono, 64kb/s)",
+        bitsPerSec: 64000,
+        stereo: false,
+    },
+    {
+        name: "Voice: High Quality (Mono, 32kb/s)",
+        bitsPerSec: 32000,
+        stereo: false,
+    },
+    {
+        name: "Voice: Low Quality (Mono, 16kb/s)",
+        bitsPerSec: 16000,
+        stereo: false
+    }
+]
+
+const hqStereo = qualityOptions[0]
+const hqMono = qualityOptions[1]
+
+// We default to hqStereo, but will fall back to mono if we detect mono.
+let quality = hqStereo
 
 
 // MediaRecorder will emit ondataavailable events and we need to collect those chunks:
 // See: https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder/ondataavailable
 let chunks: any[] = []
+
+// Track recorded size so the user can see the size as they record:
+let recordedBytes = 0
+
 
 // Only after we have all chunks do we collect them into a blob:
 let audioFile: Blob|null = null
@@ -151,43 +169,75 @@ async function onLoad() {
         error = "This browser/device does not support audio recording."
 
         if (!window.location.toString().startsWith("https://")) {
-            error += "\nSome browsers (like Safari) require HTTPS access to use MediaRecorder."
+            error += "\nMost browsers require HTTPS to access the microphone."
         }
         return
-    }
-
-    let isSupported: (t: string) => boolean = MediaRecorder.isTypeSupported;
-    supportedTypes = knownAudioTypes.filter(isSupported);
-
-    if (!isSupported(audioType)) {
-        error = `Your browser does not support the audio recording format: ${audioType}`
-        return
-    }
-
-    try {
-        stream = await navigator.mediaDevices.getUserMedia({audio: true, video: false})
-        console.debug(`Got media stream: ${stream}`)
-
-        let options = { mimeType: audioType }
-
-        recorder = new MediaRecorder(stream, options)
-        recorder.addEventListener("dataavailable", onDataAvailable)
-        recorder.addEventListener("error", onMediaError)
-        recorder.addEventListener("stop", onMediaStopped)
-
-    } catch (error) {
-        console.error(error)
     }
 }
 
 onLoad()
 
-function startRecording()
+async function startRecording()
 {
-    // Will this keep things from getting as truncated?
-    let timeslice = undefined;
-    recorder.start(timeslice)
-    isRecording = true
+    console.debug("startRecording()")
+    try {
+        let timeslice = 1000;
+
+        awaitingAudioDevice = true
+        stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                channelCount: { 
+                    ideal: quality.stereo ? 2 : 1 
+                },
+            },
+            video: false,
+        })
+        awaitingAudioDevice = false
+
+        console.log(stream.id)
+        stream.getAudioTracks().forEach((t) => {
+            console.log("track:", t)
+            console.log("label:", t.label)
+            let s = t.getSettings()
+            console.log("channels", s.channelCount)
+            console.log("sampleRate:", s.sampleRate)
+            console.log("settings:", s)
+        })
+
+        // Could do more generic fallback logic here, but for now hqStereo is the only stereo:
+        if (quality == hqStereo && !isStereo(stream)) {
+            console.log(`User selected ${quality.name}, but input is mono. Falling back to ${hqMono.name}.`)
+            quality = hqMono
+        }
+
+        // TODO: Fall back to mono if the stream is mono.
+
+        let options = { 
+            mimeType: audioType,
+            audioBitsPerSecond: quality.bitsPerSec
+        }
+
+        recorder = new OpusRecorder(stream, options, workerOptions)
+        recorder.addEventListener("dataavailable", onDataAvailable)
+        recorder.addEventListener("error", onMediaError)
+        recorder.addEventListener("stop", onMediaStopped)
+
+        chunks = []
+        recordedBytes = 0
+        recorder.start(timeslice)
+        isRecording = true
+    } catch (exception) {
+        console.error(exception)
+        error = `${exception}`
+    }
+}
+
+function isStereo(stream: MediaStream): boolean {
+    for (let t of stream.getAudioTracks()) {
+        let channelCount = t?.getSettings()?.channelCount
+        if (channelCount && channelCount >= 2) return true
+    }
+    return false
 }
 
 function finishRecording() {
@@ -197,19 +247,21 @@ function finishRecording() {
         return
     }
 
-    // If we stop the *recorder* when recording an Ogg Opus (.opus), it seems like we miss the last part of the stream.
-    // Instead, stop the *stream* and let the recorder end when it gets the last of the stream:
-    // recorder.stop()
-    // Nope, that's not it.
-    stream.getTracks().forEach((t) => t.stop());
-
+    recorder.stop()
     isRecording = false
+
+    // TODO: Stop the stream too
+    // 1) I've read this is REQUIRED on Safari.
+    // 2) But this also tells the device/browser that we're not listening anymore.
+    stream?.getTracks().forEach((t) => t.stop());
+    stream = null
 }
 
 function reset() {
     audioFile = null
     audioFileURL = ""
     chunks = []
+    recordedBytes = 0
 }
 
 // The user has had the option to listen to the audio and has clicked "save".
@@ -232,6 +284,7 @@ function onDataAvailable(event: any) {
     console.debug("onDataAvailable()")
     let data: Blob = event.data
     chunks.push(data)
+    recordedBytes += data.size
 }
 
 function onMediaStopped() {
@@ -261,12 +314,21 @@ function onMediaError(e: any) {
 }
 
 .pulsing {
-    animation: 600ms linear 0s infinite alternate both running pulsing;
+    animation: 1000ms linear 0s infinite alternate both running pulsing;
+}
+
+.warning {
+    background-color: lightyellow;
+}
+
+.warning:before {
+    content: "⚠ ";
+    color: orange;
 }
 
 @keyframes pulsing {
     from {
-        opacity: 0;
+        opacity: 0.5;
     }
     to {
         opacity: 1;

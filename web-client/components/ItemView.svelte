@@ -17,6 +17,7 @@ import UserIdView from "./UserIDView.svelte"
 import CommentView from "./CommentView.svelte"
 import ItemHeader from "./ItemHeader.svelte"
 import { createEventDispatcher } from "svelte";
+import AudioPlayer from "./AudioPlayer.svelte";
 
 export let userID: string
 export let signature: string
@@ -56,6 +57,8 @@ export let clickable = false
 // When in preview mode, caller can provide a list of file attachments
 // which we'll use to preview files.
 export let previewFiles: FileInfo[] = []
+$: filesByName = toMap(previewFiles)
+
 
 let loadError = ""
 let viewMode: "normal"|"markdown"|"data" = "normal"
@@ -97,6 +100,32 @@ $: validFollows = function(){
     }
     return valid
 }()
+
+function toMap(fileList: FileInfo[]): Map<string, FileInfo> {
+    let map = new Map<string, FileInfo>()
+
+    for (let info of fileList) {
+        map.set(info.name, info)
+    }
+
+    return map
+}
+
+function fileURL(fileName: string): string {
+    let defaultURL = `/u/${userID}/i/${signature}/files/${fileName}`
+
+    if (!previewMode) {
+        return defaultURL
+    }
+
+    let info = filesByName.get(fileName)
+    if (!info) {
+        // If we don't have the attachment, then this is the best we can do:
+        return defaultURL
+    }
+
+    return info.objectURL
+}
 
 class ValidFollow {
     userID: UserID
@@ -176,7 +205,8 @@ function onClick(event: Event) {
 
             {#each item.post.attachments?.file || [] as attachment (attachment)}
                 {#if attachment.name.endsWith(".opus")}
-                    <audio controls src={`/u/${userID}/i/${signature}/files/${attachment.name}`}/>
+                    <!-- svelte-ignore a11y-media-has-caption -->
+                    <AudioPlayer src={fileURL(attachment.name)}/>
                 {/if}
             {/each}
 

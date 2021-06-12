@@ -27,6 +27,14 @@ module.exports = {
                             dest: "build/ts/naclWorker/",
                             rename: "tweetnacl.js"
                         },
+                        {
+                            src: [
+                                "node_modules/opus-media-recorder/encoderWorker.umd.js",
+                                "node_modules/opus-media-recorder/OggOpusEncoder.wasm",
+                                "node_modules/opus-media-recorder/LICENSE.md",
+                            ],
+                            dest: "build/opus-media-recorder/",
+                        },
                     ]
                 })
             ]
