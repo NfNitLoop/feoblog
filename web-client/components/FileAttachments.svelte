@@ -40,11 +40,8 @@ let dispatcher = createEventDispatcher()
 
 
 function onDragOver(e: DragEvent) {
-    // e.stopPropagation()
     e.preventDefault()
-    // console.log("onDragOver", e)
     e.dataTransfer!.dropEffect = 'copy'
-
 }
 
 async function onDrop(e: DragEvent) {
@@ -62,14 +59,34 @@ async function onDrop(e: DragEvent) {
 
 }
 
-async function addFile(file: File) {
+export async function addFile(file: File) {
     let fi = await FileInfo.from(file)
 
+    let existingNames = new Set<string>()
     for (let existing of files) {
         if (existing.hash.asHex === fi.hash.asHex) {
-            console.warn(`File "${fi.name}" is already attached. Not adding again.`)
+            console.warn(`File "${fi.name}" (hash: ${fi.hash.asHex}) is already attached as "${existing.name}". Not adding again.`)
             return
         }
+
+        existingNames.add(existing.name)
+    }
+
+    // Add .#.ext if this file name already exists.
+    if (existingNames.has(fi.name)) {
+        let match = fi.name.match(/[.][^.]+$/) 
+        let extension = match ? match[0] : ""
+        let base = fi.name.substr(0, fi.name.length - extension.length)
+
+        // Start at 2, the "base" name is an implicit 1.
+        let count = 2
+        let newName;
+        while (true) {
+            newName = `${base}.${count}${extension}`
+            if (!existingNames.has(newName)) break
+            count++
+        }
+        fi.name = newName
     }
 
     files = [...files, fi]
@@ -87,9 +104,6 @@ function removeFile(file: FileInfo) {
 
 </script>
 
-<script context="module">
-
-</script>
 
 <style>
 .attachments img {
