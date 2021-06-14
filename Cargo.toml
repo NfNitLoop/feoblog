@@ -12,8 +12,7 @@ actix-web-codegen = "*"
 futures = "*"
 
 # Error handling:
-# TODO: Update to Anyhow
-failure = "*"
+anyhow = "*"
 
 # CLI: 
 structopt = "0.3.17"
@@ -41,7 +40,9 @@ mime_guess = "2"
 # objects with actix-web
 async-trait = "*"
 
-protobuf = "2"
+# Required fix for soft_unstable rustfmt::skip (as of Rust 1.52).
+# See: https://github.com/stepancheg/rust-protobuf/issues/551
+protobuf = "^2.22.1"
 time = "0.2"
 
 # Used to deserialize strings in URL paths.

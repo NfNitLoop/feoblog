@@ -76,12 +76,13 @@ are detrimental in social networks.
  * Likes, or counts for likes, replies, or follows. These are easy to game and
    people assign too much meaning to them.
  * Edits or deletes. Content you post is cryptographically signed and visible
-   forever, unless you revoke your userID.
+   forever, unless you revoke your userID. You can reply to your content to make
+   corrections or amendments, however.
  * Reblogging. I believe there should be a higher barrier to sharing others'
    content. You'll need to comment, post, or "Reply" post to share content to
-   your followers.
+   your followers. (Though I'm currently [reconsidering] this)
 
-
+[reconsidering]: https://github.com/NfNitLoop/feoblog/issues/6
 [feoblog.proto]: ./protobufs/feoblog.proto
 
 The Name
@@ -94,48 +95,18 @@ the chemical [formula] for rust, and this implementation is written in [Rust]. :
 [formula]: https://en.wikipedia.org/wiki/Iron(III)_oxide
 [Rust]: https://www.rust-lang.org/
 
-Implementation Details
-======================
-
-* [URL Layout]
-* [Data Format]
-* [Cryptography]
-
-[URL Layout]: ./docs/url_layout.md
-[Data Format]: ./docs/data_format.md
-[Cryptography]: ./docs/crypto.md
-
-
-Development
-===========
-
-Dependencies:
- * [Rust]
- * [npm]
- * [protoc]
-
-[npm]: https://www.npmjs.com/get-npm
-[protoc]: https://developers.google.com/protocol-buffers/
-
-You may need to run `npm install` inside the `web-client` subdirectory.
-
-To develop the interactive web client, run `npm run watch` in the `web-client`
-subdirectory, then (in another window) run `cargo run serve --open`.
-
-Building
-========
-
-To build a "release"/self-contained version of Feoblog:
-
-* In `web-client/`, run `npm run build`
-* In the root directory, run `cargo build --release`
-  * or, alternatively: `cargo install --path . --locked`
-
-
 Getting Started
 ===============
 
-If you don't want to set up your server right away, check out the [Demo on YouTube](https://youtu.be/LJMhiNUuCqI)!
+If you don't want to set up your server right away, check out the [v0.1 Demo on YouTube](https://youtu.be/LJMhiNUuCqI)!
+
+If you want to build FeoBlog from source, or modify it, see the [Development] documentation.
+
+[Development]: docs/development.md
+
+Otherwise, you can download a prebuilt release from the [GitHub Releases] page.
+
+[GitHub Releases]: https://github.com/NfNitLoop/feoblog/releases
 
 Run the server
 --------------

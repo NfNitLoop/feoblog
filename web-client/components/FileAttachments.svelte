@@ -1,11 +1,12 @@
 <!-- 
     Displays info about file attachments 
     Provides an API for common file-attachment operations.
+    Makes the entire window onDragOver and onDrop, so can only be used once per page.
 -->
 
-{#if hasFiles}
 <h2>Attachments</h2>
 
+{#if hasFiles}
 <div class="inputsGreyBox">
 <table class="attachments">
     {#each files as file (file)}
@@ -24,6 +25,19 @@
 </div>
 {/if}
 
+<input type="file" multiple bind:this={fileInput} on:change={onFileAttached}>
+<Button on:click={() => fileInput.click()} disabled={!buttonsEnabled}>Attach File</Button>
+
+<!--
+    Photos in Safari are nowadays HEIF which don't work well on the web. 
+    If we have an upload that only accepts JPEGs, though, Safari will do the conversion for us.
+    (But we don't want to ONLY allow JPEG uploads, so we've made it a separate button.)
+-->
+{#if safariWorkaround}
+    <input type="file" multiple accept="image/jpeg" bind:this={jpegInput} on:change={onFileAttached}>
+    <Button on:click={() => jpegInput.click()} disabled={!buttonsEnabled}>Attach JPEG</Button>
+{/if}
+
 <svelte:window on:dragover={onDragOver} on:drop={onDrop}/>
 
 <script lang="ts">
@@ -35,16 +49,27 @@ import Button from "./Button.svelte"
 export let files: FileInfo[] = []
 $: hasFiles = files.length  > 0
 
+let fileInput: HTMLInputElement
+let jpegInput: HTMLInputElement
+let buttonsEnabled = true
 let dispatcher = createEventDispatcher()
 
-
+// Offer an "Attach JPEG" option on Safari, which will auto-convert HEIF images
+// to JPEG which actually works on the web. 
+// Can't just use userAgent because Chrome (for example) contains Safari.
+// let safariWorkaround = navigator.vendor.toString().toLowerCase().search("apple") >= 0
+// Huh, it looks like this may no longer be necessary in newer versions of iOS,
+// as it will auto-convert HEIF->JPEG on a plain file <input>.
+let safariWorkaround = false
+// HOWEVER, in iOS 15 (currently in beta), drag-and-drop is supported on the phone. 
+// If you drop an .heif file from Photos onto the page, the onDrop() event will
+// receive the raw/unconverted .heif file.
+// I don't immediately know of a way to work around this for drag-n-drop, so the 
+// user will have to fall back to the "Attach File" button if they want JPEG.
 
 function onDragOver(e: DragEvent) {
-    // e.stopPropagation()
     e.preventDefault()
-    // console.log("onDragOver", e)
     e.dataTransfer!.dropEffect = 'copy'
-
 }
 
 async function onDrop(e: DragEvent) {
@@ -53,23 +78,93 @@ async function onDrop(e: DragEvent) {
     if (!e.dataTransfer) return
 
     let items = e.dataTransfer.items
-    for (let i = 0; i < items.length; i++) {
-        let item = items[i].getAsFile()
-        if (!item) continue
+    console.debug(`onDrop() received ${items.length} items`)
+    try {
+        buttonsEnabled = false
 
-        await addFile(item)
+        // Fix for a weird bug in Chrome:
+        // If I call addFile() directly on the item while I'm iterating a DataTransferItemsList, 
+        // THE LIST SEEMS TO BE MODIFIED.
+        // Looks like it happens when I call File.arrayBuffer() over in FileInfo.from().
+        // But we can work around it by just getting all file references out of the DataTransferItemsList
+        // before calling arrayBuffer() on any of them.
+        let files: File[] = new Array()
+        for (let i = 0; i < items.length; i++) {
+            let item = items[i].getAsFile()
+            if (!item) continue
+            files.push(item)
+        }
+
+        for (let file of files) {
+            addFile(file)
+        }
+
+    } finally {
+        buttonsEnabled = true
     }
 
 }
 
-async function addFile(file: File) {
+// TODO: Is there a simpler type for e here?
+// See: https://github.com/sveltejs/language-tools/blob/master/packages/svelte2tsx/svelte-jsx.d.ts
+async function onFileAttached(e: Event & { currentTarget: HTMLInputElement}) {
+    let inputFiles = e.currentTarget.files
+
+    if (inputFiles === null) {
+        console.warn("files list is null")
+        return
+    }
+
+    await addFiles(inputFiles)
+
+    // Note: we dont' have to clear inputFiles after we use it.
+    // If the user clicks the button again, we get a new file list each time.
+}
+
+async function addFiles(files: FileList) {
+    try {
+        buttonsEnabled = false
+        for (let i = 0; i < files.length; i++) {
+            let f = files.item(i)
+            if (f === null) {
+                console.warn(`file list item # ${i} was null`)
+                continue
+            }
+            await addFile(f)
+        }
+    } finally { 
+        buttonsEnabled = true
+    }
+}
+
+export async function addFile(file: File) {
     let fi = await FileInfo.from(file)
 
+    let existingNames = new Set<string>()
     for (let existing of files) {
         if (existing.hash.asHex === fi.hash.asHex) {
-            console.warn(`File "${fi.name}" is already attached. Not adding again.`)
+            console.warn(`File "${fi.name}" (hash: ${fi.hash.asHex}) is already attached as "${existing.name}". Not adding again.`)
             return
         }
+
+        existingNames.add(existing.name)
+    }
+
+    // Add .#.ext if this file name already exists.
+    if (existingNames.has(fi.name)) {
+        let match = fi.name.match(/[.][^.]+$/) 
+        let extension = match ? match[0] : ""
+        let base = fi.name.substr(0, fi.name.length - extension.length)
+
+        // Start at 2, the "base" name is an implicit 1.
+        let count = 2
+        let newName;
+        while (true) {
+            newName = `${base}.${count}${extension}`
+            if (!existingNames.has(newName)) break
+            count++
+        }
+        fi.name = newName
     }
 
     files = [...files, fi]
@@ -87,9 +182,6 @@ function removeFile(file: FileInfo) {
 
 </script>
 
-<script context="module">
-
-</script>
 
 <style>
 .attachments img {
@@ -142,6 +234,10 @@ tr:hover{
 .inputsGreyBox {
     padding-left: 0;
     padding-right: 0;
+}
+
+input[type="file"] {
+    display: none;
 }
 
 
