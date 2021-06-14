@@ -5,6 +5,12 @@ on:
     branches: [ develop, release ]
   pull_request:
     branches: [ develop, release ]
+  schedule:
+    # Run once a month to alert me of bit-rot. 
+    # See: https://docs.github.com/en/actions/reference/events-that-trigger-workflows#schedule
+    # Runs on the default ("develop") branch.
+    # min h d mon DoW
+    - cron: "7 5 3 * *"
 
 env:
   CARGO_TERM_COLOR: always
