@@ -239,9 +239,9 @@ message File {
     // A  64-byte sha-512 hash of the contents of the file.
     bytes hash = 1;
     
-    // The sie of the file in bytes.
+    // The size of the file in bytes.
     // Some servers may reject files based on their size, or the user's quota.
-    // Note: all fields are required, so the size may not be 0.
+    // Note: The size may not be 0.
     uint64 size = 2;
 
     // The name of the file.

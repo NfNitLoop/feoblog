@@ -1,58 +1,34 @@
 FeoBlog
 =======
 
-FeoBlog is a distributed blogging platform. It takes a lot of its
-inspiration from [Mastodon] and [Scuttlebutt]. It aims to solve a couple of
-problems with those services.
+FeoBlog is a distributed blogging/social networking system designed to protect
+you as a user. FeoBlog does this based on some core principles:
 
-[Mastodon]: https://joinmastodon.org/
-[Scuttlebutt]: https://www.scuttlebutt.nz/
+1. Your data should not be held hostage by a single service. (ex: Facebook,
+   Twitter).  
+   If you decide you don't like a service, you should be able to easily copy and
+   reuse your data elsewhere. Likewise, your user ID should be able to migrate
+   with your data so that your followers know you're the same user in both
+   places.
 
-On Mastodon, your user identity is tied to a particular server. If that server
-goes down, your content, your user ID and your social network disappear with it.
-But with FeoBlog, your ID is yours. Your content can be hosted on multiple
-servers, so that if one of them goes down, your content isn't all lost. If you
-want to leave a server, you can just move your content to another server without
-getting a new user ID and having to manually tell all of your friends.
+2. Your data should be resilient to censorship and server outages.  
 
-Scuttlebutt tries to be a distributed system, but it has one big problem: Only
-one device can post new content. If you copy your identity to two devices and
-post from both of them, you can get into a state where your identity is broken.
-This is because Scuttlebutt tries to maintain an append-only, linear chain of
-history (a bit like a blockchain) which could fork if you use it on devices.
-(And Scuttlebutt doesn't deal well with forks.)
-FeoBlog treats your identity as a *collection* of posts by you. (Not an
-append-only chain.) This lets you post from multiple devices, and lets servers
-eventually fetch and include all posts from all of those devices. This also
-lets servers and users delete some of your content, for example, if they only
-want to host the most recent posts by you, or want to exclude content that
-uses too much disk space.
+3. Your data should not be modifiable by third parties.  
+   People reading your posts should be confident that it has not been altered.
+   e.g.: Servers or other middlemen should not be able to insert ads into your
+   data.
 
-OK, well, all of this is theory so far. These are the grand plans. Quotas
-aren't implemented yet.
+4. You should be able to create/use clients to view your data as you wish.  
+   This is unlike platforms like Facebook and Twitter that make it difficult to
+   access your social network's data.
 
-Core Features
--------------
+5. As a server administrator, you should be able to block content as required by
+   law for your jurisdiction.
 
-The main feature of FeoBlog is its data structure. Anyone can create a
-[NaCL][Cryptography] public key, and use it (base58-encoded) as a user ID. A
-"blog" for a user is just a collection if binary protobuf objects which are
-signed by that user. Each object must be an `Item`, which is defined in
-[feoblog.proto].
+For more information on how FeoBlog accomplishes this, see: [How Does It Work?]
 
-Methods for storing and displaying these items can be developed separately by different
-clients. This repository includes two renderers for such content.  One is plain
-HTML, rendered server-side, accessed at paths like `/u/:userID/i/:signature/`.
-The other is an in-browser JavaScript client which fetches the binary data
-directly from the server and renders it client-side, at a URL like
-`/client/#/u/:userID/i/:signature`.
+[How Does It Work?]: ./docs/how_does_it_work.md
 
-Because items are cryptographically signed by the user who posts them, they can
-be safely copied around to different servers and caches by anyone. And anyone
-can read them knowing that they haven't been modified.
-
-For servers/clients on the web, there are [standard URLs][URL Layout] for getting and
-sending `Item`s.
 
 ### Other features ###
 
@@ -60,30 +36,28 @@ sending `Item`s.
  * Can easily run a server locally
    * Sync content from those you follow to have offline.
    * Compose posts offline, and send them all when you're back online.
+ * Comments
+ * File attachments
+ * Server renders a plain HTML version of content that is viewable and indexable online.  
+   Ex: <https://blog.nfnitloop.com/u/A719rvsCkuN2SC5W2vz5hypDE2SpevNTUsEXrVFe9XQ7/>
+ * Server also includes an in-browser client for viewing & posting.  
+   Ex: <https://blog.nfnitloop.com/client/#/u/A719rvsCkuN2SC5W2vz5hypDE2SpevNTUsEXrVFe9XQ7/>
+
 
 ### Planned features ###
 
- * Comments
- * "Reply" posts which link to the Item they reply to
- * File attachments
- * Revoking user IDs (i.e.: "Delete my account.")
+See <https://github.com/NfNitLoop/feoblog/milestone/1> for a list of features planed for v1.0.
+
 
  ### Unplanned features ###
 
 There are certain features that I do not plan to implement, because I think they
 are detrimental in social networks.
 
- * Likes, or counts for likes, replies, or follows. These are easy to game and
-   people assign too much meaning to them.
  * Edits or deletes. Content you post is cryptographically signed and visible
    forever, unless you revoke your userID. You can reply to your content to make
    corrections or amendments, however.
- * Reblogging. I believe there should be a higher barrier to sharing others'
-   content. You'll need to comment, post, or "Reply" post to share content to
-   your followers. (Though I'm currently [reconsidering] this)
 
-[reconsidering]: https://github.com/NfNitLoop/feoblog/issues/6
-[feoblog.proto]: ./protobufs/feoblog.proto
 
 The Name
 --------
@@ -149,10 +123,10 @@ A FeoBlog server doesn't contain any passwords, all it knows is a list of user I
 So, using the userID above, to add myself to the server I'd just run:
 
 ```
-feoblog user add A719rvsCkuN2SC5W2vz5hypDE2SpevNTUsEXrVFe9XQ7 --on-homepage --comment "Official FeoBlog Blob
+feoblog user add A719rvsCkuN2SC5W2vz5hypDE2SpevNTUsEXrVFe9XQ7 --on-homepage --comment "Official FeoBlog Blog"
 ```
 
-You can do this by stopping the server with Ctrl-C first, or by running the command in a new window. (But make sure to re-start the server before the next steps!)
+You can do this by stopping the server with Ctrl-C first, or by running the command in a new window. (But if you stopped the server, make sure to re-start it before the next steps!)
 
 The optional `--on-homepage` argument says that posts you post to this ID should appear on the Home page of the feoblog, as well as in your individual user page.
 
@@ -212,9 +186,9 @@ Did you see the [FeoBlog] [first post]?
 [first post]: /u/A719rvsCkuN2SC5W2vz5hypDE2SpevNTUsEXrVFe9XQ7/i/2F6NB6PYKDTPGTc9dfaQHpmPzd3LSjVgBuC6qa2hcLUJA74LbZpV8wL5HoXDmvzyfZWaX6sLyg3DoGtqh3t2rJt5/
 ```
 
-Of course, if you're linking someone *outside* of FeoBlog to a partticular post, you can link them directly to a page on a particular server like this:
+Of course, if you're linking someone *outside* of FeoBlog to a particular post, you can link them directly to a page on a particular server like this:
 
-`https://blog.nfnitloop.com/u/A719rvsCkuN2SC5W2vz5hypDE2SpevNTUsEXrVFe9XQ7/i/2F6NB6PYKDTPGTc9dfaQHpmPzd3LSjVgBuC6qa2hcLUJA74LbZpV8wL5HoXDmvzyfZWaX6sLyg3DoGtqh3t2rJt5/`
+<https://blog.nfnitloop.com/u/A719rvsCkuN2SC5W2vz5hypDE2SpevNTUsEXrVFe9XQ7/i/2F6NB6PYKDTPGTc9dfaQHpmPzd3LSjVgBuC6qa2hcLUJA74LbZpV8wL5HoXDmvzyfZWaX6sLyg3DoGtqh3t2rJt5/>
 
 The URLs are a bit long, but many services (like Twitter) will shorten them for you anyway. Plus, the URL contains a globally unique ID which can also be used to cryptographically verify the contents of the post. If any one server goes down, the `/u/...` relative path can be used on any other FeoBlog server that contains a copy of that item.
 
@@ -226,5 +200,5 @@ I should probably write more about these things? Tell me if you'd find them usef
 * Using Sync to copy your content between servers. (Hopefully the in-client info is enough for now?)
 * Running a server behind Apache
 * Running a server in Docker
-* Writing your own client 
+* Writing your own client (But there's an example at <https://github.com/NfNitLoop/fb-rss>.)
 * Writing your own server
