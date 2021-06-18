@@ -17,12 +17,15 @@ const DATE_FORMATS = [
 
 <script lang="ts">
 import moment from "moment";
-    
+
+// inout
+export let value = ""
+
+// out: parsed timestamp values, or errors:
 export let msUTC: number
 export let offsetMinutes: number
 export let errors: string[] = []
 
-let value = ""
 
 if (msUTC) {
     // set Value from time.

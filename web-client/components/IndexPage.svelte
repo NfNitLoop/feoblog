@@ -37,7 +37,16 @@
 <script lang="ts">
 import {wrap} from "svelte-spa-router/wrap"
 import { writable } from "svelte/store";
+import { setContext } from "svelte";
+
+// This is a writable() store so that we can notify the app
+// that appState has been modified. Svelte doesn't/can't propagate updates
+// from simple AppState.prop = newValue type statements. Instead, you should
+// use appState.update((state) => { /* ... */ }) to modify the state.
+// Then consumers of the store will be rerendered.
 let appState = writable(new app.AppState())
+setContext("appStateStore", appState)
+
 
 let routes = function() {
     let routes: RouteDefinition = {
