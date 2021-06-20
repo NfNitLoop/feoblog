@@ -19,8 +19,9 @@ export let label = ""
 export let inputType: "text"|"password" = "text"
 export let placeholder = label
 
-// Callback to validate the type of the
-export let validationCallback: undefined|((value: string) => string)
+// Callback to validate the contents of the InputBox.
+// Should return a non-empty error string if there's an error.
+export let validationCallback: ((value: string) => string) = (_:string) => { return "" }
 
 export let errorMessage = ""
 
