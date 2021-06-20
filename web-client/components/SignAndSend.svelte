@@ -21,14 +21,23 @@
         </div>
     
     {:else if !validSignature}
-        <InputBox 
-            inputType="password"
-            label="Private Key"
-            placeholder=""
-            bind:value={privateKey}
-            bind:errorMessage={privateKeyError}
-        />
-        <Button on:click={sign} disabled={disabled || !privateKey || anyErrors || !validPrivateKey}>Sign</Button>
+        <!-- 
+            When password managers (at least, Enpass) fill out the password,
+            they look in the same <form> for a username to fill in. This
+            extraneous <form> and <input> are to keep it from mucking with other
+            fields.
+        -->
+        <form>
+            <input type="text" name="login" placeholder="here to satisfy password managers">
+            <InputBox 
+                inputType="password"
+                label="Private Key"
+                placeholder=""
+                bind:value={privateKey}
+                bind:errorMessage={privateKeyError}
+            />
+            <Button on:click={sign} disabled={disabled || !privateKey || anyErrors || !validPrivateKey}>Sign</Button>
+        </form>
     {:else}
         <InputBox
             label="Signature"
@@ -247,7 +256,7 @@ async function doSubmit(tracker: TaskTracker): Promise<void> {
             }
         })
     }
-    
+
     // Save this before onSendSuccess(), because it could change values:
     let navigateDestination = `#/u/${userID}/i/${sig}/`
 
@@ -267,3 +276,10 @@ async function doSubmit(tracker: TaskTracker): Promise<void> {
 }
 
 </script>
+
+<style>
+input[name="login"] {
+    /* Used only to help password managers not paste the userID in the wrong place. */
+    display: none;
+}
+</style>
