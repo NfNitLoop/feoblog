@@ -85,6 +85,13 @@ let userID = $appState.loggedInUser
 let localStorage = new LocalStorageProxy()
 let initialized = false
 
+// clear the editPost form. 
+// Important so that we don't try to re-load this in-progress post the next time we write a new post.
+export function clear() {
+    // Clearing these is enough so that the draft won't be loaded:
+    title = ""
+    text = ""
+}
 
 // localStorage key to a JSON object that maps userID -> PostData.
 const draftsKey = "editPost.drafts"

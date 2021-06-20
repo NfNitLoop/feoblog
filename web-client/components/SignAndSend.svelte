@@ -66,6 +66,8 @@ export let disabled = false
 export let errors: string[] = []
 
 export let navigateWhenDone = true
+// Called when we've successfully sent the item. 
+export let onSendSuccess = () => {}
 
 // Attachments SignAndSend should send w/ the Item:
 export let attachments: FileInfo[] = []
@@ -246,14 +248,21 @@ async function doSubmit(tracker: TaskTracker): Promise<void> {
         })
     }
     
+    // Save this before onSendSuccess(), because it could change values:
+    let navigateDestination = `#/u/${userID}/i/${sig}/`
+
+    await tracker.runSubtask("executing onSendSuccess()", async (tracker) => {
+        // Mostly here to catch and report an exception in the handler:
+        onSendSuccess()
+    })
+    
     if (tracker.errorCount > 0) {
         // Do not navigate.
         return
     }
 
-
     if (navigateWhenDone) {
-        navigateTo(`#/u/${userID}/i/${signature}/`)
+        navigateTo(navigateDestination)
     }
 }
 
