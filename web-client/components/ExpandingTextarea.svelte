@@ -117,6 +117,13 @@ export async function addLink({text, href, asImage}: LinkOptions) {
     textarea.setSelectionRange(cursor, cursor)
 }
 
+// Focus the input and set the cursor to the end.
+export function focusEnd() {
+    let pos = value.length
+    textarea.setSelectionRange(pos, pos)
+    textarea.focus()
+}
+
 // Return the padding to add to the end of `text` such that it will
 // be padded with at least `number` of pad.
 function endPad(text: string, pad: string, times: number): string {

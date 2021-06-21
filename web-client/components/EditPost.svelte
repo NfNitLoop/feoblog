@@ -61,7 +61,7 @@ import TimestampEditor from "./TimestampEditor.svelte"
 import { Attachments, File, Item, Post } from "../protos/feoblog";
 import moment from "moment";
 import FileAttachments from "./FileAttachments.svelte"
-import type {FileInfo} from "../ts/common"
+import {FileInfo, getMarkdownInfo} from "../ts/common"
 import { getContext, onMount } from "svelte";
 import type { AppState } from "../ts/app";
 import type { Writable } from "svelte/store";
@@ -70,6 +70,9 @@ import type { UserID } from "../ts/client";
 export let files: FileInfo[] = []
 // The FileAttachments component itself:
 let fileAttachments: FileAttachments
+
+const attachmentsPrefix = "files/" // TODO: relocate?
+$: attachedFileNames = new Set<string>(files.map((f) => { return f.name }))
 
 let title = ""
 let text = ""
@@ -97,7 +100,7 @@ export function clear() {
 const draftsKey = "editPost.drafts"
 type Drafts = { [key: string]: PostData }
 
-async function loadDraft() {
+function loadDraft() {
     initialized = true
 
     if (!userID) {
@@ -122,7 +125,10 @@ async function loadDraft() {
     text = draft.text
     timestampString = draft.timestampString        
 }
-onMount(loadDraft)
+onMount(async () => {
+    loadDraft()
+    textarea.focusEnd()
+})
 
 // When any of these fields change, save the draft:
 $: saveDraft(userID, {title, text, timestampString})
@@ -178,10 +184,57 @@ $: validationErrors = function(): string[] {
     let errs = [...timestampErrors]
 
     if (!(title.trim() || text.trim())) {
-        errs.push("Can't post with an empty title and body.")
+        errs.push("Title and body are empty.")
     }
 
     return errs
+}()
+
+// Check for common markdown mistakes.
+// In particular, check for missing attachments, since we don't save attachments
+// along with post drafts.
+// One missing check:
+// if you reference, e.g.:
+// [foo]: https://foo.example.com/
+// ... but never use it, we don't have a simple way of detecting that.
+export let warnings: string[] = []
+$: warnings = function(): string[] {
+    let warnings: string[] = []
+
+    // Disabling this. It seems like it might be common to post without a
+    // title, and I don't want the warning box to become a thing that people come to ignore.
+    // if (title.trim() == "") {
+    //     warnings.push("Empty title")
+    // }
+
+    if (text.trim() == "") {
+        warnings.push("Empty body")
+    }
+
+    let info = getMarkdownInfo(text)
+    for (let ref of info.unlinkedRefs) {
+        warnings.push(`Missing link for: ${ref}`)
+    }
+
+    let referencedAttachments = new Set(
+        [...info.imageDestinations, ...info.linkDestinations]
+        .filter((x) => x.startsWith(attachmentsPrefix))
+        .map((x) => x.substr(attachmentsPrefix.length))
+    )
+
+    for (let attachment of referencedAttachments) {
+        if (!attachedFileNames.has(attachment)) {
+            warnings.push(`Missing attachment: "${attachment}"`)
+        }
+    }
+
+    for (let attachment of attachedFileNames) {
+        if (!referencedAttachments.has(attachment)) {
+            warnings.push(`Unreferenced attachment: "${attachment}"`)
+        }
+    }
+
+    return warnings
 }()
 
 // A file was added via FileAttachments drag & drop.

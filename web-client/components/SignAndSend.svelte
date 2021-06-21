@@ -5,22 +5,26 @@
      * "sendSuccess", {userID, signature}
 -->
 <div class="sendBox inputWhiteBox" transition:slide|local>
-    {#if errors.length > 0}
-        <div class="error">
-            {#each errors as error}
-                {error}<br>
-            {/each}
-        </div>
+
     
-    <!-- Show our own checks last, in case they might be duplicates w/ those provided by the caller: -->
-    {:else if ourErrors.length > 0}
-        <div class="error">
-            {#each ourErrors as error}
-                {error}<br>
-            {/each}
-        </div>
-    
-    {:else if !validSignature}
+    {#if !validSignature}
+        {#if displayErrors.length > 0}
+            <div class="errorBox">
+            <ul>
+                {#each displayErrors as error}
+                    <li>{error}</li>
+                {/each}
+            </ul>
+            </div>
+        {:else if warnings.length > 0}
+            <div class="warningBox">
+            <ul>
+                {#each warnings as warning}
+                    <li>{warning}</li>
+                {/each}
+            </ul>
+            </div>
+        {/if}
         <!-- 
             When password managers (at least, Enpass) fill out the password,
             they look in the same <form> for a username to fill in. This
@@ -36,13 +40,12 @@
                 bind:value={privateKey}
                 bind:errorMessage={privateKeyError}
             />
-            <Button on:click={sign} disabled={disabled || !privateKey || anyErrors || !validPrivateKey}>Sign</Button>
+            <Button on:click={sign} disabled={!privateKey || anyErrors || !validPrivateKey}>Sign</Button>
         </form>
     {:else}
         <InputBox
             label="Signature"
             value={signature}
-            disabled
          />
         <div class="buttons">
             <Button on:click={submit} disabled={inProgress}>Submit</Button>
@@ -69,10 +72,11 @@ import { FileInfo, Mutex, TaskTracker } from "../ts/common";
 
 export let appState: Writable<AppState>
 export let item: Item
-export let disabled = false
 
-// Errors sent to us from outside.
+// Errors sent to us from outside, which can prevent sign & send.
 export let errors: string[] = []
+// Warnings we should expose to the user, but don't necessarily prevent a send.
+export let warnings: string[] = []
 
 export let navigateWhenDone = true
 // Called when we've successfully sent the item. 
@@ -125,6 +129,10 @@ $: ourErrors = function() {
     
     return errs
 }()
+
+// Show our own checks last, in case they might be duplicates w/ those provided by the caller:
+$: displayErrors = errors.length > 0 ? errors : ourErrors
+
 
 
 $: validSignature = function(): boolean {
@@ -282,4 +290,33 @@ input[name="login"] {
     /* Used only to help password managers not paste the userID in the wrong place. */
     display: none;
 }
+
+.errorBox, .warningBox{
+    margin-bottom: 1rem;
+    border-radius: 3px; /* Matches inputBox */
+    border: solid 1px red;
+    background-color: #ff000014;
+}
+
+
+
+.errorBox::before {
+    content: "⚠ Errors:";
+    margin: 1rem;
+    font-weight: bold;
+    display: block;
+}
+
+.warningBox {
+    border: solid 1px #ffaa00;
+    background-color: #ffaa0014;
+}
+
+.warningBox::before {
+    content: "⚠ Warnings:";
+    margin: 1rem;
+    font-weight: bold;
+    display: block;
+}
+
 </style>
