@@ -24,13 +24,13 @@
     "@types/identicon.js": "^2.3.0",
     "@types/bs58": "^4.0.1",
     "@types/luxon": "^1.25.0",
-    "protoc-gen-ts": "^0.3.4",
+    "protoc-gen-ts": "^0.3.5",
     "rollup-plugin-copy": "^3.3.0",
     "snowpack": "^3",
     "svelte": "^3.32.1",
     "svelte-check": "^1.1.25",
     "svelte-preprocess": "^4.6.1",
-    "typescript": "^3.9.7"
+    "typescript": "^4"
   },
   "scripts": {
     "build": "snowpack build",
