@@ -98,7 +98,6 @@ export function getMarkdownInfo(markdown: string): MarkdownInfo {
     let walker = parsed.walker()
     for (let event = walker.next(); event; event = walker.next()) {
         if (!event.entering) continue
-        console.debug(`${event.node.type} node :`.padStart(20, " "), event.node.literal)
         let node = event.node
         if (node.type == "link") {
             linkDestinations.add(node.destination!)
