@@ -3,14 +3,6 @@ import { Client, UserID } from "./client"
 
 let instance: AppState|null = null
 
-export function getInstance(): AppState {
-    if (!instance) {
-        instance = new AppState()
-    }
-
-    return instance
-}
-
 
 // A class that maintains client side application state.
 export class AppState
@@ -120,6 +112,7 @@ export class AppState
     private writeSavedLogins() {
         try {
             let json = JSON.stringify(this._savedLogins)
+            // TODO: Handle missing localStorage. See EditPost LocalStorageProxy example.
             window.localStorage.setItem("savedLogins", json)
         } catch (exception) {
             console.error("Couldn't save saved logins", exception)

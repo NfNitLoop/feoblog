@@ -78,6 +78,65 @@ export function markdownToHtml(markdown: string, options?: MarkdownToHtmlOptions
     return cmWriter.render(parsed)
 }
 
+// Information about a markdown text.
+// Tries to not expose library-specific data structures (ex: Node)
+type MarkdownInfo = {
+    linkDestinations: Set<string>
+    imageDestinations: Set<string>
+    unlinkedRefs: Set<string>
+}
+
+export function getMarkdownInfo(markdown: string): MarkdownInfo {
+    let parsed = cmReader.parse(markdown)
+
+    let linkDestinations = new Set<string>()
+    let imageDestinations = new Set<string>()
+    let unlinkedRefs = new Set<string>()
+
+    let refCollector: string[] = []
+
+    let walker = parsed.walker()
+    for (let event = walker.next(); event; event = walker.next()) {
+        if (!event.entering) continue
+        console.debug(`${event.node.type} node :`.padStart(20, " "), event.node.literal)
+        let node = event.node
+        if (node.type == "link") {
+            linkDestinations.add(node.destination!)
+            continue
+        }
+
+        if (node.type == "image") {
+            imageDestinations.add(node.destination!)
+            continue
+        }
+
+        if (node.type != "text") { continue }
+        // By a quirk of the commonmark parser, it will give us an AST for [foo bar] that looks like:
+        // <text>[</text>
+        // <text>foo bar</text>
+        // <text>]</text>
+        // This also means that that text is NOT linked. Unless it's for a case like [foo [bar] baz]
+        // but whatever, ignoring that pathological case. :p
+        if (node.literal == "[" || node.literal == "![") {
+            refCollector = [node.literal]
+            continue
+        }
+        if (refCollector.length == 0) { continue }
+
+        if (node.literal == "]") {
+            refCollector.push(node.literal)
+            unlinkedRefs.add(refCollector.join(""))
+            refCollector = []
+            continue
+        }
+
+        refCollector.push(node.literal!)
+    }
+
+
+    return {linkDestinations, imageDestinations, unlinkedRefs}
+}
+
 function fixRelativeLinks(root: commonmark.Node, options?: MarkdownToHtmlOptions) {
     if (!(options?.relativeBase)) { return }
 

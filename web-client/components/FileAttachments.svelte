@@ -78,7 +78,6 @@ async function onDrop(e: DragEvent) {
     if (!e.dataTransfer) return
 
     let items = e.dataTransfer.items
-    console.debug(`onDrop() received ${items.length} items`)
     try {
         buttonsEnabled = false
 
