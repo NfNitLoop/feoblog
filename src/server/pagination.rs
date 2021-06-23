@@ -164,8 +164,6 @@ where
             write!(url, "&count={}", count).expect("write! to a string shouldn't panic.");
         }
 
-        // TODO: keep client=0 once implemented.
-
         Some(url)
     }
 
@@ -189,8 +187,6 @@ where
         if let Some(count) = self.params.count {
             write!(url, "&count={}", count).expect("write! to a string shouldn't panic.");
         }
-
-        // TODO: keep client=0 once implemented.
 
         Some(url)    }
 }
