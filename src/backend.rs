@@ -67,13 +67,17 @@ pub trait Backend
     /// home page, which have timestamps before `before`.
     /// Items are returned through callback, and will continue to be fetched while callback continues
     /// to return Ok(true).
-    fn homepage_items<'a>(&self, before: Timestamp, callback: &'a mut dyn FnMut(ItemDisplayRow) -> Result<bool,Error>) -> Result<(), Error>;
+    fn homepage_items<'a>(
+        &self, 
+        time_span: TimeSpan,
+        callback: &'a mut dyn FnMut(ItemDisplayRow) -> Result<bool,Error>
+    ) -> Result<(), Error>;
 
     /// Find the most recent items for a particular user
     fn user_items<'a>(
         &self,
         user: &UserID,
-        before: Timestamp,
+        time_span: TimeSpan,
         callback: RowCallback<'a, ItemRow>,
     ) -> Result<(), Error>;
 
@@ -341,7 +345,7 @@ pub struct ServerUser {
     pub on_homepage: bool,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Timestamp {
     /// UNIX time, at UTC, in milliseconds:
     pub unix_utc_ms: i64
@@ -450,5 +454,24 @@ impl Display for SHA512 {
             write!(f, "{:02x}", b)?;
         }
         Ok(())
+    }
+}
+
+/// A(n unbounded) range of time we're requesting data for.
+#[derive(Debug)]
+pub enum TimeSpan {
+    /// Requests items before some Timestamp, in reverse chronological order.
+    Before(Timestamp),
+
+    /// Requests items after some timestamp, in (forward) chronological order.
+    After(Timestamp),
+}
+
+impl TimeSpan {
+    pub fn is_before(&self) -> bool {
+        match self {
+            Self::Before(_) => true,
+            _ => false,
+        }
     }
 }

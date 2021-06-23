@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData, net::TcpListener};
+use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData, net::TcpListener, ops::{Deref, DerefMut}};
 
 // TODO: This module is getting long.
 // Split it out into parts:
@@ -35,12 +35,15 @@ use async_trait::async_trait;
 
 use protobuf::Message;
 
-use crate::{ServeCommand, backend::ItemDisplayRow, protos::{ItemList, ItemListEntry, ItemType, Item_oneof_item_type}};
+use crate::{ServeCommand, backend::{ItemDisplayRow, TimeSpan}, protos::{ItemList, ItemListEntry, ItemType, Item_oneof_item_type}};
 use crate::backend::{self, UserID, Signature, ItemRow, Timestamp};
 use crate::protos::{Item, ProtoValid};
 
-mod filters;
 mod attachments;
+mod filters;
+mod pagination;
+
+use pagination::Paginator;
 
 pub(crate) fn serve(command: ServeCommand) -> Result<(), anyhow::Error> {
 
@@ -327,43 +330,23 @@ async fn view_homepage(
     data: Data<AppData>,
     Query(pagination): Query<Pagination>,
 ) -> Result<impl Responder, Error> {
-    let max_items = pagination.count.map(|c| bound(c, 1, 100)).unwrap_or(20);
 
-    let mut items = Vec::with_capacity(max_items);
-    let mut has_more = false;
-    let mut item_callback = |row: ItemDisplayRow| {        
-        let mut item = Item::new();
-        item.merge_from_bytes(&row.item.item_bytes)?;
-
-        if !display_by_default(&item) {
-            // continue:
-            return Ok(true);
+    let mut paginator = Paginator::new(
+        pagination,
+        |row: ItemDisplayRow| -> Result<IndexPageItem, anyhow::Error> {        
+            let mut item = Item::new();
+            item.merge_from_bytes(&row.item.item_bytes)?;
+            Ok(IndexPageItem{row, item})
+        },
+        |ipi: &IndexPageItem| -> bool {
+            display_by_default(&ipi.item)
         }
+    );
+    paginator.max_items = 20;
 
-        if items.len() >= max_items {
-            has_more = true;
-            return Ok(false);
-        }
-
-        items.push(IndexPageItem{row, item});
-        Ok(true)
-    };
-
-    let max_time = pagination.before
-        .map(|t| Timestamp{ unix_utc_ms: t})
-        .unwrap_or_else(|| Timestamp::now());
     let backend = data.backend_factory.open()?;
-    backend.homepage_items(max_time, &mut item_callback)?;
-
-    let display_message = if items.is_empty() {
-        if pagination.before.is_none() {
-            Some("Nothing to display".into())
-        } else {
-            Some("No more items to display.".into())
-        }
-    } else {
-        None
-    };
+    backend.homepage_items(paginator.time_span(), &mut paginator.callback())?;
+    
 
     let mut nav = vec![
         Nav::Text("FeoBlog".into()),
@@ -373,24 +356,23 @@ async fn view_homepage(
         }
     ];
 
-    if has_more {
-        if let Some(page_item) = items.last() {
-            let timestamp = page_item.item.timestamp_ms_utc;
-            let mut href = format!("/?before={}", timestamp);
-            if pagination.count.is_some() {
-                write!(&mut href, "&count={}", max_items)?;
-            }
-            nav.push(Nav::Link{
-                text: "More".into(),
-                href,
-            });
-        }
+    if let Some(href) = paginator.newer_items_link("/") {
+        nav.push(Nav::Link{
+            text: "Newer Posts".into(),
+            href,
+        });
+    }
+    if let Some(href) = paginator.more_items_link("/") {
+        nav.push(Nav::Link{
+            text: "Older Posts".into(),
+            href,
+        });
     }
 
     Ok(IndexPage {
         nav,
-        items,
-        display_message,
+        display_message:  paginator.message(),
+        items: paginator.into_items(),
         show_authors: true,
     })
 }
@@ -441,11 +423,12 @@ async fn homepage_item_list(
     paginator.max_items = 1000;
 
     let backend = data.backend_factory.open()?;
-    backend.homepage_items(paginator.before(), &mut paginator.callback())?;
+    backend.homepage_items(paginator.time_span(), &mut paginator.callback())?;
+    
 
     let mut list = ItemList::new();
     list.no_more_items = !paginator.has_more;
-    list.items = protobuf::RepeatedField::from(paginator.items);
+    list.items = protobuf::RepeatedField::from(paginator.into_items());
     Ok(
         proto_ok().body(list.write_to_bytes()?)
     )
@@ -508,7 +491,7 @@ async fn feed_item_list(
 
     let mut list = ItemList::new();
     list.no_more_items = !paginator.has_more;
-    list.items = protobuf::RepeatedField::from(paginator.items);
+    list.items = protobuf::RepeatedField::from(paginator.into_items());
     Ok(
         proto_ok()
         .body(list.write_to_bytes()?)
@@ -538,11 +521,11 @@ async fn user_item_list(
     // Note: user_feed_items is doing a little bit of extra work to fetch
     // display_name, which we then throw away. We *could* make a more efficient
     // version that we use for just this case, but eh, reuse is nice.
-    backend.user_items(&user_id, paginator.before(), &mut paginator.callback())?;
+    backend.user_items(&user_id, paginator.time_span(), &mut paginator.callback())?;
 
     let mut list = ItemList::new();
     list.no_more_items = !paginator.has_more;
-    list.items = protobuf::RepeatedField::from(paginator.items);
+    list.items = protobuf::RepeatedField::from(paginator.into_items());
     Ok(
         proto_ok()
         .body(list.write_to_bytes()?)
@@ -576,122 +559,26 @@ async fn item_reply_list(
 
     let mut list = ItemList::new();
     list.no_more_items = !paginator.has_more;
-    list.items = protobuf::RepeatedField::from(paginator.items);
+    list.items = protobuf::RepeatedField::from(paginator.into_items());
     Ok(
         proto_ok()
         .body(list.write_to_bytes()?)
     )
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub(crate) struct Pagination {
     /// Time before which to show posts. Default is now.
     before: Option<i64>,
+
+    /// Time after which to show some posts. can not set before & after, and before takes precedence.
+    after: Option<i64>,
 
     /// Limit how many posts appear on a page.
     count: Option<usize>,
 }
 
-/// Works with the callbacks in Backend to provide pagination.
-pub(crate) struct Paginator<T, In, E, Mapper, Filter>
-where 
-    Mapper: Fn(In) -> Result<T,E>,
-    Filter: Fn(&T) -> bool,
- {
-    pub items: Vec<T>,
-    pub has_more: bool,
-    pub params: Pagination,
-    pub max_items: usize,
 
-    mapper: Mapper,
-    filter: Filter,
-
-    _in: PhantomData<In>,
-    _err: PhantomData<E>,
-}
-
-impl<T, In, E, Mapper, Filter> Paginator<T, In, E, Mapper, Filter>
-where 
-    Mapper: Fn(In) -> Result<T,E>,
-    Filter: Fn(&T) -> bool,
-{
-    fn accept(&mut self, input: In) -> Result<bool, E> {
-        let max_len = self.params.count.map(|c| bound(c, 1, self.max_items)).unwrap_or(self.max_items);
-        
-        let item = (self.mapper)(input)?;
-        if !(self.filter)(&item) {
-            return Ok(true); // continue
-        }
-
-        if self.items.len() >= max_len {
-            self.has_more = true;
-            return Ok(false); // stop
-        }
-
-        self.items.push(item);
-        return Ok(true)
-    }
-
-    fn callback<'a>(&'a mut self) -> impl FnMut(In) -> Result<bool, E> + 'a {
-        move |input| self.accept(input)
-    }
-
-    /// Creates a new paginator for collecting results from a Backend.
-    /// mapper: Maps the row type passed to the callback to some other type.
-    /// filter: Filters that type for inclusion in the paginated results.
-    fn new(params: Pagination, mapper: Mapper, filter: Filter) -> Self {
-        Self {
-            params,
-            items: vec![],
-            // Seems like a reasonable sane default for things that have to hold Item in memory:
-            max_items: 100,
-            has_more: false,
-            mapper,
-            filter,
-            _in: PhantomData,
-            _err: PhantomData,
-        }
-    }
-
-    /// An optional message about there being nothing/no more to display.
-    fn message(&self) -> Option<String> {
-        if self.items.is_empty() {
-            if self.params.before.is_none() {
-                Some("Nothing to display".into())
-            } else {
-                Some("No more items to display.".into())
-            }
-        } else {
-            None
-        }
-    }
-
-    /// The time before which we should query for items.
-    fn before(&self) -> Timestamp {
-        self.params.before.map(|t| Timestamp{ unix_utc_ms: t}).unwrap_or_else(|| Timestamp::now())
-    }
-}
-
-impl<In, E, Mapper, Filter> Paginator<IndexPageItem, In, E, Mapper, Filter>
-where 
-    Mapper: Fn(In) -> Result<IndexPageItem,E>,
-    Filter: Fn(&IndexPageItem) -> bool,
-{
-   fn more_items_link(&self, base_url: &str) -> Option<String> {
-        if !self.has_more { return None; }
-        let last = match self.items.last() {
-            None => return None, // Shouldn't happen, if has_more.
-            Some(last) => last,
-        };
-
-        let mut url = format!("{}?before={}", base_url, last.item.timestamp_ms_utc);
-        if let Some(count) = self.params.count {
-            write!(url, "&count={}", count).expect("write! to a string shouldn't panic.");
-        }
-
-        Some(url)
-    }
-}
 
 async fn get_user_feed(
     data: Data<AppData>,
@@ -710,11 +597,8 @@ async fn get_user_feed(
         }
     );
 
-    let max_time = paginator.params.before
-        .map(|t| Timestamp{ unix_utc_ms: t})
-        .unwrap_or_else(|| Timestamp::now());
     let backend = data.backend_factory.open()?;
-    backend.user_feed_items(&user_id, max_time, &mut paginator.callback())?;
+    backend.user_feed_items(&user_id, paginator.before(), &mut paginator.callback())?;
 
     let mut nav = vec![
         Nav::Text("User Feed".into()),
@@ -727,7 +611,7 @@ async fn get_user_feed(
     Ok(IndexPage {
         nav,
         display_message: paginator.message(),
-        items: paginator.items,
+        items: paginator.into_items(),
         show_authors: true,
     })
 }
@@ -736,36 +620,33 @@ async fn get_user_feed(
 /// `/u/{userID}/`
 async fn get_user_items(
     data: Data<AppData>,
-    path: Path<(UserID,)>
+    path: Path<(UserID,)>,
+    Query(pagination): Query<Pagination>,
 ) -> Result<impl Responder, Error> {
-    let max_items = 10;
-    let mut items = Vec::with_capacity(max_items);
 
-    let mut collect_items = |row: ItemRow| -> Result<bool, anyhow::Error>{
-        let mut item = Item::new();
-        item.merge_from_bytes(&row.item_bytes)?;
-
-        // TODO: Option: show_all=1.
-        if display_by_default(&item) {
-            items.push(IndexPageItem{ 
+    let mut paginator = Paginator::new(
+        pagination,
+        |row: ItemRow| -> Result<IndexPageItem, anyhow::Error> {
+            let mut item = Item::new();
+            item.merge_from_bytes(&row.item_bytes)?;
+            Ok(IndexPageItem{ 
                 row: ItemDisplayRow{
                     item: row,
                     // We don't display the user's name on their own page.
                     display_name: None,
                 },
                 item 
-            });
+            })
+        },
+        |ipi: &IndexPageItem| -> bool {
+            display_by_default(&ipi.item)
         }
-
-        Ok(items.len() < max_items)
-    };
-
-    // TODO: Support pagination.
-    let max_time = Timestamp::now();
+    );
+    paginator.max_items = 10;
 
     let (user,) = path.into_inner();
     let backend = data.backend_factory.open()?;
-    backend.user_items(&user, max_time, &mut collect_items)?;
+    backend.user_items(&user, paginator.time_span(), &mut paginator.callback())?;
 
     
     let mut nav = vec![];
@@ -794,11 +675,12 @@ async fn get_user_items(
         },
     ]);
 
+
     Ok(IndexPage{
         nav,
-        items,
+        display_message: paginator.message(),
+        items: paginator.into_items(),
         show_authors: false,
-        display_message: None,
     })
 }
 
@@ -1197,7 +1079,9 @@ impl IndexPageItem {
 
 
 
-
+/// Should this Item be displayed on the plain-HTML version of the site?
+/// i.e.: should it be indexed by search engines?
+// TODO: Rename.
 fn display_by_default(item: &Item) -> bool {
     let item_type = match &item.item_type {
         // Don't display items we can't find a type for. (newer than this server knows about):
