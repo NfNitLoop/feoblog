@@ -487,7 +487,7 @@ async fn feed_item_list(
     // Note: user_feed_items is doing a little bit of extra work to fetch
     // display_name, which we then throw away. We *could* make a more efficient
     // version that we use for just this case, but eh, reuse is nice.
-    backend.user_feed_items(&user_id, paginator.before(), &mut paginator.callback())?;
+    backend.user_feed_items(&user_id, paginator.time_span(), &mut paginator.callback())?;
 
     let mut list = ItemList::new();
     list.no_more_items = !paginator.has_more;
@@ -598,15 +598,41 @@ async fn get_user_feed(
     );
 
     let backend = data.backend_factory.open()?;
-    backend.user_feed_items(&user_id, paginator.before(), &mut paginator.callback())?;
+    backend.user_feed_items(&user_id, paginator.time_span(), &mut paginator.callback())?;
+
+    let display_name = backend.user_profile(&user_id)?.map(
+        |row| -> Result<Item, anyhow::Error> {
+            let mut item = Item::new();
+            item.merge_from_bytes(&row.item_bytes)?;
+            Ok(item)
+        })
+        .transpose()?
+        .map(|item| -> Option<String> {
+            let name = item.get_profile().display_name.trim();
+            if name.len() > 0 {
+                Some(name.to_string())
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .unwrap_or_else(|| user_id.to_base58().to_string());
 
     let mut nav = vec![
-        Nav::Text("User Feed".into()),
+        Nav::Text(format!("Feed for: {}", display_name)),
     ];
-    paginator.more_items_link("").into_iter().for_each(|href| {
-        let href = format!("/u/{}/feed/{}", user_id.to_base58(), href);
-        nav.push(Nav::Link{href, text: "More".into()})
-    });
+
+    nav.push(Nav::Link{text: "Profile".into(), href: "../profile/".into()});
+
+
+    let this_page = format!("/u/{}/feed/", user_id.to_base58());
+    if let Some(href) = paginator.newer_items_link(&this_page) {
+        nav.push(Nav::Link{href, text: "Newer Posts".into()})
+    };
+    if let Some(href) = paginator.more_items_link(&this_page) {
+        nav.push(Nav::Link{href, text: "Older Posts".into()})
+    };
+
 
     Ok(IndexPage {
         nav,
@@ -658,6 +684,15 @@ async fn get_user_items(
         nav.push(
             Nav::Text(item.get_profile().display_name.clone())
         )
+    }
+
+    let this_url = format!("/u/{}/", user.to_base58());
+    if let Some(href) = paginator.newer_items_link(&this_url) {
+        nav.push(Nav::Link{ text: "Newer Posts".into(), href });
+    }
+
+    if let Some(href) = paginator.more_items_link(&this_url) {
+        nav.push(Nav::Link{ text: "Older Posts".into(), href });
     }
 
     nav.extend(vec![
@@ -966,7 +1001,14 @@ async fn show_profile(
     let display_name = item.get_profile().display_name.clone();
     let nav = vec![
         Nav::Text(display_name.clone()),
-        // TODO: Add an Edit link. Make abstract w/ a link provider trait.
+        Nav::Link{
+            text: "Posts".into(),
+            href: "..".into(),
+        },
+        Nav::Link{
+            text: "Feed".into(),
+            href: "../feed/".into(),
+        },
         Nav::Link{
             text: "Home".into(),
             href: "/".into(),

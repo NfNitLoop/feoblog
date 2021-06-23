@@ -94,7 +94,7 @@ pub trait Backend
     fn user_feed_items<'a>(
         &self,
         user_id: &UserID,
-        before: Timestamp,
+        time_span: TimeSpan,
         callback: RowCallback<'a, ItemDisplayRow>,
     ) -> Result<(), Error>;
 

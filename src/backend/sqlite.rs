@@ -739,38 +739,75 @@ impl backend::Backend for Connection
     fn user_feed_items<'a>(
         &self,
         user_id: &UserID,
-        before: Timestamp,
+        time_span: TimeSpan,
         callback: RowCallback<'a, ItemDisplayRow>,
     ) -> Result<(), Error> {
-        let mut stmt = self.conn.prepare("
-            SELECT
-                user_id
-                , i.signature
-                , unix_utc_ms
-                , received_utc_ms
-                , bytes
-                , p.display_name
-                , f.display_name AS follow_display_name
-            FROM item AS i
-            LEFT OUTER JOIN profile AS p USING (user_id)
-            LEFT OUTER JOIN follow AS f ON (
-                i.user_id = f.followed_user_id
-                AND f.source_user_id = :user_id
-            )
-            WHERE unix_utc_ms < :timestamp
-            AND (
-                user_id IN (
-                    SELECT followed_user_id
-                    FROM follow
-                    WHERE source_user_id = :user_id
-                )
-                OR user_id = :user_id
-            )
-            ORDER BY unix_utc_ms DESC
-        ")?;
 
+        let timestamp;
+        let query = match time_span {
+            TimeSpan::Before(ts) => {
+                timestamp = ts;
+                "
+                    SELECT
+                        user_id
+                        , i.signature
+                        , unix_utc_ms
+                        , received_utc_ms
+                        , bytes
+                        , p.display_name
+                        , f.display_name AS follow_display_name
+                    FROM item AS i
+                    LEFT OUTER JOIN profile AS p USING (user_id)
+                    LEFT OUTER JOIN follow AS f ON (
+                        i.user_id = f.followed_user_id
+                        AND f.source_user_id = :user_id
+                    )
+                    WHERE unix_utc_ms < :timestamp
+                    AND (
+                        user_id IN (
+                            SELECT followed_user_id
+                            FROM follow
+                            WHERE source_user_id = :user_id
+                        )
+                        OR user_id = :user_id
+                    )
+                    ORDER BY unix_utc_ms DESC
+                "
+            },
+            TimeSpan::After(ts) => {
+                timestamp = ts;
+                "
+                    SELECT
+                        user_id
+                        , i.signature
+                        , unix_utc_ms
+                        , received_utc_ms
+                        , bytes
+                        , p.display_name
+                        , f.display_name AS follow_display_name
+                    FROM item AS i
+                    LEFT OUTER JOIN profile AS p USING (user_id)
+                    LEFT OUTER JOIN follow AS f ON (
+                        i.user_id = f.followed_user_id
+                        AND f.source_user_id = :user_id
+                    )
+                    WHERE unix_utc_ms > :timestamp
+                    AND (
+                        user_id IN (
+                            SELECT followed_user_id
+                            FROM follow
+                            WHERE source_user_id = :user_id
+                        )
+                        OR user_id = :user_id
+                    )
+                    ORDER BY unix_utc_ms ASC
+                "
+            }
+        };
+
+        let mut stmt = self.conn.prepare(query)?;
         let mut rows = stmt.query_named(&[
-            (":timestamp", &before.unix_utc_ms),
+            (":timestamp", &timestamp.unix_utc_ms),
             (":user_id", &user_id.bytes())
         ])?;
 
