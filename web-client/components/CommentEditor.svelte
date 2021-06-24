@@ -54,7 +54,7 @@ export let replyToSignature: Signature
 let currentView: "Edit"|"Preview" = "Edit"
 
 let text = ""
-$: errors = hasText ? ["Can not submit an empty comment"] : []
+$: errors = !hasText ? ["Can not submit an empty comment"] : []
 
 $: 
 {

@@ -9,7 +9,11 @@
     {# {%- let timestmap = with_offset(&timestamp_utc_ms, &utc_offset_minutes) -%} #}
     {% let timestamp = "timestamp" %}
     <div class="item post">
-        {% if display_name.len() > 0 %}<h1 class="title">{{ display_name }}</h1>{% endif %}
+        {% if display_name.len() > 0 %}
+            <h1 class="title">Profile: {{ display_name }}</h1>
+        {% else %}
+            <h1 class="title">Profile:</h1>
+        {% endif %}
         <div class="timestamp"><a href="/u/{{user_id.to_base58()}}/i/{{signature.to_base58()}}/">{{ 
             timestamp_utc_ms|with_offset(utc_offset_minutes)
         }}</a></div>

@@ -22,7 +22,7 @@ use crate::backend::{self, UserID, Signature, ItemRow, ItemDisplayRow, Timestamp
 use anyhow::{Error, bail, Context};
 use rusqlite::{params, OptionalExtension, Row};
 
-use super::FileStream;
+use super::{FileStream, TimeSpan};
 
 const CURRENT_VERSION: u32 = 7;
 
@@ -532,31 +532,59 @@ impl backend::Backend for Connection
 {
     fn homepage_items<'a>(
         &self,
-        before: Timestamp,
+        time_span: TimeSpan,
         callback: &'a mut dyn FnMut(ItemDisplayRow) -> Result<bool,Error>
     ) -> Result<(), Error> {
-        let mut stmt = self.conn.prepare("
-            SELECT
-                user_id
-                , i.signature
-                , unix_utc_ms
-                , received_utc_ms
-                , bytes
-                , p.display_name
-            FROM item AS i
-            LEFT OUTER JOIN profile AS p USING (user_id)
-            WHERE unix_utc_ms < ?
-            AND user_id IN (
-                SELECT user_id
-                FROM server_user
-                WHERE on_homepage = 1
-            )
-            ORDER BY unix_utc_ms DESC
-        ")?;
 
-        let mut rows = stmt.query(params![
-            before.unix_utc_ms,
-        ])?;
+        let mut params = vec![];
+        let query = match time_span {
+            TimeSpan::Before(before) => {
+                params.push(before.unix_utc_ms);
+                "
+                    SELECT
+                        user_id
+                        , i.signature
+                        , unix_utc_ms
+                        , received_utc_ms
+                        , bytes
+                        , p.display_name
+                    FROM item AS i
+                    LEFT OUTER JOIN profile AS p USING (user_id)
+                    WHERE unix_utc_ms < ?
+                    AND user_id IN (
+                        SELECT user_id
+                        FROM server_user
+                        WHERE on_homepage = 1
+                    )
+                    ORDER BY unix_utc_ms DESC
+                "
+            },
+            TimeSpan::After(after) => {
+                params.push(after.unix_utc_ms);
+                "
+                    SELECT
+                        user_id
+                        , i.signature
+                        , unix_utc_ms
+                        , received_utc_ms
+                        , bytes
+                        , p.display_name
+                    FROM item AS i
+                    LEFT OUTER JOIN profile AS p USING (user_id)
+                    WHERE unix_utc_ms > ?
+                    AND user_id IN (
+                        SELECT user_id
+                        FROM server_user
+                        WHERE on_homepage = 1
+                    )
+                    ORDER BY unix_utc_ms ASC
+                "
+            },
+        };
+
+        let mut stmt = self.conn.prepare(query)?;
+        let mut rows = stmt.query(params)?;
+
 
         let to_item_profile_row = |row: &Row<'_>| -> Result<ItemDisplayRow, Error> {
 
@@ -586,28 +614,52 @@ impl backend::Backend for Connection
     fn user_items<'a>(
         &self,
         user: &UserID,
-        before: Timestamp,
+        time_span: TimeSpan,
         callback: &'a mut dyn FnMut(ItemRow) -> Result<bool,Error>
     ) -> Result<(), Error> {
-        let mut stmt = self.conn.prepare("
-            SELECT
-                i.user_id
-                , i.signature
-                , unix_utc_ms
-                , received_utc_ms
-                , bytes
-            FROM item AS i
-            WHERE
-                unix_utc_ms < ?
-                AND user_id = ?
-                AND EXISTS(SELECT user_id FROM known_users WHERE user_id = i.user_id)
-            ORDER BY unix_utc_ms DESC
-        ")?;
 
-        let mut rows = stmt.query(params![
-            before.unix_utc_ms,
-            user.bytes(),
-        ])?;
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![];
+        let query = match time_span {
+            TimeSpan::Before(before) => {
+                params.push(Box::new(before.unix_utc_ms));
+                params.push(Box::new(user.bytes().to_vec()));
+                "
+                    SELECT
+                        i.user_id
+                        , i.signature
+                        , unix_utc_ms
+                        , received_utc_ms
+                        , bytes
+                    FROM item AS i
+                    WHERE
+                        unix_utc_ms < ?
+                        AND user_id = ?
+                        AND EXISTS(SELECT user_id FROM known_users WHERE user_id = i.user_id)
+                    ORDER BY unix_utc_ms DESC
+                "
+            },
+            TimeSpan::After(after) => {
+                params.push(Box::new(after.unix_utc_ms));
+                params.push(Box::new(user.bytes().to_vec()));
+                "
+                    SELECT
+                        i.user_id
+                        , i.signature
+                        , unix_utc_ms
+                        , received_utc_ms
+                        , bytes
+                    FROM item AS i
+                    WHERE
+                        unix_utc_ms > ?
+                        AND user_id = ?
+                        AND EXISTS(SELECT user_id FROM known_users WHERE user_id = i.user_id)
+                    ORDER BY unix_utc_ms ASC
+                "          
+            }
+        };
+        
+        let mut stmt = self.conn.prepare(query)?;
+        let mut rows = stmt.query(params)?;
 
         let convert = |row: &Row<'_>| -> Result<ItemRow, Error> {
             let item = ItemRow{
@@ -687,38 +739,75 @@ impl backend::Backend for Connection
     fn user_feed_items<'a>(
         &self,
         user_id: &UserID,
-        before: Timestamp,
+        time_span: TimeSpan,
         callback: RowCallback<'a, ItemDisplayRow>,
     ) -> Result<(), Error> {
-        let mut stmt = self.conn.prepare("
-            SELECT
-                user_id
-                , i.signature
-                , unix_utc_ms
-                , received_utc_ms
-                , bytes
-                , p.display_name
-                , f.display_name AS follow_display_name
-            FROM item AS i
-            LEFT OUTER JOIN profile AS p USING (user_id)
-            LEFT OUTER JOIN follow AS f ON (
-                i.user_id = f.followed_user_id
-                AND f.source_user_id = :user_id
-            )
-            WHERE unix_utc_ms < :timestamp
-            AND (
-                user_id IN (
-                    SELECT followed_user_id
-                    FROM follow
-                    WHERE source_user_id = :user_id
-                )
-                OR user_id = :user_id
-            )
-            ORDER BY unix_utc_ms DESC
-        ")?;
 
+        let timestamp;
+        let query = match time_span {
+            TimeSpan::Before(ts) => {
+                timestamp = ts;
+                "
+                    SELECT
+                        user_id
+                        , i.signature
+                        , unix_utc_ms
+                        , received_utc_ms
+                        , bytes
+                        , p.display_name
+                        , f.display_name AS follow_display_name
+                    FROM item AS i
+                    LEFT OUTER JOIN profile AS p USING (user_id)
+                    LEFT OUTER JOIN follow AS f ON (
+                        i.user_id = f.followed_user_id
+                        AND f.source_user_id = :user_id
+                    )
+                    WHERE unix_utc_ms < :timestamp
+                    AND (
+                        user_id IN (
+                            SELECT followed_user_id
+                            FROM follow
+                            WHERE source_user_id = :user_id
+                        )
+                        OR user_id = :user_id
+                    )
+                    ORDER BY unix_utc_ms DESC
+                "
+            },
+            TimeSpan::After(ts) => {
+                timestamp = ts;
+                "
+                    SELECT
+                        user_id
+                        , i.signature
+                        , unix_utc_ms
+                        , received_utc_ms
+                        , bytes
+                        , p.display_name
+                        , f.display_name AS follow_display_name
+                    FROM item AS i
+                    LEFT OUTER JOIN profile AS p USING (user_id)
+                    LEFT OUTER JOIN follow AS f ON (
+                        i.user_id = f.followed_user_id
+                        AND f.source_user_id = :user_id
+                    )
+                    WHERE unix_utc_ms > :timestamp
+                    AND (
+                        user_id IN (
+                            SELECT followed_user_id
+                            FROM follow
+                            WHERE source_user_id = :user_id
+                        )
+                        OR user_id = :user_id
+                    )
+                    ORDER BY unix_utc_ms ASC
+                "
+            }
+        };
+
+        let mut stmt = self.conn.prepare(query)?;
         let mut rows = stmt.query_named(&[
-            (":timestamp", &before.unix_utc_ms),
+            (":timestamp", &timestamp.unix_utc_ms),
             (":user_id", &user_id.bytes())
         ])?;
 
