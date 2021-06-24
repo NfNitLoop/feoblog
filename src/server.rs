@@ -1,12 +1,5 @@
 use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData, net::TcpListener, ops::{Deref, DerefMut}};
 
-// TODO: This module is getting long.
-// Split it out into parts:
-// * Parts that render static HTML pages
-// * Parts that return/accept Protobuf3 data required for clients.
-// * Static file handling logic.
-// * etc?
-
 use backend::FactoryBox;
 use futures::{Future, StreamExt};
 
@@ -40,8 +33,10 @@ use crate::backend::{self, UserID, Signature, ItemRow, Timestamp};
 use crate::protos::{Item, ProtoValid};
 
 mod attachments;
-mod filters;
+mod client;
+mod html;
 mod pagination;
+mod rest;
 
 use pagination::Paginator;
 
@@ -65,7 +60,7 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), anyhow::Error> {
             .configure(routes)
         ;
 
-        app = app.default_service(route().to(|| file_not_found("")));
+        app = app.default_service(route().to(|| html::file_not_found("")));
 
         return app;
     };
@@ -134,29 +129,28 @@ pub(crate) struct AppData {
 
 fn routes(cfg: &mut web::ServiceConfig) {
     cfg
-        .route("/", get().to(view_homepage))
-        .route("/homepage/proto3", get().to(homepage_item_list))
+        .route("/", get().to(html::view_homepage))
+        .route("/homepage/proto3", get().to(rest::homepage_item_list))
 
-        .route("/u/{user_id}/", get().to(get_user_items))
+        .route("/u/{user_id}/", get().to(html::get_user_items))
         .service(
             web::resource("/u/{user_id}/proto3")
-            .route(get().to(user_item_list))
+            .route(get().to(rest::user_item_list))
             .wrap(cors_ok_headers())
         )
 
-
-        .route("/u/{userID}/i/{signature}/", get().to(show_item))
+        .route("/u/{userID}/i/{signature}/", get().to(html::show_item))
         .service(
             web::resource("/u/{userID}/i/{signature}/proto3")
-            .route(get().to(get_item))
-            .route(put().to(put_item))
+            .route(get().to(rest::get_item))
+            .route(put().to(rest::put_item))
             .route(route().method(Method::OPTIONS).to(cors_preflight_allow))
             .wrap(cors_ok_headers())
             .wrap_fn(immutable_etag)
         )
         .service(
             web::resource("/u/{user_id}/i/{signature}/replies/proto3")
-            .route(get().to(item_reply_list))
+            .route(get().to(rest::item_reply_list))
             .wrap(cors_ok_headers())
         ).service(
             web::resource("/u/{user_id}/i/{signature}/files/{file_name}")
@@ -168,14 +162,14 @@ fn routes(cfg: &mut web::ServiceConfig) {
             .wrap_fn(immutable_etag)
         )
 
-        .route("/u/{user_id}/profile/", get().to(show_profile))
+        .route("/u/{user_id}/profile/", get().to(html::show_profile))
         .service(
             web::resource("/u/{user_id}/profile/proto3")
-            .route(get().to(get_profile_item))
+            .route(get().to(rest::get_profile_item))
             .wrap(cors_ok_headers())
         )
-        .route("/u/{user_id}/feed/", get().to(get_user_feed))
-        .route("/u/{user_id}/feed/proto3", get().to(feed_item_list))
+        .route("/u/{user_id}/feed/", get().to(html::get_user_feed))
+        .route("/u/{user_id}/feed/proto3", get().to(rest::feed_item_list))
 
     ;
     statics(cfg);
@@ -302,148 +296,22 @@ where S: Service<Request=ServiceRequest, Response=ServiceResponse, Error=actix_w
 // }
 
 
+// Currently, /static/ is used both by HTML and web client.
+// TODO: completely break the client's dependency on the web CSS.
 #[derive(RustEmbed, Debug)]
 #[folder = "static/"]
 struct StaticFiles;
-
-#[derive(RustEmbed, Debug)]
-#[folder = "web-client/build/"]
-struct WebClientBuild;
 
 
 fn statics(cfg: &mut web::ServiceConfig) {
     cfg
         .route("/static/{path:.*}", get().to(StaticFiles::response))
-        .route("/client/{path:.*}", get().to(WebClientBuild::response))
+        .route("/client/{path:.*}", get().to(client::WebClientBuild::response))
     ;
-}
-
-/// Set lower and upper bounds for input T.
-fn bound<T: Ord>(input: T, lower: T, upper: T) -> T {
-    use std::cmp::{min, max};
-    min(max(lower, input), upper)
-}
-
-
-/// The root (`/`) page.
-async fn view_homepage(
-    data: Data<AppData>,
-    Query(pagination): Query<Pagination>,
-) -> Result<impl Responder, Error> {
-
-    let mut paginator = Paginator::new(
-        pagination,
-        |row: ItemDisplayRow| -> Result<IndexPageItem, anyhow::Error> {        
-            let mut item = Item::new();
-            item.merge_from_bytes(&row.item.item_bytes)?;
-            Ok(IndexPageItem{row, item})
-        },
-        |ipi: &IndexPageItem| -> bool {
-            display_by_default(&ipi.item)
-        }
-    );
-    paginator.max_items = 20;
-
-    let backend = data.backend_factory.open()?;
-    backend.homepage_items(paginator.time_span(), &mut paginator.callback())?;
-    
-
-    let mut nav = vec![
-        Nav::Text("FeoBlog".into()),
-        Nav::Link{
-            text: "Client".into(),
-            href: "/client/".into(),
-        }
-    ];
-
-    if let Some(href) = paginator.newer_items_link("/") {
-        nav.push(Nav::Link{
-            text: "Newer Posts".into(),
-            href,
-        });
-    }
-    if let Some(href) = paginator.more_items_link("/") {
-        nav.push(Nav::Link{
-            text: "Older Posts".into(),
-            href,
-        });
-    }
-
-    Ok(IndexPage {
-        nav,
-        display_message:  paginator.message(),
-        items: paginator.into_items(),
-        show_authors: true,
-    })
-}
-
-fn item_to_entry(item: &Item, user_id: &UserID, signature: &Signature) -> ItemListEntry {
-    let mut entry = ItemListEntry::new();
-    entry.set_timestamp_ms_utc(item.timestamp_ms_utc);
-    entry.set_signature({
-        let mut sig = crate::protos::Signature::new();
-        sig.set_bytes(signature.bytes().into());
-        sig
-    });
-    entry.set_user_id({
-        let mut uid = crate::protos::UserID::new();
-        uid.set_bytes(user_id.bytes().into());
-        uid
-    });
-    entry.set_item_type(
-        match item.item_type {
-            Some(Item_oneof_item_type::post(_)) => ItemType::POST,
-            Some(Item_oneof_item_type::profile(_)) => ItemType::PROFILE,
-            Some(Item_oneof_item_type::comment(_)) => ItemType::COMMENT,
-            None => ItemType::UNKNOWN,
-        }
-    );
-
-    entry
-}
-
-// Get the protobuf ItemList for items on the homepage.
-async fn homepage_item_list(
-    data: Data<AppData>,
-    Query(pagination): Query<Pagination>,
-) -> Result<HttpResponse, Error> {
-
-    let mut paginator = Paginator::new(
-        pagination,
-        |row: ItemDisplayRow| -> Result<ItemListEntry,anyhow::Error> {
-            let mut item = Item::new();
-            item.merge_from_bytes(&row.item.item_bytes)?;
-            Ok(item_to_entry(&item, &row.item.user, &row.item.signature))
-        }, 
-        |entry: &ItemListEntry| { 
-            entry.get_item_type() == ItemType::POST
-        }
-    );
-    // We're only holding ItemListEntries in memory, so we can up this limit and save some round trips.
-    paginator.max_items = 1000;
-
-    let backend = data.backend_factory.open()?;
-    backend.homepage_items(paginator.time_span(), &mut paginator.callback())?;
-    
-
-    let mut list = ItemList::new();
-    list.no_more_items = !paginator.has_more;
-    list.items = protobuf::RepeatedField::from(paginator.into_items());
-    Ok(
-        proto_ok().body(list.write_to_bytes()?)
-    )
-}
-
-// Start building a response w/ proto3 binary data.
-fn proto_ok() -> HttpResponseBuilder {
-    let mut builder = HttpResponse::Ok();
-    builder.content_type("application/protobuf3");
-    builder
 }
 
 // // CORS headers must be present for *all* responses, including 404, 500, etc.
 // // Applying it to each case individiaully may be error-prone, so here's a filter to do so for us.
-
 fn cors_ok_headers() -> DefaultHeaders {
     DefaultHeaders::new()
     .header("Access-Control-Allow-Origin", "*")
@@ -464,632 +332,10 @@ async fn cors_preflight_allow() -> HttpResponse {
         .body("")
 }
 
-async fn feed_item_list(
-    data: Data<AppData>,
-    Path((user_id,)): Path<(UserID,)>,
-    Query(pagination): Query<Pagination>,
-) -> Result<HttpResponse, Error> {
-    let mut paginator = Paginator::new(
-        pagination,
-        |row: ItemDisplayRow| -> Result<ItemListEntry,anyhow::Error> {
-            let mut item = Item::new();
-            item.merge_from_bytes(&row.item.item_bytes)?;
-            Ok(item_to_entry(&item, &row.item.user, &row.item.signature))
-        }, 
-        |_: &ItemListEntry| { true } // include all items
-    );
-    // We're only holding ItemListEntries in memory, so we can up this limit and
-    // save some round trips.
-    paginator.max_items = 1000;
-
-    let backend = data.backend_factory.open()?;
-
-    // Note: user_feed_items is doing a little bit of extra work to fetch
-    // display_name, which we then throw away. We *could* make a more efficient
-    // version that we use for just this case, but eh, reuse is nice.
-    backend.user_feed_items(&user_id, paginator.time_span(), &mut paginator.callback())?;
-
-    let mut list = ItemList::new();
-    list.no_more_items = !paginator.has_more;
-    list.items = protobuf::RepeatedField::from(paginator.into_items());
-    Ok(
-        proto_ok()
-        .body(list.write_to_bytes()?)
-    )
-}
-
-async fn user_item_list(
-    data: Data<AppData>,
-    Path((user_id,)): Path<(UserID,)>,
-    Query(pagination): Query<Pagination>,
-) -> Result<HttpResponse, Error> {
-    let mut paginator = Paginator::new(
-        pagination,
-        |row: ItemRow| -> Result<ItemListEntry,anyhow::Error> {
-            let mut item = Item::new();
-            item.merge_from_bytes(&row.item_bytes)?;
-            Ok(item_to_entry(&item, &row.user, &row.signature))
-        }, 
-        |_| { true } // include all items
-    );
-    // We're only holding ItemListEntries in memory, so we can up this limit and
-    // save some round trips.
-    paginator.max_items = 1000;
-
-    let backend = data.backend_factory.open()?;
-
-    // Note: user_feed_items is doing a little bit of extra work to fetch
-    // display_name, which we then throw away. We *could* make a more efficient
-    // version that we use for just this case, but eh, reuse is nice.
-    backend.user_items(&user_id, paginator.time_span(), &mut paginator.callback())?;
-
-    let mut list = ItemList::new();
-    list.no_more_items = !paginator.has_more;
-    list.items = protobuf::RepeatedField::from(paginator.into_items());
-    Ok(
-        proto_ok()
-        .body(list.write_to_bytes()?)
-    )
-}
-
-async fn item_reply_list(
-    data: Data<AppData>,
-    Path((user_id, signature)): Path<(UserID, Signature)>,
-    Query(pagination): Query<Pagination>,
-) -> Result<HttpResponse, Error> {
-    let mut paginator = Paginator::new(
-        pagination,
-        |row: ItemRow| -> Result<ItemListEntry,anyhow::Error> {
-            let mut item = Item::new();
-            item.merge_from_bytes(&row.item_bytes)?;
-            Ok(item_to_entry(&item, &row.user, &row.signature))
-        }, 
-        |_| { true } // include all items
-    );
-    // We're only holding ItemListEntries in memory, so we can up this limit and
-    // save some round trips.
-    paginator.max_items = 1000;
-
-    let backend = data.backend_factory.open()?;
-
-    // Note: user_feed_items is doing a little bit of extra work to fetch
-    // display_name, which we then throw away. We *could* make a more efficient
-    // version that we use for just this case, but eh, reuse is nice.
-    backend.reply_items(&user_id, &signature, paginator.before(), &mut paginator.callback())?;
-
-    let mut list = ItemList::new();
-    list.no_more_items = !paginator.has_more;
-    list.items = protobuf::RepeatedField::from(paginator.into_items());
-    Ok(
-        proto_ok()
-        .body(list.write_to_bytes()?)
-    )
-}
-
-#[derive(Deserialize, Debug)]
-pub(crate) struct Pagination {
-    /// Time before which to show posts. Default is now.
-    before: Option<i64>,
-
-    /// Time after which to show some posts. can not set before & after, and before takes precedence.
-    after: Option<i64>,
-
-    /// Limit how many posts appear on a page.
-    count: Option<usize>,
-}
-
-
-
-async fn get_user_feed(
-    data: Data<AppData>,
-    Path((user_id,)): Path<(UserID,)>,
-    Query(pagination): Query<Pagination>,
-) -> Result<impl Responder, Error> {
-    let mut paginator = Paginator::new(
-        pagination,
-        |row: ItemDisplayRow| -> Result<IndexPageItem,anyhow::Error> {
-            let mut item = Item::new();
-            item.merge_from_bytes(&row.item.item_bytes)?;
-            Ok(IndexPageItem{row, item})
-        }, 
-        |page_item: &IndexPageItem| { 
-            display_by_default(&page_item.item)
-        }
-    );
-
-    let backend = data.backend_factory.open()?;
-    backend.user_feed_items(&user_id, paginator.time_span(), &mut paginator.callback())?;
-
-    let display_name = backend.user_profile(&user_id)?.map(
-        |row| -> Result<Item, anyhow::Error> {
-            let mut item = Item::new();
-            item.merge_from_bytes(&row.item_bytes)?;
-            Ok(item)
-        })
-        .transpose()?
-        .map(|item| -> Option<String> {
-            let name = item.get_profile().display_name.trim();
-            if name.len() > 0 {
-                Some(name.to_string())
-            } else {
-                None
-            }
-        })
-        .flatten()
-        .unwrap_or_else(|| user_id.to_base58().to_string());
-
-    let mut nav = vec![
-        Nav::Text(format!("Feed for: {}", display_name)),
-    ];
-
-    nav.push(Nav::Link{text: "Profile".into(), href: "../profile/".into()});
-
-
-    let this_page = format!("/u/{}/feed/", user_id.to_base58());
-    if let Some(href) = paginator.newer_items_link(&this_page) {
-        nav.push(Nav::Link{href, text: "Newer Posts".into()})
-    };
-    if let Some(href) = paginator.more_items_link(&this_page) {
-        nav.push(Nav::Link{href, text: "Older Posts".into()})
-    };
-
-
-    Ok(IndexPage {
-        nav,
-        display_message: paginator.message(),
-        items: paginator.into_items(),
-        show_authors: true,
-    })
-}
-
-/// Display a single user's posts/etc.
-/// `/u/{userID}/`
-async fn get_user_items(
-    data: Data<AppData>,
-    path: Path<(UserID,)>,
-    Query(pagination): Query<Pagination>,
-) -> Result<impl Responder, Error> {
-
-    let mut paginator = Paginator::new(
-        pagination,
-        |row: ItemRow| -> Result<IndexPageItem, anyhow::Error> {
-            let mut item = Item::new();
-            item.merge_from_bytes(&row.item_bytes)?;
-            Ok(IndexPageItem{ 
-                row: ItemDisplayRow{
-                    item: row,
-                    // We don't display the user's name on their own page.
-                    display_name: None,
-                },
-                item 
-            })
-        },
-        |ipi: &IndexPageItem| -> bool {
-            display_by_default(&ipi.item)
-        }
-    );
-    paginator.max_items = 10;
-
-    let (user,) = path.into_inner();
-    let backend = data.backend_factory.open()?;
-    backend.user_items(&user, paginator.time_span(), &mut paginator.callback())?;
-
-    
-    let mut nav = vec![];
-    let profile = backend.user_profile(&user)?;
-    if let Some(row) = profile {
-        let mut item = Item::new();
-        item.merge_from_bytes(&row.item_bytes)?;
-
-        nav.push(
-            Nav::Text(item.get_profile().display_name.clone())
-        )
-    }
-
-    let this_url = format!("/u/{}/", user.to_base58());
-    if let Some(href) = paginator.newer_items_link(&this_url) {
-        nav.push(Nav::Link{ text: "Newer Posts".into(), href });
-    }
-
-    if let Some(href) = paginator.more_items_link(&this_url) {
-        nav.push(Nav::Link{ text: "Older Posts".into(), href });
-    }
-
-    nav.extend(vec![
-        Nav::Link{
-            text: "Profile".into(),
-            href: format!("/u/{}/profile/", user.to_base58()),
-        },
-        Nav::Link{
-            text: "Feed".into(),
-            href: format!("/u/{}/feed/", user.to_base58()),
-        },
-        Nav::Link{
-            text: "Home".into(),
-            href: "/".into()
-        },
-    ]);
-
-
-    Ok(IndexPage{
-        nav,
-        display_message: paginator.message(),
-        items: paginator.into_items(),
-        show_authors: false,
-    })
-}
 
 const MAX_ITEM_SIZE: usize = 1024 * 32; 
 const PLAINTEXT: &'static str = "text/plain; charset=utf-8";
 
-/// Accepts a proto3 Item
-/// Returns 201 if the PUT was successful.
-/// Returns 202 if the item already exists.
-/// Returns ??? if the user lacks permission to post.
-/// Returns ??? if the signature is not valid.
-/// Returns a text body message w/ OK/Error message.
-async fn put_item(
-    data: Data<AppData>,
-    path: Path<(String, String,)>,
-    req: HttpRequest,
-    mut body: Payload,
-) -> Result<HttpResponse, Error> 
-{
-    let _timer = timer!("put_item()");
-
-    let (user_path, sig_path) = path.into_inner();
-    let user = UserID::from_base58(user_path.as_str()).context("decoding user ID")?;
-    let signature = Signature::from_base58(sig_path.as_str()).context("decoding signature")?;
-
-    let length = match req.headers().get("content-length") {
-        Some(length) => length,
-        None => {
-            return Ok(
-                HttpResponse::LengthRequired()
-                .content_type(PLAINTEXT)
-                .body("Must include length header.".to_string())
-                // ... so that we can reject things that are too large outright.
-            );
-        }
-    };
-
-    let length: usize = match length.to_str()?.parse() {
-        Ok(length) => length,
-        Err(_) => {
-            return Ok(
-                HttpResponse::BadRequest()
-                .content_type(PLAINTEXT)
-                .body("Error parsing Length header.".to_string())
-            );
-        },
-    };
-
-    if length > MAX_ITEM_SIZE {
-        return Ok(
-            HttpResponse::PayloadTooLarge()
-            .content_type(PLAINTEXT)
-            .body(format!("Item must be <= {} bytes", MAX_ITEM_SIZE))
-        );
-    }
-
-    let mut backend = data.backend_factory.open()?;
-
-    // If the content already exists, do nothing.
-    if backend.user_item_exists(&user, &signature)? {
-        return Ok(
-            HttpResponse::Accepted()
-            .content_type(PLAINTEXT)
-            .body("Item already exists")
-        );
-    }
-
-    if !backend.user_known(&user)? {
-        return Ok(
-            HttpResponse::Forbidden()
-            .content_type(PLAINTEXT)
-            .body("Unknown user ID")
-        )
-    }
-    
-    let mut bytes: Vec<u8> = Vec::with_capacity(length);
-    while let Some(chunk) = body.next().await {
-        let chunk = chunk.context("Error parsing chunk")?;
-        bytes.extend_from_slice(&chunk);
-    }
-
-    if !signature.is_valid(&user, &bytes) {
-        Err(format_err!("Invalid signature"))?;
-    }
-
-    let mut item: Item = Item::new();
-    item.merge_from_bytes(&bytes)?;
-    item.validate()?;
-
-    if item.timestamp_ms_utc > Timestamp::now().unix_utc_ms {
-        return Ok(
-            HttpResponse::BadRequest()
-            .content_type(PLAINTEXT)
-            .body("The Item's timestamp is in the future")
-        )
-    }
-
-    if let Some(deny_reason) = backend.quota_check_item(&user, &bytes, &item)? {
-        return Ok(
-            HttpResponse::InsufficientStorage()
-            .body(format!("{}", deny_reason))
-        )
-    }
-
-    let message = format!("OK. Received {} bytes.", bytes.len());
-    
-    let row = ItemRow{
-        user: user,
-        signature: signature,
-        timestamp: Timestamp{ unix_utc_ms: item.get_timestamp_ms_utc()},
-        received: Timestamp::now(),
-        item_bytes: bytes,
-    };
-
-    let timer = timer!("save_user_item");
-    backend.save_user_item(&row, &item).context("Error saving user item")?;
-    drop(timer);
-
-    let response = HttpResponse::Created()
-        .content_type(PLAINTEXT)
-        .body(message);
-
-    Ok(response)
-}
-
-
-async fn show_item(
-    data: Data<AppData>,
-    path: Path<(UserID, Signature,)>,
-    req: HttpRequest,
-) -> Result<HttpResponse, Error> {
-
-    let (user_id, signature) = path.into_inner();
-    let backend = data.backend_factory.open()?;
-    let row = backend.user_item(&user_id, &signature)?;
-    let row = match row {
-        Some(row) => row,
-        None => { 
-            // TODO: We could display a nicer error page here, showing where
-            // the user might find this item on other servers. Maybe I'll leave that
-            // for the in-browser client.
-
-            return Ok(
-                file_not_found("No such item").await
-                .respond_to(&req).await?
-            );
-        }
-    };
-
-    let mut item = Item::new();
-    item.merge_from_bytes(row.item_bytes.as_slice())?;
-
-    let row = backend.user_profile(&user_id)?;
-    let display_name = {
-        let mut item = Item::new();
-        if let Some(row) = row {
-            item.merge_from_bytes(row.item_bytes.as_slice())?;
-        }
-        item
-    }.get_profile().display_name.clone();
-    
-    use crate::protos::Item_oneof_item_type as ItemType;
-    match item.item_type {
-        None => Ok(HttpResponse::InternalServerError().body("No known item type provided.")),
-        Some(ItemType::profile(_)) => Ok(HttpResponse::Ok().body("Profile update.")),
-        Some(ItemType::post(p)) => {
-            let page = PostPage {
-                nav: vec![
-                    Nav::Text(display_name.clone()),
-                    Nav::Link {
-                        text: "Profile".into(),
-                        href: format!("/u/{}/profile/", user_id.to_base58()),
-                    },
-                    Nav::Link {
-                        text: "Home".into(),
-                        href: "/".into()
-                    }
-                ],
-                user_id,
-                display_name,
-                signature,
-                text: p.body,
-                title: p.title,
-                timestamp_utc_ms: item.timestamp_ms_utc,
-                utc_offset_minutes: item.utc_offset_minutes,
-            };
-
-            Ok(page.respond_to(&req).await?)
-        },
-        Some(ItemType::comment(_)) => Ok(
-            HttpResponse::Ok().body("TODO: Display comments in HTML")
-        )
-    }
-
-
-}
-
-/// Get the binary representation of the item.
-///
-/// `/u/{userID}/i/{sig}/proto3`
-async fn get_item(
-    data: Data<AppData>,
-    path: Path<(UserID, Signature,)>,
-) -> Result<HttpResponse, Error> {
-    let (user_id, signature) = path.into_inner();
-    let backend = data.backend_factory.open()?;
-    let item = backend.user_item(&user_id, &signature)?;
-    let item = match item {
-        Some(item) => item,
-        None => { 
-            return Ok(
-                HttpResponse::NotFound().body("No such item")
-            );
-        }
-    };
-
-    // We could in theory validate the bytes ourselves, but if a client is directly fetching the 
-    // protobuf bytes via this endpoint, it's probably going to be so that it can verify the bytes
-    // for itself anyway.
-    Ok(
-        proto_ok()
-        .body(item.item_bytes)
-    )
-
-}
-
-/// Get the latest profile we have for a user ID.
-/// returns the signature in a "signature" header so clients can verify it.
-async fn get_profile_item(
-    data: Data<AppData>,
-    Path((user_id,)): Path<(UserID,)>,
-) -> Result<HttpResponse, Error> {
-    
-    let backend = data.backend_factory.open()?;
-    let item = backend.user_profile(&user_id,)?;
-    let item = match item {
-        Some(item) => item,
-        None => { 
-            return Ok(
-                HttpResponse::NotFound().body("No such item")
-            );
-        }
-    };
-
-    // We could in theory validate the bytes ourselves, but if a client is directly fetching the 
-    // protobuf bytes via this endpoint, it's probably going to be so that it can verify the bytes
-    // for itself anyway.
-    Ok(
-        proto_ok()
-        .header("signature", item.signature.to_base58())
-        .body(item.item_bytes)
-    )
-
-}
-async fn file_not_found(msg: impl Into<String>) -> impl Responder<Error=actix_web::error::Error> {
-    NotFoundPage {
-        message: msg.into()
-    }
-        .with_status(StatusCode::NOT_FOUND)
-}
-
-/// `/u/{userID}/profile/`
-async fn show_profile(
-    data: Data<AppData>,
-    path: Path<(UserID,)>,
-    req: HttpRequest,
-) -> Result<HttpResponse, Error> 
-{
-    let (user_id,) = path.into_inner();
-    let backend = data.backend_factory.open()?;
-
-    let row = backend.user_profile(&user_id)?;
-
-    let row = match row {
-        Some(r) => r,
-        None => {
-            return Ok(HttpResponse::NotFound().body("No such user, or profile."))
-        }
-    };
-
-    let mut item = Item::new();
-    item.merge_from_bytes(&row.item_bytes)?;
-    let display_name = item.get_profile().display_name.clone();
-    let nav = vec![
-        Nav::Text(display_name.clone()),
-        Nav::Link{
-            text: "Posts".into(),
-            href: "..".into(),
-        },
-        Nav::Link{
-            text: "Feed".into(),
-            href: "../feed/".into(),
-        },
-        Nav::Link{
-            text: "Home".into(),
-            href: "/".into(),
-        },
-    ];
-
-    let timestamp_utc_ms = item.timestamp_ms_utc;
-    let utc_offset_minutes = item.utc_offset_minutes;
-    let text = std::mem::take(&mut item.mut_profile().about);
-
-    let follows = std::mem::take(&mut item.get_profile()).follows.to_vec();
-    let follows = follows.into_iter().map(|mut follow: crate::protos::Follow | -> Result<ProfileFollow, Error>{
-        let mut user = std::mem::take(follow.mut_user());
-        let user_id = UserID::from_vec(std::mem::take(&mut user.bytes))?;
-        let display_name = follow.display_name;
-        Ok(
-            ProfileFollow{user_id, display_name}
-        )
-    }).collect::<Result<_,_>>()?;
-
-    let page = ProfilePage{
-        nav,
-        text,
-        display_name,
-        follows,
-        timestamp_utc_ms,
-        utc_offset_minutes,
-        user_id: row.user,
-        signature: row.signature,
-    };
-
-    Ok(page.respond_to(&req).await?)
-}
-
-
-#[derive(Template)]
-#[template(path = "not_found.html")]
-struct NotFoundPage {
-    message: String,
-}
-
-#[derive(Template)]
-#[template(path = "index.html")] 
-struct IndexPage {
-    nav: Vec<Nav>,
-    items: Vec<IndexPageItem>,
-
-    /// An error/warning message to display. (ex: no items)
-    display_message: Option<String>,
-
-    /// Should we show author info w/ links to their profiles?
-    show_authors: bool,
-}
-
-#[derive(Template)]
-#[template(path = "profile.html")]
-struct ProfilePage {
-    nav: Vec<Nav>,
-    user_id: UserID,
-    signature: Signature,
-    display_name: String,
-    text: String,
-    follows: Vec<ProfileFollow>,
-    timestamp_utc_ms: i64,
-    utc_offset_minutes: i32,
-}
-
-#[derive(Template)]
-#[template(path = "post.html")]
-struct PostPage {
-    nav: Vec<Nav>,
-    user_id: UserID,
-    signature: Signature,
-    display_name: String,
-    text: String,
-    title: String,
-    timestamp_utc_ms: i64,
-    utc_offset_minutes: i32,
-
-    // TODO: Include comments from people this user follows.
-}
 
 struct ProfileFollow {
     /// May be ""
@@ -1121,23 +367,6 @@ impl IndexPageItem {
 
 
 
-/// Should this Item be displayed on the plain-HTML version of the site?
-/// i.e.: should it be indexed by search engines?
-// TODO: Rename.
-fn display_by_default(item: &Item) -> bool {
-    let item_type = match &item.item_type {
-        // Don't display items we can't find a type for. (newer than this server knows about):
-        None => return false,
-        Some(t) => t,
-    };
-
-    use crate::protos::Item_oneof_item_type as ItemType;
-    match item_type {
-        ItemType::post(_) => true,
-        ItemType::profile(_) => false,
-        ItemType::comment(_) => false,
-    }
-}
 
 /// Represents an item of navigation on the page.
 enum Nav {

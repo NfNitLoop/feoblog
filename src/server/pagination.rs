@@ -8,10 +8,23 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+use serde::Deserialize;
+
 use crate::backend::{TimeSpan, Timestamp};
+use super::{IndexPageItem};
 
-use super::{IndexPageItem, Pagination, bound};
+/// Query params to control pagination:
+#[derive(Deserialize, Debug)]
+pub(crate) struct Pagination {
+    /// Time before which to show posts. Default is now.
+    before: Option<i64>,
 
+    /// Time after which to show some posts. can not set before & after, and before takes precedence.
+    after: Option<i64>,
+
+    /// Limit how many posts/items appear on a page.
+    count: Option<usize>,
+}
 
 
 /// Works with the callbacks in Backend to provide pagination.
@@ -189,5 +202,11 @@ where
         }
 
         Some(url)    }
+}
+
+/// Set lower and upper bounds for input T.
+fn bound<T: Ord>(input: T, lower: T, upper: T) -> T {
+    use std::cmp::{min, max};
+    min(max(lower, input), upper)
 }
 
