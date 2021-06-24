@@ -1,4 +1,7 @@
 //! Functions for dealing w/ GET/POST/HEAD of /u/:userID/i/:signature/files/* endpoints.
+//!
+//! These endpoints are used both by the plain HTML and the client.
+//! And, I suppose they could also be considered part of the REST API.
 
 
 use std::io::{BufReader, BufWriter, Seek, SeekFrom};
@@ -11,9 +14,9 @@ use sodiumoxide::crypto::hash::sha512;
 use tempfile::tempfile;
 use log::{debug};
 
-use crate::backend::{SHA512, Signature, UserID};
+use crate::{backend::{SHA512, Signature, UserID}, server::html::file_not_found};
 
-use super::{AppData, Error, PLAINTEXT, file_not_found};
+use super::{AppData, Error, PLAINTEXT};
 
 pub(crate) async fn get_file(
     req: HttpRequest,
