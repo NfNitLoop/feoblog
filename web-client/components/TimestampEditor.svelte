@@ -11,17 +11,19 @@
 // Strictly parse one of these non-ambiguous timestamps. (MUST include time zone.)
 const DATE_FORMATS = [
     // Preferred:
-    "YYYY-MM-DD HH:mm:ss.SSS ZZ",
+    "yyyy-MM-dd HH:mm:ss.SSS ZZZ",
+
     // May drop milliseconds:
-    "YYYY-MM-DD HH:mm:ss ZZ",
+    "yyyy-MM-dd HH:mm:ss ZZZ",
+
     // ... and seconds:
-    "YYYY-MM-DD HH:mm ZZ",
+    "yyyy-MM-dd HH:mm ZZZ",
 ]
 
 </script>
 
 <script lang="ts">
-import moment from "moment";
+import { DateTime, FixedOffsetZone } from "luxon";
 
 // inout
 export let value = ""
@@ -44,42 +46,44 @@ function updateFromValue(value: string) {
     errors = []
 
     let date = parseDate(value)
-    if (!date.isValid()) {
+    if (!date.isValid) {
         errors = ["Invalid date"]
         return
     }
 
     msUTC = date.valueOf()
-    offsetMinutes = date.utcOffset()
+    offsetMinutes = date.offset
 }
 
-function parseDate(str: string): moment.Moment {
-    let date: moment.Moment|undefined = undefined
+// Parse a date. May return an invalid date if parsing failed.
+function parseDate(str: string): DateTime {
     if (DATE_FORMATS.length == 0) {
         throw "DATE_FORMATS is empty"
     }
     for (let i in DATE_FORMATS) {
         // keep the parsed offset in the Moment so we can render/save it.
-        date = moment.parseZone(str, DATE_FORMATS[i], true)
-        if (date.isValid()) {
+        let date = DateTime.fromFormat(str, DATE_FORMATS[i], {setZone: true})
+        if (date.isValid) {
             return date
         }
     }
-    return date as moment.Moment
+    return DateTime.invalid("Could not parse a valid date")
 }
 
 function setNow() {
-    value = moment().format(DATE_FORMATS[0])
+    value = DateTime.local().toFormat(DATE_FORMATS[0])
 }
 
 function setStringFromMs() {
-    value = moment(msUTC).utcOffset(offsetMinutes).format(DATE_FORMATS[0])
+    let offset = FixedOffsetZone.instance(offsetMinutes)
+
+    value = DateTime.fromMillis(msUTC).setZone(offset).toFormat(DATE_FORMATS[0])
 }
 
 // If the user broke the timestamp, return it to its correct format:
 function onBlur() {
     let parsed = parseDate(value)
-    if (parsed.isValid()) { return }
+    if (parsed.isValid) { return }
 
     // A hacky way to set the time to now:
     if (value.trim() == "") {

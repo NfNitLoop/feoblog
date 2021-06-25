@@ -42,9 +42,9 @@ import type { Writable } from "svelte/store";
 import { UserID as ClientUserID } from "../ts/client";
 import { parseUserID, validateServerURL } from "../ts/common";
 import { tick } from "svelte";
-import moment from "moment";
 import bs58 from "bs58";
 import InputBox from "./InputBox.svelte";
+import { DateTime } from "luxon";
 
 export let appState: Writable<AppState>
 // Exported so that EditorWithPreview can preview, serialize, & send it for us.
@@ -189,11 +189,11 @@ if (initialItem) {
 
 $: item = function(): Item {
     // For profiles, we *always* want to save with the latest timestamp possible:
-    let now = moment()
+    let now = DateTime.local()
 
     let item = new Item({
         timestamp_ms_utc: now.valueOf(),
-        utc_offset_minutes: now.utcOffset(),
+        utc_offset_minutes: now.offset,
         profile: new Profile({
             display_name: displayName,
             about: profileContent,
