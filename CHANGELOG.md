@@ -1,6 +1,45 @@
 Changelog
 =========
 
+Version 0.4.0
+=============
+
+Released: June 25, 2021
+<https://github.com/NfNitLoop/feoblog/releases/tag/v0.4.0>
+
+ * The web client is now the default view.  
+   FeoBlog has two ways to access content. One is plain HTML (A.K.A.: Web 1.0),
+   which works well for old browsers and search engines. The other is a web
+   client (Web 2.0), which has a nicer interface. Now, if you visit a page in a
+   browser that supports JavaScript, you'll get automatically redirected to the
+   newer, nicer web client.
+
+ * Post drafts are now saved.  
+   If you navigate away from the "New Post" page and come back later, your post
+   will still be there. Whew!
+
+ * Added some helpful warnings when writing markdown posts  
+   Now if you forget to link that `[reference]`, you'll get a warning reminding
+   you to add a link.
+
+ * Better support for password managers  
+   You should save your private key ("password") in a password manager. But some
+   password managers were filling in the wrong fields. Hopefully that's fixed.
+   (If not, please open an issue!)
+
+ * An updated [README] to explain the core principles behind FeoBlog's design
+
+ * Support for attachments on iOS (and probably Android)  
+   Oops. You can't easily drag-and-drop on a phone, so I added a button to
+   attach files. Now you can take photos and easily upload them from your phone!
+
+ * Improved automatic link generation when adding attachments  
+   When you add an attachment to a post, FeoBlog will generate a `[link]` and a
+   `[link]: files/reference.example` for you. Now it'll do a better job of
+   placing those within an existing document.
+
+[README]: ./README.md
+
 Version 0.3.0
 =============
 
