@@ -12,7 +12,6 @@
     "google-protobuf": "^3.14.0",
     "identicon.js": "^2.3.3",
     "luxon": "1.25.0",
-    "moment": "^2.29.1",
     "svelte-spa-router": "^3.1.0",
     "tweetnacl": "^1.0.3"
   },

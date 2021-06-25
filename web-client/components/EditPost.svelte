@@ -59,13 +59,13 @@ type PostData = {
 import ExpandingTextarea from "./ExpandingTextarea.svelte"
 import TimestampEditor from "./TimestampEditor.svelte"
 import { Attachments, File, Item, Post } from "../protos/feoblog";
-import moment from "moment";
 import FileAttachments from "./FileAttachments.svelte"
 import {FileInfo, getMarkdownInfo} from "../ts/common"
 import { getContext, onMount } from "svelte";
 import type { AppState } from "../ts/app";
 import type { Writable } from "svelte/store";
 import type { UserID } from "../ts/client";
+import { DateTime } from "luxon";
 
 export let files: FileInfo[] = []
 // The FileAttachments component itself:
@@ -76,8 +76,8 @@ $: attachedFileNames = new Set<string>(files.map((f) => { return f.name }))
 
 let title = ""
 let text = ""
-let timestampMsUTC = moment().valueOf()
-let offsetMinutes = moment().utcOffset()
+let timestampMsUTC = DateTime.local().valueOf()
+let offsetMinutes = DateTime.local().offset
 let timestampString: string // bound to the TimstampEditor.value
 let timestampErrors: string[] = []
 
