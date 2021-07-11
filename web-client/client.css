@@ -82,7 +82,7 @@ input:hover, input:focus, textarea:hover, textarea:focus {
 
 
 /* Undo some of the styles from style.css 
-   TODO: re-unify these looks?
+   TODO: Consolidate client/client.css and client/style.css
 */
 .userID, .item .timestamp {
     /* TODO: a way to ref this value from html? */
