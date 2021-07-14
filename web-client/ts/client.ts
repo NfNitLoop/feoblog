@@ -202,7 +202,7 @@ export class Client {
             throw `Error deserializing ${url}: ${exception}`
         }
         if (item.profile === null) {
-            throw `Server returned n Item for ${url} that is not a Profile.`
+            throw `Server returned an Item for ${url} that is not a Profile.`
         }
         return {item, signature, bytes}
     }
@@ -474,17 +474,21 @@ const LENIENT_MAX_ITEM_SIZE = 1024 * 1024 // 1 MiB
 
 
 // Contains an item, and its userID/signature, required to properly display it:
-export type DisplayItem = {
+export interface DisplayItem {
     item: Item
     userID: UserID
     signature: Signature
 }
 
+interface DisplayItemData extends DisplayItem {
+    itemData: Uint8Array
+}
+
 export type LazyItemLoaderOptions = {
     client: Client,
     
-    // A function that we can use to test whether the end of the page is still visible.
-    endIsVisible: () => boolean,
+    /** Whether we should continue loading more items. */
+    continueLoading: () => boolean,
 
     // A function we'll call when a new item is available to display:
     displayItem: (nextItem: DisplayItem) => void,
@@ -494,27 +498,35 @@ export type LazyItemLoaderOptions = {
 
     itemEntries: AsyncGenerator<ItemListEntry>,
 
+    itemFilter?: ItemFilter,
+
     log?: Logger,
 }
 
 // Many pages deal with lazily loading a list of items from an ItemList provided by the server.
 // This class assists in that.
 export class LazyItemLoader {
+
     constructor(options: LazyItemLoaderOptions) {
         this.client = options.client
-        this.endIsVisibile = options.endIsVisible
+        this.continueLoading = options.continueLoading
         this.displayItemCallback = options.displayItem
         this.lazyDisplayItems = prefetch(options.itemEntries, 4, this.fetchDisplayItem)
         this.endReached = options.endReached
         this.log = options.log || new ConsoleLogger()
+        this.itemFilter = options.itemFilter || ItemFilter.allowAll()
     }
 
     private client: Client
-    private endIsVisibile: () => boolean
+    private continueLoading: () => boolean
     private displayItemCallback: (nextItem: DisplayItem) => void
     private lazyDisplayItems: AsyncGenerator<DisplayItem|null>
     private endReached: () => void
     private log: Logger
+    private itemFilter: ItemFilter;
+    
+    // We've been stopped, and will never yield more items. Can drop in-progress items.
+    private stopped = false;
 
     // We'll bump this up each time the user bumps into the bottom of the screen.
     private minItemsToDisplay = 3
@@ -523,7 +535,7 @@ export class LazyItemLoader {
     private displayingMoreItems = false
 
     // Call this whenever the UI needs for us to display more items.
-    // We'll continue displaying items until !endIsVisibile (at least).
+    // We'll continue displaying items until !continueLoading (at least).
     displayMoreItems = async () => {
         if (this.displayingMoreItems) {
             // The user could scroll to the end of the page while we're still loading and displaying more items.
@@ -539,15 +551,20 @@ export class LazyItemLoader {
     }
 
     private async displayMoreItems2() {
-        let endIsVisible = this.endIsVisibile
-        let displayItem = this.displayItemCallback
-        this.log.debug("displayMoreItems, endIsVisible", endIsVisible())
+        const continueLoading = this.continueLoading
+        const displayItem = this.displayItemCallback
+        this.log.debug("displayMoreItems, continueLoading", continueLoading())
 
         let minToDisplay = this.minItemsToDisplay++
 
-        while(minToDisplay > 0 || endIsVisible()) {
+        while(minToDisplay > 0 || continueLoading()) {
 
             let n = await this.lazyDisplayItems.next()
+            if (this.stopped) {
+                // abort! We're no longer the live LazyLoader.
+                return
+            }
+
             if (n.done) {
                 this.endReached()
                 return
@@ -558,11 +575,12 @@ export class LazyItemLoader {
                 continue
             }
 
+
             displayItem(n.value)
             minToDisplay--
 
             // Wait for Svelte to apply state changes.
-            // MAY cause endIsVisibile to toggle off, but at least in Firefox that
+            // MAY cause continueLoading to toggle off, but at least in Firefox that
             // doesn't always seem to have happened ASAP.
             // I don't mind loading a few more items than necessary, though.
             await tick()
@@ -570,20 +588,39 @@ export class LazyItemLoader {
     }
 
     private fetchDisplayItem = async (entry: ItemListEntry): Promise<DisplayItem|null> => {
+        const filter = this.itemFilter
+        if (!filter.byTimestampMS(entry.timestamp_ms_utc)) return null
+
         let userID = UserID.fromBytes(entry.user_id.bytes)
+        if (!filter.byUserID(userID)) return null
+
         let signature = Signature.fromBytes(entry.signature.bytes)
-        let item: Item|null 
+        if (!filter.bySignature(signature)) return null
+
+        // TODO: Filter by item type.
+
+        let item: Item 
+        let bytes: Uint8Array|null
         try {
-            item = await this.client.getItem(userID, signature)
+            // Postpone validation, because we may filter this item before trying to display it:
+            bytes = await this.client.getItemBytes(userID, signature, { skipSignatureCheck: true })
+            if (bytes === null) {
+                // TODO: Display some placeholder?
+                // It does seem like an error, the server told us about the item, but doesn't have it?
+                this.log.error("No such item", userID, signature)
+                return null
+            }
+            item = Item.deserialize(bytes)
         } catch (e) {
             this.log.error("Error loading Item:", userID, signature, e)
             return null
         }
 
-        if (item === null) {
-            // TODO: Display some placeholder?
-            // It does seem like an error, the server told us about the item, but doesn't have it?
-            this.log.error("No such item", userID, signature)
+        if (!filter.byItem(item)) return null
+
+        // Check signature:
+        if (!await signature.isValid(userID, bytes)) {
+            this.log.error("Invalid signature for Item", userID, signature)
             return null
         }
 
@@ -593,4 +630,100 @@ export class LazyItemLoader {
             userID: userID,
         }
     }
+
+    stop() { this.stopped = true }
+}
+
+/**
+ * Allows filtering items as we fetch them with a lazy loader.
+ * Methods should return `true` to keep a particular Item.
+ * userID, signature, and timestamp filters are called *before*
+ * fetching the Item from the server, so are the most efficient.
+ * 
+ */
+export class ItemFilter {
+
+    protected constructor() {}
+
+    static allowAll(): ItemFilter { return new ItemFilter() }
+
+    static matchAll(filters: ItemFilter[]) {
+        return new MatchAllFilter(filters)
+    }
+
+    // The base implementation returns True for everything.
+    byUserID(userID: UserID): boolean { return true }
+    bySignature(signature: Signature): boolean { return true }
+    byTimestampMS(timestampMS: number): boolean { return true }
+    byItem(item: Item): boolean { return true}
+}
+
+
+const REGEX_NON_LITERAL = /[^a-z0-9_" -]/ig
+export class FindMatchingString extends ItemFilter {
+    readonly pattern: RegExp
+
+    constructor(search: string) {
+        super()
+        search = search.replace(REGEX_NON_LITERAL, (match) => `\\${match}`)
+        this.pattern = new RegExp(search, "i")
+    }
+
+    byItem(item: Item): boolean {
+        const content = item.post?.body || item.comment?.text
+        if (typeof content != "string") {
+            // I expect only post/comments in this view, so if we come across
+            // something else, we can't filter on it, but I don't want to hide it:
+            return true
+        }
+
+        // TODO: Search titles?
+
+        return !!this.pattern.exec(content)
+    }
+
+    toString() { return `FindMatchingString(${this.pattern})` }
+
+}
+
+export class SkipUsers extends ItemFilter {
+    constructor(private userIDs: Set<string>) {
+        super()
+    }
+
+    byUserID(userID: UserID) {
+        return !this.userIDs.has(userID.toString())
+    }
+
+}
+
+class MatchAllFilter implements ItemFilter {
+
+    constructor(private filters: ItemFilter[]) {}
+
+    byUserID(userID: UserID): boolean {
+        for (const filter of this.filters) {
+            if (!filter.byUserID(userID)) return false
+        }
+        return true
+    }
+    bySignature(signature: Signature): boolean {
+        for (const filter of this.filters) {
+            if (!filter.bySignature(signature)) return false
+        }
+        return true
+    }
+    byTimestampMS(timestampMS: number): boolean {
+        for (const filter of this.filters) {
+            if (!filter.byTimestampMS(timestampMS)) return false
+        }
+        return true
+    }
+    byItem(item: Item): boolean {
+        for (const filter of this.filters) {
+            if (!filter.byItem(item)) return false
+        }
+        return true
+    }
+
 }

@@ -108,7 +108,7 @@ code {
 }
 
 
-.item, .nav {
+.item, .nav, .pageHeading {
 	padding: 1em;
 	background: #fff;
 	border-radius: 20px;

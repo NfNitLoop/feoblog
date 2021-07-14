@@ -52,10 +52,12 @@ $: userID = UserID.fromString(params.userID)
 $: lazyLoader = createLazyLoader(userID)
 function createLazyLoader(userID: UserID) {
     items = []
+    if (lazyLoader) { lazyLoader.stop() }
+
     return new LazyItemLoader({
         client: $appState.client,
         itemEntries: $appState.client.getUserItems(userID),
-        endIsVisible: () => endIsVisible,
+        continueLoading: () => endIsVisible,
         endReached: () => { loadingItems = false },
         displayItem: (di) => {
             if (di.item.profile) {
