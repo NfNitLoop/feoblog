@@ -206,9 +206,6 @@ function toggleSkippedUser(uid: string) {
 </script>
 
 <style>
-.feed {
-    max-width: 55rem;
-}
 
 .follows {
     display: flex;
@@ -225,13 +222,15 @@ function toggleSkippedUser(uid: string) {
 }
 
 
-.follows .follow {
+.follow {
     display: block;
     padding: 0.25rem 0.75rem;
     padding-left: 0.25rem;
     border-radius: 3px;
     background-color: #eee;
     user-select: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .follow input[type="checkbox"] {

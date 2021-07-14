@@ -3,14 +3,18 @@
     TODO: Can we remove the global pageHeading class and make this just be an .item? 
 
 -->
-<div class="pageHeading" class:atTop bind:this={element} on:mouseenter={onMouseEnter} on:mouseleave={onMouseLeave}>
-    {#if hasSettings}
-    <div class="settingsButton">
-        <Button on:click={toggleSettings}>Filter</Button>
-    </div>
-    {/if}
+<div class="pageHeading" class:atTop on:mouseenter={onMouseEnter} on:mouseleave={onMouseLeave}>
 
-    <slot></slot>
+    <div class="top">
+        <div class="inner">
+            <slot></slot>
+        </div>
+        {#if hasSettings}
+        <h1 class="settingsButton">
+            <SVGButton src="/client/images/magnifying_glass.svg" alt="search" on:click={toggleSettings} />
+        </h1>
+        {/if}
+    </div>
 
     {#if hasSettings && !settingsHidden}
         <div class="settings" transition:slide>
@@ -19,12 +23,14 @@
     {/if}
 </div>
 
+<div class="detection" bind:this={element}></div>
+
 <svelte:window bind:scrollY bind:outerWidth/>
 
 <script lang="ts">
 
 import { slide } from "svelte/transition";
-import Button from "./Button.svelte"
+import SVGButton from "./SVGButton.svelte";
 
 let element: HTMLElement
 
@@ -36,9 +42,9 @@ $: atTop = isAtTop(scrollY, outerWidth)
 
 // We really only accept these numbers to trigger a refresh in case they changed:
 function isAtTop(_scrollY: number, _outerWidth: number): boolean {
-    if (!element) return false;
+    if (!element) return false
     let rect = element.getBoundingClientRect()
-    return rect.top === 0
+    return rect.top <= 1
 }
 
 
@@ -66,6 +72,8 @@ function toggleSettings() {
     margin: 1rem;
 	position: sticky;
     top: 0px;
+    transition: all 300ms;
+    max-width: 55rem;
 }
 
 .pageHeading :global(h1) {
@@ -75,8 +83,7 @@ function toggleSettings() {
 }
 
 .pageHeading.atTop {
-    padding: 0.8rem;
-    padding-left: 1.3rem;
+    padding: 0.5rem 1.3rem;
     border-top-left-radius: 0px;
     border-top-right-radius: 0px;
 }
@@ -89,9 +96,25 @@ function toggleSettings() {
     padding-top: 1rem;
 }
 
-.settingsButton {
-    display: block;
-    float: right;
+.pageHeading.atTop {
+    margin-left: 0;
+    margin-right: 0;
+    border-radius: 0;
+}
+
+/* Must use same @media selector as in style.css: */
+@media(min-width: 55em) {
+    .pageHeading.atTop {
+        margin: 0.5rem;
+        max-width: 56rem;
+        border-radius: 0 0 20px 20px;
+    }
+}
+
+.top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 
 

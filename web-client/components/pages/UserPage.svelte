@@ -2,11 +2,9 @@
     Shows posts by a single user.
 -->
 
-<div class="item">
-    <div class="body">
-        <h1>Posts by: <UserIDView {appState} {userID}/></h1>
-    </div>
-</div>
+<PageHeading>
+    <h1>Posts by <UserIDView {userID}/></h1>
+</PageHeading>
 
 {#each items as entry, index (entry.signature)}
     <ItemView 
@@ -35,6 +33,7 @@ import { UserID, LazyItemLoader } from "../../ts/client";
 import ItemView from "../ItemView.svelte"
 import VisibilityCheck from "../VisibilityCheck.svelte";
 import UserIDView from "../UserIDView.svelte"
+import PageHeading from "../PageHeading.svelte";
 
 export let appState: Writable<AppState>
 
