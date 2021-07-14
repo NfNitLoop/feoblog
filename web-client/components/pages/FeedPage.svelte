@@ -7,17 +7,17 @@
 
         <div slot="settings">
             <div class="searchBox">
-                <input type="text" bind:value={search} placeholder="(Search)"/>
+                <InputBox bind:value={search} placeholder="Search"/>
             </div>
         
             {#if followedUsers.length > 0}
-            <h4>Show follows:</h4>
+            <h4>Filter follows:</h4>
             <div class="follows">
                 {#each followedUsers as follow}
                     <div class="follow" 
                         on:click={() => toggleSkippedUser(follow.userID.toString())}
                         class:skipped={skippedUsers.has(follow.userID.toString())}
-                    >{follow.displayName}</div>
+                    ><input type="checkbox" checked={!skippedUsers.has(follow.userID.toString())}> {follow.displayName}</div>
                 {/each}
             </div>
             {/if}
@@ -58,6 +58,7 @@ import ItemView from "../ItemView.svelte"
 import VisibilityCheck from "../VisibilityCheck.svelte"
 import PageHeading from "../PageHeading.svelte"
 import UserIDView from "../UserIDView.svelte"
+import InputBox from "../InputBox.svelte";
 
 export let appState: Writable<AppState>
 
@@ -210,17 +211,31 @@ function toggleSkippedUser(uid: string) {
 }
 
 .follows {
-    display: grid;
-    /* grid-auto-flow: row; */
-    grid-template-columns: 1fr 1fr 1fr;
+    display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
 }
 
+
+
+
+.follow {
+    white-space: nowrap;
+    /* TODO: Overflow */
+}
+
+
 .follows .follow {
     display: block;
-    border: 1px solid rgba(0, 0, 0, 0.2);
-    padding: 0.25rem;
+    padding: 0.25rem 0.75rem;
+    padding-left: 0.25rem;
+    border-radius: 3px;
+    background-color: #eee;
+    user-select: none;
+}
 
+.follow input[type="checkbox"] {
+    margin: 4px;
 }
 
 .follows .follow:hover, .follows .follow.skipped {
@@ -229,7 +244,15 @@ function toggleSkippedUser(uid: string) {
 }
 
 .follows .follow.skipped {
-    text-decoration: line-through;
+    color: #888;
+}
+
+.searchBox :global(input[type="text"]) {
+    background-color: #eee;
+}
+
+h4 {
+    margin-bottom: 0.2em;
 }
 
 </style>

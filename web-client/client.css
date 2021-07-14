@@ -126,16 +126,11 @@ input:hover, input:focus, textarea:hover, textarea:focus {
 }
 
 
-.item .header + .body, .pageHeading{
+.item .header + .body {
     border-radius: 0 0 20px 20px;
 }
 
-.pageHeading {
-    margin-left: 1rem;
-    margin-right: 1rem;
-    margin-bottom: 0.2rem;
 
-}
 
 .item .body > *:first-child {
     margin-top: 0px;
