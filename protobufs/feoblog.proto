@@ -8,9 +8,9 @@ syntax = "proto3";
 // Servers should accept items up to 32KiB (from users who have permission to
 // post to the server).
 //
-// Clients upload items to servers by POSTing to:
+// Clients upload items to servers by PUTing to:
 // /u/{userID}/i/{itemID}/proto3
-// The body of the POST is the binary proto3 representation of the Item.
+// The body of the PUT is the binary proto3 representation of the Item.
 // The userID is a base58-encoded NaCl public key.
 // The {itemID} is a bas58-encoded detached NaCl signature of the proto3 bytes.
 // The server must then verify the signature before storing and serving the
