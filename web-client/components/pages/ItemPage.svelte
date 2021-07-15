@@ -19,7 +19,6 @@
             userID={reply.userID.toString()}
             signature={reply.signature.toString()}
             item={reply.item}
-            clickable={true}
             showReplyTo={false}
             {appState}
         />
