@@ -3,7 +3,7 @@
     TODO: Can we remove the global pageHeading class and make this just be an .item? 
 
 -->
-<div class="pageHeading" class:atTop on:mouseenter={onMouseEnter} on:mouseleave={onMouseLeave}>
+<div class="pageHeading" class:atTop on:mouseenter={() => leftHandler.mouseEntered()} on:mouseleave={() => leftHandler.mouseLeft()}>
 
     <div class="top">
         <div class="inner">
@@ -28,7 +28,7 @@
 <svelte:window bind:scrollY bind:outerWidth/>
 
 <script lang="ts">
-
+import { onDestroy } from "svelte";
 import { slide } from "svelte/transition";
 import SVGButton from "./SVGButton.svelte";
 
@@ -48,20 +48,59 @@ function isAtTop(_scrollY: number, _outerWidth: number): boolean {
 }
 
 
-let mouseInside = false
+let leftHandler = new MouseLeftHandler(() => { settingsHidden = true })
+onDestroy(() => {
+    leftHandler.cleanup()
+})
+
 let settingsHidden = true
-
-function onMouseEnter() {
-    mouseInside = true
-}
-
-function onMouseLeave() {
-    mouseInside = false
-    // settingsHidden = true TODO: timer?
-}
 
 function toggleSettings() {
     settingsHidden = !settingsHidden
+}
+
+</script>
+
+<script lang="ts" context="module">
+
+/**
+ * Perform some action after the mouse has been gone for some time.
+ */
+class MouseLeftHandler {
+    constructor(private callback: () => void) {}
+    public delayMS = 5000
+
+    private timer: number|null = null
+
+    mouseEntered() {
+        this.cleanup()
+    }
+
+    cleanup() {
+        if (this.timer) {
+            clearTimeout(this.timer)
+            this.timer = null
+        }
+    }
+
+    mouseLeft() {
+        if (this.timer) {
+            // Weird, already a timer running?
+            return
+        }
+
+        this.timer = setTimeout(() => {this.timerDone()}, this.delayMS)
+    }
+
+    private timerDone() {
+        const callback = this.callback
+        try {
+            callback()
+        } catch  (error) {
+            console.error("Error in MouseLeftHandler.callback:", error)
+        }
+    }
+
 }
 
 </script>
