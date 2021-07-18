@@ -82,7 +82,7 @@ input:hover, input:focus, textarea:hover, textarea:focus {
 
 
 /* Undo some of the styles from style.css 
-   TODO: re-unify these looks?
+   TODO: Consolidate client/client.css and client/style.css
 */
 .userID, .item .timestamp {
     /* TODO: a way to ref this value from html? */
@@ -117,7 +117,7 @@ input:hover, input:focus, textarea:hover, textarea:focus {
 }
 
 
-.item .body {
+.item .body, .pageHeading {
     background-color: white;
     border-top: 0px solid white;
     padding: 1rem;
@@ -125,9 +125,12 @@ input:hover, input:focus, textarea:hover, textarea:focus {
     flex-grow: 1;
 }
 
+
 .item .header + .body {
     border-radius: 0 0 20px 20px;
 }
+
+
 
 .item .body > *:first-child {
     margin-top: 0px;

@@ -4,7 +4,7 @@
     TODO: In the future, add a button to choose a date/time more easily.    
 -->
 <div class="timestamp timestampEditor" class:errorBox>
-    <input type="text" on:blur={onBlur} bind:value/>
+    <input type="text" bind:value placeholder="Timestamp (default: now)"/>
 </div>
 
 <script lang="ts" context="module">
@@ -29,37 +29,44 @@ import { DateTime, FixedOffsetZone } from "luxon";
 export let value = ""
 
 // out: parsed timestamp values, or errors:
-export let msUTC: number
-export let offsetMinutes: number
+// Note: values may be incorrect if there are errors.
+export let msUTC = 1
+export let offsetMinutes = 0
 export let errors: string[] = []
 
 
-if (msUTC) {
-    setStringFromMs()
-} else {
-    setNow()
-}
+$: dateTime = parseDate(value)
+$: errors = dateTime.invalidReason ? [dateTime.invalidReason] : []
 
-// only update from value -> (msUTC,offsetMinutes,errors)
-$: updateFromValue(value)
-function updateFromValue(value: string) {
-    errors = []
-
-    let date = parseDate(value)
-    if (!date.isValid) {
-        errors = ["Invalid date"]
-        return
+$: {
+    if (dateTime.isValid) {
+        msUTC = dateTime.valueOf()
+        offsetMinutes = dateTime.offset
     }
-
-    msUTC = date.valueOf()
-    offsetMinutes = date.offset
 }
+
+/**
+ * The default value when the input box is empty is now.
+ * Call this function to bump the value of "now".
+ * (It's not incremented automatically so as not to be too slow.)
+ */
+export function bumpNow() {
+    dateTime = parseDate(value)
+}
+
+
 
 // Parse a date. May return an invalid date if parsing failed.
 function parseDate(str: string): DateTime {
     if (DATE_FORMATS.length == 0) {
         throw "DATE_FORMATS is empty"
     }
+
+    if (str === "") {
+        // Default = now:
+        return DateTime.local()
+    }
+
     for (let i in DATE_FORMATS) {
         // keep the parsed offset in the Moment so we can render/save it.
         let date = DateTime.fromFormat(str, DATE_FORMATS[i], {setZone: true})
@@ -67,39 +74,16 @@ function parseDate(str: string): DateTime {
             return date
         }
     }
-    return DateTime.invalid("Could not parse a valid date")
+    return DateTime.invalid(
+        "Could not parse a valid date. Valid formats are: "
+        + DATE_FORMATS.map(it => `"${it}"`).join(" or ")
+    )
 }
 
 function setNow() {
     value = DateTime.local().toFormat(DATE_FORMATS[0])
 }
 
-function setStringFromMs() {
-    let offset = FixedOffsetZone.instance(offsetMinutes)
-
-    value = DateTime.fromMillis(msUTC).setZone(offset).toFormat(DATE_FORMATS[0])
-}
-
-// If the user broke the timestamp, return it to its correct format:
-function onBlur() {
-    let parsed = parseDate(value)
-    if (parsed.isValid) { return }
-
-    // A hacky way to set the time to now:
-    if (value.trim() == "") {
-        setNow()
-        return
-    }
-
-    // We treat 0 as an undefined time in FeoBlog, since Protobuf can't distinguish it:
-    if (msUTC != 0) {
-        setStringFromMs()
-        return
-    }
-
-    // else:
-    setNow()
-}
 
 
 $: errorBox = errors.length > 0

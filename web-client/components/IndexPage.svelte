@@ -3,7 +3,7 @@
     <div class="nav-container">
         <div class="nav">
             {#if !$appState.loggedIn}
-                <a use:active href="#/">Home</a>
+                <a use:active href="#/home">Home</a>
                 <a use:active href="#/login">Log in</a>
             {:else}
                 <div>{$appState.userName || "(unknown user)"}</div>
@@ -13,7 +13,7 @@
                 <a use:active href="#/post">New Post</a>
                 <a use:active href="#/sync">Sync</a>
                 <a use:active href="#/login">Change User</a>
-                <a use:active href="#/">Home</a>
+                <a use:active href="#/home">Home</a>
             {/if}
         </div>
 
@@ -38,6 +38,7 @@
 import {wrap} from "svelte-spa-router/wrap"
 import { writable } from "svelte/store";
 import { setContext } from "svelte";
+import RootPage from "./pages/RootPage.svelte";
 
 // This is a writable() store so that we can notify the app
 // that appState has been modified. Svelte doesn't/can't propagate updates
@@ -50,7 +51,8 @@ setContext("appStateStore", appState)
 
 let routes = function() {
     let routes: RouteDefinition = {
-        "/": appPage("./pages/HomePage.svelte"),
+        "/": RootPage,
+        "/home": appPage("./pages/HomePage.svelte"),
         "/u/:userID/": appPage("./pages/UserPage.svelte"),
         "/u/:userID/feed": appPage("./pages/FeedPage.svelte"),
         "/u/:userID/profile": appPage("./pages/ProfilePage.svelte"),
@@ -82,6 +84,7 @@ function appPage(templatePath: string) {
 
     return wrap({
         asyncComponent: () => import(templatePath),
+        // TODO: Do away with manually passing appState props, and use the context instead.
         props: {
             "appState": appState,
         }

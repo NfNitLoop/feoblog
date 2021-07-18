@@ -1,7 +1,7 @@
 <div class="input">
     <!-- svelte-ignore a11y-label-has-associated-control -->
     <label>
-        {label}: {#if errorMessage}<span class="error">{errorMessage}</span>{/if}
+        {#if label}{label}: {/if}{#if errorMessage}<span class="error">{errorMessage}</span>{/if}
         <div>
         {#if inputType == "text"}
             <input type="text" bind:value={value} {disabled} {placeholder} />

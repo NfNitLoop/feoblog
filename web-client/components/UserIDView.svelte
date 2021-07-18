@@ -6,6 +6,8 @@
 
 
 <script lang="ts">
+import { getContext } from "svelte";
+
 import type { Writable } from "svelte/store";
 import type { AppState } from "../ts/app";
 import type { UserID } from "../ts/client";
@@ -13,9 +15,12 @@ import type { UserID } from "../ts/client";
 export let userID: UserID
 // Whether we should resolve an ID into its displayName
 export let resolve = true
-export let appState: Writable<AppState>
-export let displayName: string
-export let href: string|undefined
+
+// TODO: Remove this param and always use getContext.
+export let appState: Writable<AppState> = getContext("appStateStore")
+
+export let displayName: string = ""
+export let href: string|undefined = undefined
 export let shouldLink = true
 
 $: defaultHref = `#/u/${userID}/profile`

@@ -4,7 +4,6 @@
         userID={entry.userID.toString()}
         signature={entry.signature.toString()}
         item={entry.item}
-        clickable={true}
         {appState}
     />
 {:else}
@@ -50,10 +49,12 @@ let moreItems = true
 $: lazyLoader = createLazyLoader()
 function createLazyLoader() {
     items = []
+    if (lazyLoader) { lazyLoader.stop() }
+
     return new LazyItemLoader({
         itemEntries: $appState.client.getHomepageItems(),
         client: $appState.client,
-        endIsVisible: () => endIsVisible,
+        continueLoading: () => endIsVisible,
         endReached: () => { moreItems = false },
         displayItem: (di) => {
             // Neither comments nor profile updates belong on the homepage.

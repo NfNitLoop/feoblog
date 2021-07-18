@@ -1,26 +1,46 @@
 <!--
     The "friend feed", which shows posts by users a given user follows.    
 -->
-<!-- Displays the homepage feed in the client. -->
 <div class="feed">
+    <PageHeading>
+        <h1>Feed for <UserIDView {userID}/></h1>
+
+        <div slot="settings">
+            <div class="searchBox">
+                <InputBox bind:value={search} placeholder="Search"/>
+            </div>
+        
+            {#if followedUsers.length > 0}
+            <h4>Filter follows:</h4>
+            <div class="follows">
+                {#each followedUsers as follow}
+                    <div class="follow" 
+                        on:click={() => toggleSkippedUser(follow.userID.toString())}
+                        class:skipped={skippedUsers.has(follow.userID.toString())}
+                    ><input type="checkbox" checked={!skippedUsers.has(follow.userID.toString())}> {follow.displayName}</div>
+                {/each}
+            </div>
+            {/if}
+        </div>
+    </PageHeading>
+
     {#each items as entry (entry) }
     <ItemView 
         userID={entry.userID.toString()}
         signature={entry.signature.toString()}
         item={entry.item}
-        clickable={true}
         {appState}
     />
-    {:else}
+    {/each}
     <div class="item"><div class="body">
         {#if !moreItems}
-            Nothing to see here. You may need to <a href="#/my_profile">edit your profile</a>
-            to follow people, or <a href="#/post">write your first post</a>.
+            No more items to display.
+        {:else if search.trim()}
+            Searching...
         {:else}
             Loading...
         {/if}
     </div></div>
-    {/each}
     <VisibilityCheck on:itemVisible={lazyLoader.displayMoreItems} bind:visible={endIsVisible}/>
 </div><!-- feed -->
 
@@ -30,10 +50,14 @@ import type { Writable } from "svelte/store";
 
 import type { AppState } from "../../ts/app";
 import type { DisplayItem } from "../../ts/client"
-import { UserID, LazyItemLoader } from "../../ts/client";
+import { FindMatchingString, SkipUsers } from "../../ts/client"
+import { UserID, LazyItemLoader, ItemFilter } from "../../ts/client";
 
 import ItemView from "../ItemView.svelte"
-import VisibilityCheck from "../VisibilityCheck.svelte";
+import VisibilityCheck from "../VisibilityCheck.svelte"
+import PageHeading from "../PageHeading.svelte"
+import UserIDView from "../UserIDView.svelte"
+import InputBox from "../InputBox.svelte";
 
 export let appState: Writable<AppState>
 
@@ -47,18 +71,32 @@ export let params: {
     userID: string
 }
 
+let search = ""
+
 $: userID = UserID.fromString(params.userID)
 
+let userDisplayName = "..."
+$: updateDisplayName(userID)
 
-$: lazyLoader = createLazyLoader(userID)
+async function updateDisplayName(userID: UserID) {
+    userDisplayName = "..."
+    let name = await $appState.getPreferredName(userID)
+    userDisplayName = name || userID.toString()
+}
 
-function createLazyLoader(userID: UserID) {
+$: lazyLoader = createLazyLoader(userID, filter)
+
+function createLazyLoader(userID: UserID, itemFilter: ItemFilter) {
+    if (lazyLoader) { lazyLoader.stop() }
+    moreItems = true
+
     items = []
-    return new LazyItemLoader({
+    const ll = new LazyItemLoader({
         client: $appState.client,
-        endIsVisible: () => endIsVisible,
         itemEntries: $appState.client.getUserFeedItems(userID),
         endReached: () => { moreItems = false },
+
+        // TODO: Fold displayItem into itemFilter.
         displayItem: (di) => {
             if (di.item.profile) {
                 // Don't display profile updates here.
@@ -66,13 +104,153 @@ function createLazyLoader(userID: UserID) {
             }
             items = [...items, di]
         },
+        itemFilter,
+        continueLoading: () => endIsVisible
     })
+
+    ll.displayMoreItems()
+    return ll
+}
+
+$: filter = function() { 
+    let filters: ItemFilter[] = []
+
+    // Search by string.
+    // Currently searches all of markdown.
+    let searchTerm = search.trim()
+    if (searchTerm) {
+        filters.push(new FindMatchingString(searchTerm))
+    }
+
+    // Allow filtering out specific follows if they get chatty.
+    if (skippedUsers.size > 0) {
+        filters.push(new SkipUsers(skippedUsers))
+    }
+
+    // TODO: Filter for items with attachments?
+    // TODO: Filter out comments?
+
+    return ItemFilter.matchAll(filters)
+}()
+
+interface FollowedUser {
+    userID: UserID
+    displayName: string
+}
+
+let followedUsers: FollowedUser[] = []
+let skippedUsers = new Set<string>()
+$: updateFollowedUsers(userID)
+
+async function updateFollowedUsers(userID: UserID) {
+
+    followedUsers = []
+    skippedUsers = new Set()
+
+    let client = $appState.client
+    let profile
+    try {
+        profile = await client.getLatestProfile(userID)
+    } catch (error) {
+        console.error(`Error fetching profile for ${userID}`)
+        return
+    }
+
+    if (!profile) return;
+    let pProfile = profile.item.profile
+    if (!pProfile) {
+        console.error("Got a profile object that doesn't contain a profile")
+        return
+    }
+
+    let newFollows: FollowedUser[] = []
+
+    for (const follow of pProfile.follows) {
+        try {
+            let uid = UserID.fromBytes(follow.user.bytes)
+            newFollows.push({
+                userID: uid,
+                displayName: await $appState.getPreferredName(uid) || uid.toString()
+            })
+        } catch (error) {
+            console.error("Error parsing userID bytes:", follow)
+        }
+
+    }
+
+    // A user's follow feed also includes their own posts:
+    try {
+        newFollows.push({
+            userID,
+            displayName: await $appState.getPreferredName(userID) || userID.toString()
+        })
+    } catch (error) {
+        console.error("Error fetching preferred name for:", userID.toString())
+    }
+
+    newFollows.sort((f1, f2) => f1.displayName.localeCompare(f2.displayName))
+
+    followedUsers = newFollows
+}
+
+function toggleSkippedUser(uid: string) {
+    if (skippedUsers.has(uid)) {
+        skippedUsers.delete(uid)
+    } else {
+        skippedUsers.add(uid)
+    }
+    skippedUsers = skippedUsers
 }
 
 </script>
 
 <style>
-    .feed {
-        max-width: 55rem;
-    }
+
+.follows {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+
+
+
+.follow {
+    white-space: nowrap;
+    /* TODO: Overflow */
+}
+
+
+.follow {
+    display: block;
+    padding: 0.25rem 0.75rem;
+    padding-left: 0.25rem;
+    border-radius: 3px;
+    background-color: #eee;
+    user-select: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.follow input[type="checkbox"] {
+    margin: 4px;
+}
+
+.follows .follow:hover, .follows .follow.skipped {
+    cursor: pointer;
+    background-color: rgba(0, 0, 0, 0.1)
+}
+
+.follows .follow.skipped {
+    color: #888;
+}
+
+.searchBox :global(input[type="text"]) {
+    background-color: #eee;
+}
+
+h4 {
+    margin-bottom: 0.2em;
+}
+
 </style>

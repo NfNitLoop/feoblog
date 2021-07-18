@@ -5,6 +5,7 @@
     <div class="body">
         <h1><input type="text" bind:value={title} placeholder="Title (Optional)"></h1>
         <TimestampEditor
+            bind:this={timestampEditor}
             bind:value={timestampString}
             bind:msUTC={timestampMsUTC}
             bind:offsetMinutes
@@ -76,10 +77,13 @@ $: attachedFileNames = new Set<string>(files.map((f) => { return f.name }))
 
 let title = ""
 let text = ""
+
 let timestampMsUTC = DateTime.local().valueOf()
 let offsetMinutes = DateTime.local().offset
 let timestampString: string // bound to the TimstampEditor.value
 let timestampErrors: string[] = []
+let timestampEditor: TimestampEditor
+$: { text; title; timestampEditor?.bumpNow() }
 
 let textarea: ExpandingTextarea
 
@@ -117,9 +121,7 @@ function loadDraft() {
     }
     
     // If there's no text, consider there not to be a previous draft.
-    // Also empty timestamps are weird for now so skip those.
     if (!draft.text) { return }
-    if (!draft.timestampString) { return }
 
     title = draft.title
     text = draft.text
