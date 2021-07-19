@@ -200,5 +200,11 @@ I should probably write more about these things? Tell me if you'd find them usef
 * Using Sync to copy your content between servers. (Hopefully the in-client info is enough for now?)
 * Running a server behind Apache
 * Running a server in Docker
-* Writing your own client (But there's an example at <https://github.com/NfNitLoop/fb-rss>.)
 * Writing your own server
+* Writing your own client. But in the meantime see these examples:
+  * Python:
+    * <https://github.com/NfNitLoop/fb-rss>
+  * TypeScript for Deno:
+    * <https://github.com/NfNitLoop/rss2fb> 
+    * <https://github.com/NfNitLoop/feotweet>
+    * <https://github.com/NfNitLoop/deno-feomasto>
