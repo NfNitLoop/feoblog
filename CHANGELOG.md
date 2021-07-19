@@ -1,10 +1,54 @@
 Changelog
 =========
 
+Version 0.5.0
+=============
+
+Released: July 18, 2021  
+<https://github.com/NfNitLoop/feoblog/releases/tag/v0.5.0>
+
+New Features
+------------
+
+ * You can now filter and search your "My Feed" page.  
+   Is someone posting a bit too much today? You can temporarily hide them from
+   your feed to see what everyone *else* has to say. Looking for a post you saw
+   last week? Now you can search for a keyword and view only posts/comments that
+   mention that.
+
+   ![v0.5.0 filter demo]
+
+[v0.5.0 filter demo]: ./docs/images/v0.5.0%20filter%20demo.gif
+
+Improvements
+------------
+
+ * Posts are no longer clickable.  
+   Previously, the entire block containing a post was clickable, and would take
+   you to the page for that post. But that resulted in a lot of accidental
+   clicks. Also, since the cursor changed to a pointer for the whole block, it
+   was difficult to see if images were clickable. Now that behavior is gone. You
+   can click on the timestamp of a post to go to a page for just that post.
+
+ * [#52] Automatically redirect to the "My Feed" page when logged in.  
+   If you're logged in, you're probably repeatedly coming to FeoBlog to check
+   your feed. So that's now the default view.
+
+[#52]: https://github.com/NfNitLoop/feoblog/issues/52
+
+Bug Fixes
+---------
+
+ * [#51] Draft timestamps could accidentally backdate posts.
+ * Fix for nav links that wouldn't highlight when they were clicked.
+
+[#51]: https://github.com/NfNitLoop/feoblog/issues/51
+
+
 Version 0.4.0
 =============
 
-Released: June 25, 2021
+Released: June 25, 2021  
 <https://github.com/NfNitLoop/feoblog/releases/tag/v0.4.0>
 
  * The web client is now the default view.  

@@ -3,17 +3,17 @@
     <div class="nav-container">
         <div class="nav">
             {#if !$appState.loggedIn}
-                <a use:active href="#/home">Home</a>
-                <a use:active href="#/login">Log in</a>
+                <NavLink href="#/home">Home</NavLink>
+                <NavLink href="#/login">Log in</NavLink>
             {:else}
                 <div>{$appState.userName || "(unknown user)"}</div>
-                <a use:active href="#/u/{$appState.loggedInUser}/feed">My Feed</a>
-                <a use:active href="#/u/{$appState.loggedInUser}/profile">My Profile</a>
-                <a use:active href="#/u/{$appState.loggedInUser}/">My Posts</a>
-                <a use:active href="#/post">New Post</a>
-                <a use:active href="#/sync">Sync</a>
-                <a use:active href="#/login">Change User</a>
-                <a use:active href="#/home">Home</a>
+                <NavLink href="#/u/{$appState.loggedInUser}/feed">My Feed</NavLink>
+                <NavLink href="#/u/{$appState.loggedInUser}/profile">My Profile</NavLink>
+                <NavLink href="#/u/{$appState.loggedInUser}/">My Posts</NavLink>
+                <NavLink href="#/post">New Post</NavLink>
+                <NavLink href="#/sync">Sync</NavLink>
+                <NavLink href="#/login">Change User</NavLink>
+                <NavLink href="#/home">Home</NavLink>
             {/if}
         </div>
 
@@ -39,6 +39,7 @@ import {wrap} from "svelte-spa-router/wrap"
 import { writable } from "svelte/store";
 import { setContext } from "svelte";
 import RootPage from "./pages/RootPage.svelte";
+import NavLink from "./NavLink.svelte";
 
 // This is a writable() store so that we can notify the app
 // that appState has been modified. Svelte doesn't/can't propagate updates
@@ -103,8 +104,3 @@ $: {
 
 </script>
 
-<style>
-:global(.nav .active) {
-    color: black;
-}
-</style>
