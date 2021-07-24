@@ -332,8 +332,8 @@ async function syncAttachment({userID, signature, fileName, to, fromServers, tra
         try {
             await tracker.runSubtask(`Uploading to ${to.url}`, async (tracker) => {
                 let blob = new Blob([buffer!])
-                let response = await to.putAttachment(userID, signature, fileName, blob)
-                tracker.log(`Success. ${response.status}: ${response.statusText}`)
+                await to.putAttachment(userID, signature, fileName, blob)
+                tracker.log(`Success.`)
             })
         } catch (_ignored) {
             // The subtask will have recorded the error.
