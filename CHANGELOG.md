@@ -1,6 +1,25 @@
 Changelog
 =========
 
+Version 0.5.1
+=============
+
+Released: July 24, 2021  
+<https://github.com/NfNitLoop/feoblog/releases/tag/v0.5.1>
+
+
+Improvements
+------------
+
+ * Better handling of attachment uploads.  
+   For cases where it already had a copy of an attachment on the server,
+   FeoBlog would close the HTTP connection early with a 202 status. This
+   didn't work well in Chrome or with Deno. Now we'll try to be a bit
+   more friendly to the client.
+
+   As an user, you *may* notice slightly faster uploads of duplicate files.
+   Though I don't expect that that's a common case.
+
 Version 0.5.0
 =============
 

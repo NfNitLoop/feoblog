@@ -64,10 +64,16 @@ pub(crate) async fn put_file(
     let backend = data.backend_factory.open()?;
 
     let metadata = backend.get_attachment_meta(&user_id, &signature, &file_name)?;
+    // Drop our pooled connection while we wait for bytes, which could be slow:
+    drop(backend);
 
     let metadata = match metadata {
         Some(d) => d,
         None => {
+            // note: NO drain() here.
+            // see: https://stackoverflow.com/questions/14250991/is-it-acceptable-for-a-server-to-send-a-http-response-before-the-entire-request
+            // regarding HTTP errros. This is an error condition anyway.
+
             // If we don't yet have the metadata for a file (provided in its Item), then you can't upload yet.
             return Ok(
                 HttpResponse::Forbidden()
@@ -78,6 +84,7 @@ pub(crate) async fn put_file(
     };
     
     if metadata.exists {
+        drain(body).await;
         return Ok(
             HttpResponse::Accepted()
             .content_type(PLAINTEXT)
@@ -119,8 +126,6 @@ pub(crate) async fn put_file(
 
     // Collect the file bytes into a temp file so that we're not using the backend while we wait for the upload:
 
-    // Drop our pooled connection while we wait for bytes, which could be slow:
-    drop(backend);
 
     let file = tempfile().context("Error opening temp file")?;
 
@@ -183,6 +188,22 @@ pub(crate) async fn put_file(
         HttpResponse::Created()
         .body("")
     );
+}
+
+
+/// If you don't wait to read all the Payload bytes, Actix-Web may close
+/// the connection before the client has sent them all. Then the client
+/// may behave poorly.
+/// 
+/// 1. Chrome has a long pause.
+/// 2. Deno fetch() dies on the next request.  
+///    See: https://github.com/denoland/deno/issues/11513
+/// 
+/// SO, here we read the whole payload, even though we don't care what
+/// they sent. This seems ripe for DoS but it just seems to be the way
+/// browsers and HTTP clients work? 😢
+async fn drain(mut payload: Payload) {
+    while payload.next().await.is_some() {}
 }
 
 pub(crate) async fn head_file(

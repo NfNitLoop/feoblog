@@ -4,6 +4,10 @@ import * as nacl from "./naclWorker/nacl"
 import { bytesToHex, ConsoleLogger, Logger, prefetch } from "./common";
 import { tick } from "svelte";
 
+// Before sending files larger than this, we should check whether they exist:
+const SMALL_FILE_THRESHOLD = 1024 * 128
+
+
 // Encapsulates communication with the server(s).
 export class Client {
 
@@ -96,7 +100,13 @@ export class Client {
         return response
     }
 
-    async putAttachment(userID: UserID, signature: Signature, fileName: string, blob: Blob): Promise<Response> {
+    async putAttachment(userID: UserID, signature: Signature, fileName: string, blob: Blob): Promise<void> {
+        // If the file is already in the content store, we can save some bandwidth/time:
+        if (blob.size > SMALL_FILE_THRESHOLD) {
+            const {exists} = await this.headAttachment(userID, signature, fileName)
+            if (exists) return
+        }
+
         let url = this.attachmentURL(userID, signature, fileName)
         let response: Response
         try {
@@ -109,11 +119,11 @@ export class Client {
             }
 
         } catch (e) {
-            console.error("PUT exception:", e)
+            const {exists} = await this.headAttachment(userID, signature, fileName)
+            if (exists) return // Someone beat us to the upload, everything's OK.
+            // else:
             throw e
         }
-
-        return response
     }
 
     private attachmentURL(userID: UserID, signature: Signature, fileName: string) {
@@ -339,7 +349,7 @@ export type AttachmentMeta = {
 
 export type GetItemOptions = {
     // When syncing items from one server to another, the receiving server MUST 
-    // perform the verificiation, so verifying in the client is redundant and slow.
+    // perform the verification, so verifying in the client is redundant and slow.
     // Set this flag to skip it.
     skipSignatureCheck?: boolean
 }
