@@ -101,8 +101,7 @@ export class Client {
     }
 
     async putAttachment(userID: UserID, signature: Signature, fileName: string, blob: Blob): Promise<void> {
-        // TODO: If file is large, check if it exists before trying to upload it, in case 
-        // it's already in the content store.
+        // If the file is already in the content store, we can save some bandwidth/time:
         if (blob.size > SMALL_FILE_THRESHOLD) {
             const {exists} = await this.headAttachment(userID, signature, fileName)
             if (exists) return
