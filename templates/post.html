@@ -9,11 +9,33 @@
 {%- endif -%}
 {% endblock %}
 
+{% block head %}
+    {#
+        4 required: title, type, url, image.
+        see: https://ogp.me/
+    #}
+    {%- if title.len() > 0 -%}
+        <meta property="og:title" content="{{ display_name}}: {{ title }}" />
+    {%- else -%}
+        <meta property="og:title" content="Post by {{ display_name}}" />
+    {%- endif -%}
+
+    <meta property="og:type" content="article"/>
+    <meta property="og:url" content="{{meta.url}}" />
+    {% for image in meta.images %}
+        <meta property="og:image" content="{{image.url}}" />
+        {% if image.alt.is_some() %}
+            <meta property="og:image:alt" content="{{image.alt.as_ref().unwrap()}}" />
+        {% endif %}
+    {% endfor %}
+
+    {# TODO: Article published time. #}
+
+{% endblock %}
+
 {% block body %}
 
 <div class="items">
-    {# {%- let timestmap = with_offset(&timestamp_utc_ms, &utc_offset_minutes) -%} #}
-    {% let timestamp = "timestamp" %}
     <div class="item post">
         {% if title.len() > 0 %}<h1 class="title">{{ title }}</h1>{% endif %}
         <div class="timestamp"><a href="/u/{{user_id.to_base58()}}/i/{{signature.to_base58()}}/">{{ 
@@ -23,7 +45,7 @@
         {{ text|markdown_with(user_id, signature)|safe }}
     </div>
 
-    {# TODO: Show comments from users followed by this user. #}
+    {# Comments are not shown here. Use the web (2.0) client to render and interact with them. #}
 </div>
 
 {% endblock %}

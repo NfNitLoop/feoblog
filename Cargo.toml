@@ -66,6 +66,13 @@ blocking = "*"
 
 tempfile = "*"
 
+[dependencies.identicon]
+git = "https://github.com/NfNitLoop/identicon"
+rev = "e29ac7793d0469ae15fbf23953b7354cb10fd340"
+default-features = false
+
+
+
 [dependencies.rusqlite]
 # TODO: Switch to sqlx for async sql support?
 version = "0.24"

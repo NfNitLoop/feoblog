@@ -37,6 +37,7 @@ mod client;
 mod html;
 mod pagination;
 mod rest;
+mod non_standard;
 
 use pagination::Paginator;
 
@@ -137,6 +138,12 @@ fn routes(cfg: &mut web::ServiceConfig) {
             web::resource("/u/{user_id}/proto3")
             .route(get().to(rest::user_item_list))
             .wrap(cors_ok_headers())
+        )
+
+        .service(
+            web::resource("/u/{user_id}/icon.png")
+            .route(get().to(non_standard::identicon_get))
+            .wrap_fn(immutable_etag)
         )
 
         .route("/u/{userID}/i/{signature}/", get().to(html::show_item))

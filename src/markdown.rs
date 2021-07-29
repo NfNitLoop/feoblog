@@ -10,6 +10,9 @@ pub(crate) trait ToHTML {
     fn md_to_html(&self) -> String;
 
     fn md_to_html_with(&self, options: Options) -> String;
+
+    /// Find all images embedded in the Markdown.
+    fn md_get_images(&self) -> Vec<Image>;
 }
 
 impl ToHTML for str {
@@ -31,6 +34,44 @@ impl ToHTML for str {
         format_html(root, &md_options, &mut html).expect("Should be no I/O errors writing to a vec![]");
         to_string_lossy(html)
     }
+
+    fn md_get_images(&self) -> Vec<Image> {
+        let md_options = ComrakOptions::default();
+
+        let arena = Arena::new();
+        let root = parse_document(&arena, self, &md_options);
+
+        let mut images = vec![];
+
+        iter_nodes_mut(root, &mut |node| {
+            if let NodeValue::Image(ref img) = node.data.borrow().value {
+                images.push(image_from_node(node, img));
+            }
+        });
+
+
+        return images
+    }
+}
+
+fn image_from_node<'a>(node: &'a Node<'a, RefCell<Ast>>, img: &NodeLink) -> Image {
+    
+    let url = to_string_lossy(img.url.clone());
+
+    // A node's alt text is stored as a child text node:
+    let alt = node.children().next().map(|it| {
+        if let NodeValue::Text(ref text) = it.data.borrow().value {
+            return Some(to_string_lossy(text.clone()));
+        }
+        return None;
+    }).flatten();
+
+    Image{url, alt}
+}
+
+pub(crate) struct Image {
+    pub url: String,
+    pub alt: Option<String>,
 }
 
 fn fix_relative_links<'a>(arena: &Arena<Node<RefCell<Ast>>>, root: &'a AstNode<'a>, options: &Options) {
@@ -80,16 +121,25 @@ where F : Fn(&'a AstNode<'a>)
     }
 }
 
+fn iter_nodes_mut<'a, F>(node: &'a AstNode<'a>, f: &mut F)
+where F : FnMut(&'a AstNode<'a>)
+{
+    f(node);
+    for c in node.children() {
+        iter_nodes_mut(c, f);
+    }
+}
+
 
 
 fn to_string_lossy(bytes: Vec<u8>) -> String {
     let err = match String::from_utf8(bytes) {
-        // This is the efficient happy path:
+        // This is the efficient happy path: (in-place conversion)
         Ok(s) => return s,
         Err(e) => e,
     };
 
-    // Use a lossy copy instead:
+    // Use a lossy copy instead: (allocates)
     let s = String::from_utf8_lossy(err.as_bytes());
     String::from(s)
 }

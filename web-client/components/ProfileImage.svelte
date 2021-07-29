@@ -37,6 +37,9 @@ let isPhoto = false
 let style = ""
 $: style = `background-image: url("${imgSrc}");`
 $: imgSrc = getImgSrc(userID)
+
+// TODO: Use a factory for these to re-use icons data:
+// TODO: Actually, just use the server-side icons instead, since they can be cached easily.
 function getImgSrc(userID: UserID): string {
     let icon = new Identicon(userID.toHex(), {
         size: 100,

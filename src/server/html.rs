@@ -7,7 +7,7 @@ use actix_web::{HttpRequest, HttpResponse, Responder, http::StatusCode, web::{Da
 use askama::Template;
 use protobuf::Message;
 
-use crate::{backend::{ItemDisplayRow, ItemRow, Signature, UserID}, protos::Item, server::{IndexPageItem, Nav, pagination::Paginator}};
+use crate::{backend::{ItemDisplayRow, ItemRow, Signature, UserID}, markdown::ToHTML, protos::Item, server::{IndexPageItem, Nav, non_standard::identicon_url, pagination::Paginator}};
 use super::{AppData, Error, ProfileFollow, pagination::Pagination};
 
 mod filters;
@@ -265,6 +265,7 @@ pub(crate) async fn show_item(
                         href: "/".into()
                     }
                 ],
+                meta: get_post_meta(&req, &user_id, &p),
                 user_id,
                 display_name,
                 signature,
@@ -277,8 +278,46 @@ pub(crate) async fn show_item(
             Ok(page.respond_to(&req).await?)
         },
         Some(ItemType::comment(_)) => Ok(
-            HttpResponse::Ok().body("TODO: Display comments in HTML")
+            HttpResponse::Ok().body("To view comments, please use the web client at /client/.")
         )
+    }
+}
+
+fn get_post_meta(req: &HttpRequest, user_id: &UserID, post: &crate::protos::Post) -> OGPMeta {
+
+    let info = req.connection_info();
+    let scheme = info.scheme();
+    let host = info.host(); // seems to include :port.
+
+    let post_url = format!("{}://{}{}", scheme, host, req.uri().path());
+
+    // TODO: Const somewhere?
+    // We only include images that are directly attached.
+    // Why? Apple Messages, for example, doesn't generate a card if the image isn't local.
+    let files_prefix = "files/";
+
+    let mut images: Vec<_> = post.body.md_get_images()
+        .into_iter()
+        .filter(|i| i.url.starts_with(files_prefix))
+        .map(|i| OGPImage{
+            url: format!("{}{}", post_url, i.url),
+            alt: i.alt
+        })
+        .collect();
+
+    if images.is_empty() {
+        // TODO: Eventually: Show the user's profile photo, if they have one.
+        // Fall back to the user's identicon:
+        images.push(OGPImage{
+            url: format!("{}://{}{}", scheme, host, identicon_url(user_id)),
+            alt: None,
+        })
+    }
+
+    OGPMeta {
+        url: post_url,
+        images,
+        description: Some(format!("TODO: Put a description here.")),
     }
 }
 
@@ -413,4 +452,30 @@ struct PostPage {
     title: String,
     timestamp_utc_ms: i64,
     utc_offset_minutes: i32,
+
+    meta: OGPMeta,
+}
+
+/// Open Graph Protocol Metadata
+///
+/// See: https://ogp.me/
+struct OGPMeta {
+    // The FQ URL of this item.
+    // make sure to detect hostname/port from request. 
+    url: String,
+
+    // TODO: Try to parse this out of the Markdown?
+    description: Option<String>,
+
+    // Already included in PostPage: title, timestamp
+    // Should fall back to some other image 
+    images: Vec<OGPImage>,
+
+}
+
+struct OGPImage {
+    url: String,
+
+    /// alt text. (NOT a caption, says ogp.me)
+    alt: Option<String>
 }
