@@ -317,7 +317,7 @@ fn get_post_meta(req: &HttpRequest, user_id: &UserID, post: &crate::protos::Post
     OGPMeta {
         url: post_url,
         images,
-        description: Some(format!("TODO: Put a description here.")),
+        description: Some(post.body.md_get_summary(200)),
     }
 }
 

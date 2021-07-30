@@ -1,10 +1,10 @@
-use std::{cell::RefCell, mem, str::from_utf8};
+use std::{cell::RefCell, mem, num::NonZeroUsize, str::from_utf8};
 
 use crate::backend::{Signature, UserID};
 
 use comrak::{Arena, ComrakOptions, arena_tree::Node, format_html, nodes::{Ast, AstNode, NodeLink, NodeValue}, parse_document};
 
-
+// TODO: Getting all these individually requires parsing multiple times. Optimize? (Seems premature.)
 pub(crate) trait ToHTML {
     /// Convert this markdown to a safe subset of HTML.
     fn md_to_html(&self) -> String;
@@ -13,6 +13,9 @@ pub(crate) trait ToHTML {
 
     /// Find all images embedded in the Markdown.
     fn md_get_images(&self) -> Vec<Image>;
+
+    /// Get a text summary:
+    fn md_get_summary(&self, max_len: usize) -> String;
 }
 
 impl ToHTML for str {
@@ -51,6 +54,71 @@ impl ToHTML for str {
 
 
         return images
+    }
+
+    fn md_get_summary(&self, max_len: usize) -> String {
+        let mut out = String::new();
+
+        let md_options = ComrakOptions::default();
+
+        let arena = Arena::new();
+        let root = parse_document(&arena, self, &md_options);
+
+        iter_nodes_mut(root, &mut |node| {
+            if out.len() >= max_len { return }
+
+            match node.data.borrow().value {
+                NodeValue::Text(ref text) => {
+                    if in_image(node) { return }
+
+                    if !out.is_empty() && !out.ends_with(' ') { out.push(' '); }
+                    let text = to_string_lossy(text.clone());
+                    out.push_str(text.trim());
+                    if is_heading(node) && !text.ends_with(":") { out.push(':') }
+                },
+                _ => {},
+            }
+        });
+
+        if out.len() > max_len {
+            safe_truncate(&mut out, max_len - 1);
+            out.push('…');
+        }
+
+        out
+    }
+}
+
+
+fn safe_truncate(value: &mut String, mut len: usize) {
+    if value.len() <= len { return }
+
+    // truncate panics if you try to truncate at a non-char-boundary. >.< 
+    while !value.is_char_boundary(len) {
+        len -= 1;
+    }
+
+    value.truncate(len);
+}
+
+fn is_heading(node: &Node<RefCell<Ast>>) -> bool {
+    if let Some(parent) = node.parent() {
+        if let NodeValue::Heading(_) = parent.data.borrow().value {
+            return true;
+        }
+    }
+    false
+}
+
+fn in_image(node: &Node<RefCell<Ast>>) -> bool {
+    let parent = match node.parent() {
+        Some(p) => p,
+        _ => return false,
+    };
+
+    match parent.data.borrow().value {
+        NodeValue::Image(_) => true,
+        _ => false,
     }
 }
 
@@ -153,3 +221,69 @@ pub(crate) struct Options<'a> {
     pub signature: Option<&'a Signature>,
 }
 
+#[test]
+fn test_get_summary() {
+    let plaintext = "Hello, world! This is a test.";
+    assert_eq!(plaintext, plaintext.md_get_summary(1000));
+
+    let heading = "
+Heading
+=======
+
+Hello, world!
+";
+    assert_eq!("Heading: Hello, world!", heading.md_get_summary(1000));
+
+    let heading2 = "
+Heading:
+=======
+
+Hello, world!
+";
+    assert_eq!("Heading: Hello, world!", heading2.md_get_summary(1000));
+
+    let comment = "
+<!--- This is an HTML comment and should not be rendered. -->
+Hello, world!
+";
+    assert_eq!("Hello, world!", comment.md_get_summary(1000));
+
+    let inline_html = r#"
+<div id="foo">
+This is some inline HTML.  We strip this out.
+</div>
+
+Plain text.
+"#;
+    assert_eq!("Plain text.", inline_html.md_get_summary(1000));
+
+    let links = r#"
+
+If there are [links] I expect [just][1] the text.
+
+[links]: https://www.google.com/
+[1]: https://www.twitter.com/
+
+"#;
+    assert_eq!("If there are links I expect just the text.", links.md_get_summary(1000));
+
+    let paragraphs = r#"
+If there are multiple paragraphs
+
+I expect them to get joined with a space.
+"#;
+
+    assert_eq!("If there are multiple paragraphs I expect…", paragraphs.md_get_summary(42));
+
+    let nihongo = "日本語はかわいいです。";
+    // 日 is 4 bytes in utf-8. The first part of 本 will get dropped to be safe:
+    assert_eq!("日…", nihongo.md_get_summary(5));
+
+    let image = r#"
+Here's an image: ![image]
+
+[image]: files/image.png
+"#;
+
+    assert_eq!("Here's an image:", image.md_get_summary(1000));
+}

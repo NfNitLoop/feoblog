@@ -14,10 +14,15 @@
         4 required: title, type, url, image.
         see: https://ogp.me/
     #}
-    {%- if title.len() > 0 -%}
-        <meta property="og:title" content="{{ display_name}}: {{ title }}" />
-    {%- else -%}
+    {% let has_title = title.trim().len() > 0 %}
+    {% let has_name = display_name.trim().len() > 0 %}
+
+    {%- if has_title -%}
+        <meta property="og:title" content="{{ title }}" />
+    {%- else if has_name -%}
         <meta property="og:title" content="Post by {{ display_name}}" />
+    {%- else -%}
+        <meta property="og:title" content="A Post" />
     {%- endif -%}
 
     <meta property="og:type" content="article"/>
@@ -28,6 +33,18 @@
             <meta property="og:image:alt" content="{{image.alt.as_ref().unwrap()}}" />
         {% endif %}
     {% endfor %}
+
+    {% if meta.description.is_some() %}
+        <meta property="og:description" content="{{meta.description.as_ref().unwrap()}}" />
+    {% endif %}
+
+    {# TODO: Make this something site admins can set? #}
+    {% if has_name && has_title %}
+        {# note: If we don't have a title, the name was already displayed above #}
+        <meta property="og:site_name" content="FeoBlog: {{display_name}}" />
+    {% else %}
+        <meta property="og:site_name" content="FeoBlog" />
+    {% endif %}
 
     {# TODO: Article published time. #}
 
