@@ -32,6 +32,8 @@ let item: Item|null|undefined = undefined
 
 
 export let appState: Writable<AppState>
+
+// TODO: Remove
 export let showDetail = false
 
 // Show information about what this is in reply to.
@@ -159,7 +161,7 @@ function onClick(event: Event) {
             No such item: <code>/u/{userID}/i/{signature}/</code>
         </div>
     {:else if item.post}
-        <ItemHeader {appState} {item} userID={UserID.fromString(userID)} {signature} {previewMode} />
+        <ItemHeader {appState} {item} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
         <div class="body">
             {#if item.post.title}
                 <h1 class="title">{ item.post.title }</h1>
@@ -174,13 +176,6 @@ function onClick(event: Event) {
                 <code><pre>{JSON.stringify(item.toObject(), null, 4)}</pre></code>
             {/if}
 
-            {#if showDetail}
-            <div>
-                {#if viewMode != "normal"}<Button on:click={() => viewMode = "normal"}>View Normal</Button>{/if}
-                {#if viewMode != "markdown"}<Button on:click={() => viewMode = "markdown"}>View Markdown</Button>{/if}
-                {#if viewMode != "data"}<Button on:click={() => viewMode = "data"}>View Data</Button>{/if}
-            </div>
-        {/if}
         </div>
     {:else if item.profile}
         <ItemHeader {appState} {item} userID={UserID.fromString(userID)} {signature} {previewMode} />

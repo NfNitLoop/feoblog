@@ -113,6 +113,8 @@ class MouseLeftHandler {
     top: 0px;
     transition: all 300ms;
     max-width: 55rem;
+    /* Required so that transform'd items don't bleed through. Weird. */
+    z-index: 1;
 }
 
 .pageHeading :global(h1) {

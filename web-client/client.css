@@ -102,7 +102,6 @@ input:hover, input:focus, textarea:hover, textarea:focus {
 }
 
 .item .header {
-    /* border: 1px solid red; */
     display: flex;
     background-color: #eee;
     align-items: center;
