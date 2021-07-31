@@ -96,7 +96,7 @@ class EventData {
         </tr>
         <tr>
             <td>Color:</td>
-            <td><input class="color" type="text" bind:value={bgColor} placeholder="(none)"></td>
+            <td><input class="color" type="color" bind:value={bgColor}></td>
         </tr>
         <tr>
             <td></td>
