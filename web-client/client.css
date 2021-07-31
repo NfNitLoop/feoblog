@@ -108,6 +108,7 @@ input:hover, input:focus, textarea:hover, textarea:focus {
 
     padding: 0.2rem 1rem;
     border-radius: 20px 20px 0 0;
+    gap: 0.3rem;
 }
 
 

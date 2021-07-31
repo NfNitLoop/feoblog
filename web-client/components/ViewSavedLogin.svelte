@@ -78,7 +78,7 @@ class EventData {
 <div class="item">
 <div class="body" style={itemStyle}>
     <div class="imageBox" on:click={logIn}>
-        <ProfileImage userID={UserID.fromString(userID)} size="fit"/>
+        <ProfileImage userID={UserID.fromString(userID)} size={100}/>
     </div>
     <table>
         {#if isLoggedIn}

@@ -17,6 +17,7 @@ pub(crate) fn identicon_get(Path(user_id): Path<UserID>) -> HttpResponse {
     // Note: Must be >=16 bytes, but userIDs are bigger:
     let icon = Identicon::new(user_id.bytes())
         .mode(IdenticonJS(Default::default()))
+        .background_rgb(255, 255, 255)
     ;
 
     let mut png = vec![];    

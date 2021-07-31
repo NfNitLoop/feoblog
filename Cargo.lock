@@ -1227,7 +1227,7 @@ checksum = "3c1ad908cc71012b7bea4d0c53ba96a8cba9962f048fa68d143376143d863b7a"
 [[package]]
 name = "identicon"
 version = "0.2.0"
-source = "git+https://github.com/NfNitLoop/identicon?rev=e29ac7793d0469ae15fbf23953b7354cb10fd340#e29ac7793d0469ae15fbf23953b7354cb10fd340"
+source = "git+https://github.com/NfNitLoop/identicon?rev=dcee725b1d72088128a396d9d84a684434b77012#dcee725b1d72088128a396d9d84a684434b77012"
 dependencies = [
  "image",
 ]
