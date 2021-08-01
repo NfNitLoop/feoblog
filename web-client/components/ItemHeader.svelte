@@ -51,6 +51,11 @@
 {/if}
 
 <svelte:options immutable/>
+
+<script lang="ts" context="module">
+export type ViewMode = "normal"|"markdown"|"data"
+</script>
+
 <script lang="ts">
 import type { Writable } from "svelte/store";
 import { slide } from "svelte/transition"
@@ -75,7 +80,6 @@ export let previewMode = false
 // optional:
 export let showReplyTo = true
 
-type ViewMode = "normal"|"markdown"|"data"
 export let viewMode: ViewMode |undefined = undefined
 
 // Readable:
