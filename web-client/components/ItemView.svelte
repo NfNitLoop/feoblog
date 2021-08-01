@@ -179,14 +179,14 @@ function onClick(event: Event) {
 
         </div>
     {:else if item.profile}
-        <ItemHeader {appState} {item} userID={UserID.fromString(userID)} {signature} {previewMode} />
+        <ItemHeader {appState} {item} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
         <div class="body">
             <h1 class="title">Profile: {item.profile.display_name}</h1>
             <div class="userIDInfo">
                 id: <UserIdView userID={UserID.fromString(userID)} resolve={false} shouldLink={false} />
             </div>
             {#if viewMode == "normal"}
-                {@html markdownToHtml(item.profile.about)}
+                {@html markdownToHtml(item.profile.about, {relativeBase: `/u/${userID}/i/${signature}`})}
             {:else if viewMode == "markdown"}
                 Markdown source:
                 <code><pre>{item.profile.about}</pre></code>

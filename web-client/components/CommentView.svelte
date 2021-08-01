@@ -6,7 +6,7 @@
     <ItemHeader {appState} {showReplyTo} {item} {signature} {userID} bind:viewMode />
     <div class="body">
         {#if viewMode == "normal"}
-            {@html markdownToHtml(item.comment.text, {stripImages: true, relativeBase: `/u/${userID}/i/${signature}`})}
+            {@html markdownToHtml(item.comment.text, {stripImages: true, relativeBase: `/u/${userID}/i/${signature}/`})}
         {:else if viewMode == "markdown"}
             Markdown source:
             <code><pre>{item.comment.text}</pre></code>
