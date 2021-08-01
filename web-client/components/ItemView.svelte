@@ -24,6 +24,7 @@ export let signature: string
 // Caller can provide a pre-fetched Item. 
 // DO NOT BIND. If you want to see the item loaded, use on:itemLoaded
 let initialItem: Item|null|undefined // = undefined // weird, causes type errors in callers.
+// TODO: types don't seem to work well w/ export aliases like this. Just change the names:
 export {initialItem as item}
 
 
