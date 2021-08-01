@@ -54,25 +54,11 @@ export let replyToSignature: Signature
 let currentView: "Edit"|"Preview" = "Edit"
 
 let text = ""
-$: errors = !hasText ? ["Can not submit an empty comment"] : []
-
-$: {
-    // Whenever any of these change, clear the text:
-    // This avoids an issue where the box gets re-used on the next item page.
-    $appState; replyToUserID; replyToSignature;
-    clear()
-}
-
-function clear() {
-    text = ""
-    // WHYYYYY IS THIS NECESSARY?  IT'S A DNYAMIC VARIABLE. 
-    hasText = false
-    currentView = "Edit"
-}
 
 $: userID = $appState.loggedInUser
 $: isLoggedIn = userID != null
 $: hasText = text.trim().length > 0
+$: errors = !hasText ? ["Can not submit an empty comment"] : []
 $: placeholder = isLoggedIn ? "Leave a Comment" : "Must log in to comment"
 
 $: commentItem = function() {

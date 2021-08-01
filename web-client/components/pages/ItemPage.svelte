@@ -128,7 +128,3 @@ async function loadComments(allowComments: boolean, userID: UserID, signature: S
 }
 
 </script>
-
-<style>
-
-</style>
