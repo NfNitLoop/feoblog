@@ -251,7 +251,12 @@ pub(crate) async fn show_item(
     use crate::protos::Item_oneof_item_type as ItemType;
     match item.item_type {
         None => Ok(HttpResponse::InternalServerError().body("No known item type provided.")),
-        Some(ItemType::profile(_)) => Ok(HttpResponse::Ok().body("Profile update.")),
+        Some(ItemType::profile(_)) => {
+            let profile_url = format!("/u/{}/profile/", user_id.to_base58());
+            let page = ProfileUpdatePage{ nav: vec![], profile_url};
+
+            Ok(page.respond_to(&req).await?)
+        },
         Some(ItemType::post(p)) => {
             let page = PostPage {
                 nav: vec![
@@ -277,9 +282,10 @@ pub(crate) async fn show_item(
 
             Ok(page.respond_to(&req).await?)
         },
-        Some(ItemType::comment(_)) => Ok(
-            HttpResponse::Ok().body("To view comments, please use the web client at /client/.")
-        )
+        Some(ItemType::comment(_)) => {
+            let page = NotFoundPage{message: "To view comments, please use the web client at /client/.".to_string()};
+            Ok(page.respond_to(&req).await?)
+        }
     }
 }
 
@@ -439,6 +445,13 @@ struct ProfilePage {
     follows: Vec<ProfileFollow>,
     timestamp_utc_ms: i64,
     utc_offset_minutes: i32,
+}
+
+#[derive(Template)]
+#[template(path = "profile_update.html")]
+struct ProfileUpdatePage {
+    nav: Vec<Nav>,
+    profile_url: String,
 }
 
 #[derive(Template)]
