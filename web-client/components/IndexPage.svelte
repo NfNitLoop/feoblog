@@ -106,3 +106,17 @@ $: {
 
 </script>
 
+
+<style>
+
+:global(body) {
+    /* 
+    Always show the scroll bar.
+    Some things we do change the length of the page (ex: lazy-loading Items)
+    and having it constantly pop in/out can be distracting.
+    */
+    overflow-y: scroll;
+}
+
+</style>
+
