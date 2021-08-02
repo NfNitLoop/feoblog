@@ -30,7 +30,7 @@ sodiumoxide = "*"
 comrak = "*"
 
 # Allow embedding local files. 
-rust-embed = { version = "*" }
+rust-embed = "6"
 # ... and serving those files w/ the right mime types.
 mime_guess = "2"
 

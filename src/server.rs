@@ -3,7 +3,7 @@ use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData, net::TcpListener, o
 use backend::FactoryBox;
 use futures::{Future, StreamExt};
 
-use actix_web::{dev::{HttpResponseBuilder, Service, ServiceRequest, ServiceResponse}, http::{Method, header::ContentType}, middleware::DefaultHeaders, web::Query};
+use actix_web::{dev::{HttpResponseBuilder, Service, ServiceRequest, ServiceResponse}, http::{HeaderValue, Method, header::{self, ContentType}}, middleware::DefaultHeaders, web::Query};
 use actix_web::web::{
     self,
     get,
@@ -182,64 +182,100 @@ fn routes(cfg: &mut web::ServiceConfig) {
     statics(cfg);
 }
 
-#[async_trait]
+/// Trait implemented for RustEmbed types, which knows
+/// how to serve a file over HTTP.
+///  * serves index.html pages when browser requests parent dir's path.
+///  * Includes file mime types (from their extensions)
+///  * Handles setting and responding to ETags. 
+#[async_trait(?Send)]
 trait StaticFilesResponder {
     type Response: Responder;
-    async fn response(path: Path<(String,)>) -> Result<Self::Response, Error>;
+    async fn http_get(req: HttpRequest, path: Path<(String,)>) -> Result<Self::Response, Error>;
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl <T: RustEmbed> StaticFilesResponder for T {
     type Response = HttpResponse;
 
-    async fn response(path: Path<(String,)>) -> Result<Self::Response, Error> {
+    async fn http_get(req: HttpRequest, path: Path<(String,)>) -> Result<Self::Response, Error> {
         let (mut path,) = path.into_inner();
         
             
-        let mut maybe_bytes = T::get(path.as_str());
+        let mut maybe_file = T::get(path.as_str());
         
         // Check index.html:
-        if maybe_bytes.is_none() && (path.ends_with("/") || path.is_empty()) {
+        if maybe_file.is_none() && (path.ends_with("/") || path.is_empty()) {
             let inner = format!("{}index.html", path);
-            let mb = T::get(inner.as_str());
-            if mb.is_some() {
+            let mf2 = T::get(inner.as_str());
+            if mf2.is_some() {
                 path = inner;
-                maybe_bytes = mb;
+                maybe_file = mf2;
             }
         }
 
-        if let Some(bytes) = maybe_bytes {
-            // Set some response headers.
-            // In particular, a mime type is required for things like JS to work.
-            let mime_type = format!("{}", mime_guess::from_path(path).first_or_octet_stream());
-            let response = HttpResponse::Ok()
-                .content_type(mime_type)
+        let file = match maybe_file {
+            Some(file) => file,
+            None => {
+                // If adding the slash would get us an index.html, do so:
+                let with_index = format!("{}/index.html", path);
+                if T::get(&with_index).is_some() {
+                    // Use a relative redirect from the inner-most path part:
+                    let part = path.split("/").last().expect("at least one element");
+                    let part = format!("{}/", part);
+                    return Ok(
+                        HttpResponse::SeeOther()
+                            .header("location", part)
+                            .finish()
+                    );
+                }
 
-                // TODO: This likely will result in lots of byte copying.
-                // Should implement our own MessageBody
-                // for Cow<'static, [u8]>
-                .body(bytes.into_owned());
-            return Ok(response)
+                // All attempts to find a file or index.html failed:
+                return Ok(
+                    HttpResponse::NotFound()
+                    .set(ContentType::plaintext())
+                    .body("File not found.")
+                )
+            }
+        };
+
+        // File exists.
+
+        // We're using etags to cut down on bandwidth soo, maybe 32 bytes (256bits) is overkill.
+        // I've seen some filename-based etags use as 6-8 hex characters as the hash, so 8 seems like probably enough?
+        let hash = file.metadata.sha256_hash();
+        let etag = format!(
+            r#""{:02x}{:02x}{:02x}{:02x}""#,
+            hash[0],
+            hash[1],
+            hash[2],
+            hash[3],
+        );
+        
+        let cache_validation_request = req.headers().get("if-none-match");
+        if let Some(cvr) = cache_validation_request {
+            let match_found = match cvr.to_str() {
+                Err(err) => false,
+                Ok(str_val) => str_val.contains(&etag)
+            };
+            if match_found {
+                return Ok(HttpResponse::NotModified().body(""));
+            }
         }
 
-        // If adding the slash would get us an index.html, do so:
-        let with_index = format!("{}/index.html", path);
-        if T::get(with_index.as_str()).is_some() {
-            // Use a relative redirect from the inner-most path part:
-            let part = path.split("/").last().expect("at least one element");
-            let part = format!("{}/", part);
-            return Ok(
-                HttpResponse::SeeOther()
-                    .header("location", part)
-                    .finish()
-            );
-        }
+        // Set some response headers.
+        // In particular, a mime type is required for things like JS to work.
+        let mime_type = format!("{}", mime_guess::from_path(path).first_or_octet_stream());
+        let response = HttpResponse::Ok()
+            .content_type(mime_type)
+            .header(header::ETAG, etag)
 
-        Ok(
-            HttpResponse::NotFound()
-            .set(ContentType::plaintext())
-            .body("File not found.")
-        )
+            // TODO: This likely will result in lots of byte copying.
+            // Should implement our own MessageBody
+            // for Cow<'static, [u8]>
+            .body(file.data.into_owned());
+        return Ok(response)
+
+        
     }
 }
 
@@ -250,7 +286,6 @@ fn immutable_etag<'a, S>(req: ServiceRequest, service: &'a mut S)
 where S: Service<Request=ServiceRequest, Response=ServiceResponse, Error=actix_web::error::Error>
 {
     use actix_web::Either;
-    use actix_web::http::header::{self, HeaderName, HeaderValue};
 
     let is_get = req.method() == &Method::GET;
     // If the client sends us an if-none-match, they're just sending back our "immutable" ETag.
@@ -304,7 +339,6 @@ where S: Service<Request=ServiceRequest, Response=ServiceResponse, Error=actix_w
 
 
 // Currently, /static/ is used both by HTML and web client.
-// TODO: completely break the client's dependency on the web CSS.
 #[derive(RustEmbed, Debug)]
 #[folder = "static/"]
 struct StaticFiles;
@@ -312,8 +346,8 @@ struct StaticFiles;
 
 fn statics(cfg: &mut web::ServiceConfig) {
     cfg
-        .route("/static/{path:.*}", get().to(StaticFiles::response))
-        .route("/client/{path:.*}", get().to(client::WebClientBuild::response))
+        .route("/static/{path:.*}", get().to(StaticFiles::http_get))
+        .route("/client/{path:.*}", get().to(client::WebClientBuild::http_get))
     ;
 }
 
