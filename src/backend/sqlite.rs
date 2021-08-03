@@ -22,7 +22,7 @@ use crate::backend::{self, UserID, Signature, ItemRow, ItemDisplayRow, Timestamp
 use anyhow::{Error, bail, Context};
 use rusqlite::{params, OptionalExtension, Row};
 
-use super::{FileStream, TimeSpan};
+use super::{FileStream, PruneResult, TimeSpan};
 
 const CURRENT_VERSION: u32 = 7;
 
@@ -1280,6 +1280,126 @@ impl backend::Backend for Connection
 
         Ok(())
     }
+
+    fn prune(&self, opts: backend::PruneOpts) -> Result<backend::PruneResult, Error> {
+        
+        let mut result = PruneResult{
+            dry_run: opts.dry_run,
+            attachments_bytes: 0,
+            attachments_count: 0,
+            items_bytes: 0,
+            items_count: 0,
+        };
+
+        if opts.items {
+            let query = "
+                SELECT 
+                    COUNT(*) AS `count`
+                    , COALESCE(SUM(LENGTH(bytes) + LENGTH(user_id) + LENGTH(signature)), 0) AS size
+                FROM item AS i
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM known_users
+                    WHERE user_id = i.user_id
+                )
+            ";
+
+            let (count, bytes) = self.conn.query_row(
+                query,
+                params![],
+                |row| Ok((row.get::<usize,i64>(0)? as u64, row.get::<usize,i64>(1)? as u64))
+            )?;
+            result.items_count = count;
+            result.items_bytes = bytes;
+        }
+
+        if opts.attachments {
+            let query = if opts.items {
+                "
+                SELECT COUNT(*) AS `count`, COALESCE(SUM(LENGTH(contents)), 0) AS size
+                FROM store AS s
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM item_attachment
+                    INNER JOIN item USING (user_id, signature)
+                    WHERE hash = s.hash
+                )
+                "
+            } else {
+                // We'll delete more if we're also deleting items:
+                "
+                SELECT COUNT(*) AS `count`, COALESCE(SUM(LENGTH(contents)), 0) AS size
+                FROM store AS s
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM item_attachment
+                    INNER JOIN item USING (user_id, signature)
+                    INNER JOIN known_users USING (user_id)
+                    WHERE hash = s.hash
+                )
+                "
+            };
+
+
+            // Find attachments that are no longer referenced.
+            // NOTE: Can't just do a simple LEFT OUTER JOIN and check for NULL.
+            // That could lead to false positives when one ref is dangling but another exists.
+            let (count, bytes) = self.conn.query_row(
+                query,
+                params![],
+                |row| Ok((row.get::<usize, i64>(0)? as u64, row.get::<usize,i64>(1)? as u64)),
+            )?;
+            result.attachments_count = count;
+            result.attachments_bytes = bytes;
+        }
+
+        if opts.dry_run {
+            return Ok(result)
+        }
+
+        // Note: Delete items first, which makes more things available to delete from store if we do that:
+        if opts.items {
+            let query = "
+                DELETE FROM ITEM AS i
+                WHERE NOT EXISTS(
+                    SELECT 1
+                    FROM known_users
+                    WHERE user_id = i.user_id
+                )
+            ";
+            self.conn.execute(query, params![])?;
+
+            // Delete attachments now abandoned:
+            let query = "
+                DELETE FROM item_attachment AS ia
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM item
+                    WHERE user_id = ia.user_id
+                    AND signature = ia.signature
+                )
+            ";
+            self.conn.execute(query, params![])?;
+        }
+
+        if opts.attachments {
+            // Note: We can get by w/ one query here because we already deleted
+            // items from unknown users if that was desired.
+            let query = "
+            DELETE FROM store AS s
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM item_attachment
+                INNER JOIN item USING (user_id, signature)
+                WHERE hash = s.hash
+            )
+            ";
+        }
+
+        self.conn.execute("VACUUM", params![])?;
+
+        Ok(result)
+    }
 }
 
 struct ReplyRow {
@@ -1349,7 +1469,7 @@ fn save_attachment_rows(conn: &rusqlite::Connection, rows: Vec<AttachmentRow>) -
             row.signature.bytes(),
             row.name,
             row.hash.bytes(),
-            row.size as i64, // If you're expecting petabytes of data, you're outta luck.
+            row.size as i64,
         ])?;
     }
 

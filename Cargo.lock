@@ -939,6 +939,7 @@ dependencies = [
  "rust-base58",
  "rust-embed",
  "serde",
+ "sizedisplay",
  "socket2",
  "sodiumoxide",
  "structopt",
@@ -2299,6 +2300,10 @@ dependencies = [
  "arc-swap",
  "libc",
 ]
+
+[[package]]
+name = "sizedisplay"
+version = "0.1.0"
 
 [[package]]
 name = "slab"

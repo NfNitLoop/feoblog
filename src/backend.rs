@@ -10,6 +10,7 @@ use anyhow::{Error, Context, bail, format_err};
 use bs58;
 use futures::Stream;
 use serde::{Deserialize, de::{self, Visitor}};
+use sizedisplay::SizeDisplay;
 use sodiumoxide::crypto::{hash::sha512, sign};
 
 /// This trait knows how to build a Factory, which in turn can open Backend connections.
@@ -139,6 +140,14 @@ pub trait Backend
     /// Save a file attachment to our content store.
     /// This assumes you have already validated the content's size and hash match those returned by get_attachment_meta().
     fn save_attachment(&self, size: u64, hash: &SHA512, file: &mut dyn Read) -> Result<(), Error>;
+
+    // todo:
+    /// Report on database size usage by user.
+    /// Results sorted by total size desc. 
+    // fn usage_by_user(&self, options: UsageByUserOpts, callback: RowCallback<'a, UsageByUserRow>) -> Result<(), Error>;
+
+    /// Remove unused data from the database.
+    fn prune(&self, opts: PruneOpts) -> Result<PruneResult, Error>;
 }
 
 pub struct FileStream {
@@ -473,5 +482,60 @@ impl TimeSpan {
             Self::Before(_) => true,
             _ => false,
         }
+    }
+}
+
+pub struct UsageByUserOpts {
+
+}
+
+pub struct UsageByUserRow {
+
+}
+
+
+pub struct PruneOpts {
+    /// If set, then we don't actually do the delete and just report on what *would* be deleted.
+    pub dry_run: bool,
+
+    /// Should we delete unreferenced attachments?
+    pub attachments: bool,
+
+    // TODO:
+    // blocked_content
+    // blocked_items,
+
+    /// Delete items from users who are no longer followed?
+    pub items: bool,
+}
+
+
+/// Report how many things would be deleted, and their size.
+pub struct PruneResult {
+    /// Was this a dry run?
+    pub dry_run: bool,
+
+    pub attachments_count: u64,
+    pub attachments_bytes: u64,
+
+    pub items_count: u64,
+    pub items_bytes: u64,
+}
+
+impl Display for PruneResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.dry_run {
+            writeln!(f, "Dry run. A prune *would* delete:")?;
+        } else {
+            writeln!(f, "Pruned:")?;
+        }
+
+        writeln!(f, "Attachments count: {}", self.attachments_count)?;
+        writeln!(f, "Attachments size: {}", SizeDisplay::bytes(self.attachments_bytes))?;
+        writeln!(f, "Items count: {}", self.items_count)?;
+        writeln!(f, "Items size: {}", SizeDisplay::bytes(self.items_bytes))?;
+
+        writeln!(f, "Total size: {}", SizeDisplay::bytes(self.items_bytes + self.attachments_bytes))?;
+        Ok(())
     }
 }

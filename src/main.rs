@@ -5,7 +5,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::backend::{ServerUser, Factory, UserID, sqlite};
+use crate::backend::{Factory, PruneOpts, ServerUser, UserID, sqlite};
 use anyhow::{Error, bail};
 use structopt::StructOpt;
 
@@ -185,9 +185,8 @@ pub(crate) enum DbCommand {
     /// Upgrade an old database to the latest version.
     Upgrade(DbUpgradeCommand),
 
-    // TODO: 
-    // Prune data from a datbase that is no longer referenced.
-    // Prune(DbPruneCommand),
+    /// Prune data from a datbase that is no longer referenced.
+    Prune(DbPruneCommand),
 }
 
 impl DbCommand {
@@ -195,6 +194,7 @@ impl DbCommand {
         match self {
             Self::Init(command) => command.main(),
             Self::Upgrade(command) => command.main(),
+            Self::Prune(command) => command.main(),
         }
     }
 }
@@ -241,6 +241,54 @@ impl DbUpgradeCommand {
 
         let builder = self.backend_options.factory_builder()?;
         builder.db_upgrade()?;
+        Ok(())
+    }
+}
+
+#[derive(StructOpt, Debug, Clone)]
+struct DbPruneCommand {
+    #[structopt(flatten)]
+    backend_options: BackendOptions,
+
+    /// Only print out statistics of what would be pruned:
+    #[structopt(long)]
+    dry_run: bool,
+
+    /// Actually do the prune and delete things:
+    #[structopt(long)]
+    exec: bool,
+
+    // TODO
+    // blocked_users: bool,
+
+    /// Don't delete unused attachments.
+    #[structopt(long)]
+    skip_unused_attachments: bool,
+
+    /// Don't delete items belonging to unfollowed users:
+    #[structopt(long)]
+    skip_unfollowed_items: bool,
+
+}
+
+impl DbPruneCommand {
+    fn main(&self) -> Result<(), Error> {
+        if !self.dry_run && !self.exec {
+            bail!("Must specify --dry-run or --exec");
+        }
+
+        let builder = self.backend_options.factory_builder()?;
+        let conn = builder.factory()?.open()?;
+
+        
+        let result = conn.prune(PruneOpts{
+            dry_run: self.dry_run,
+            attachments: !self.skip_unused_attachments,
+            items: !self.skip_unfollowed_items,
+        })?;
+
+        println!("{}", result);
+
         Ok(())
     }
 }

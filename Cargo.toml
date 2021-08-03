@@ -86,6 +86,9 @@ features = [
 version = "0.10"
 features = ["with-actix-web"]
 
+[dependencies.sizedisplay]
+path = "crates/sizedisplay"
+
 [build-dependencies]
 # Generate rust from .proto files.
 protoc-rust = "2"
