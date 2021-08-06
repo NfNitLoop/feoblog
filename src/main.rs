@@ -5,9 +5,11 @@
 #[cfg(test)]
 mod tests;
 
-use crate::backend::{Factory, PruneOpts, ServerUser, UserID, sqlite};
+use crate::backend::{Factory, PruneOpts, ServerUser, UsageByUserRow, UserID, sqlite};
 use anyhow::{Error, bail};
+use sizedisplay::SizeDisplay;
 use structopt::StructOpt;
+use tablestream::{Stream, Column, col};
 
 mod backend;
 mod markdown;
@@ -187,6 +189,9 @@ pub(crate) enum DbCommand {
 
     /// Prune data from a datbase that is no longer referenced.
     Prune(DbPruneCommand),
+
+    /// Report DB usage size by user.
+    Usage(DbUsageCommand),
 }
 
 impl DbCommand {
@@ -195,6 +200,7 @@ impl DbCommand {
             Self::Init(command) => command.main(),
             Self::Upgrade(command) => command.main(),
             Self::Prune(command) => command.main(),
+            Self::Usage(command) => command.main(),
         }
     }
 }
@@ -279,7 +285,6 @@ impl DbPruneCommand {
 
         let builder = self.backend_options.factory_builder()?;
         let conn = builder.factory()?.open()?;
-
         
         let result = conn.prune(PruneOpts{
             dry_run: self.dry_run,
@@ -288,6 +293,60 @@ impl DbPruneCommand {
         })?;
 
         println!("{}", result);
+
+        Ok(())
+    }
+}
+
+#[derive(StructOpt, Debug, Clone)]
+struct DbUsageCommand {
+    #[structopt(flatten)]
+    backend_options: BackendOptions,
+
+    /// Limit output size to the top N users by size.
+    #[structopt(long, default_value = "20")]
+    limit: usize,
+}
+
+impl DbUsageCommand {
+    fn main(&self) -> Result<(), Error> {
+
+        let builder = self.backend_options.factory_builder()?;
+        let conn = builder.factory()?.open()?;
+
+        let stdout = std::io::stdout();
+        let mut lock = stdout.lock();
+        let mut stream = Stream::new(&mut lock, vec![
+            col!(Row: .user_id).header("User ID").min_width(44),
+            col!(Row: .name).header("Display Name"),
+            col!(Row: .item_bytes).header("Items").right(),
+            col!(Row: .attachment_bytes).header("Attachments").right(),
+            col!(Row: .total_bytes).header("Total").right(),
+        ]);
+
+        struct Row {
+            user_id: UserID,
+            name: String,
+            item_bytes: SizeDisplay,
+            attachment_bytes: SizeDisplay,
+            total_bytes: SizeDisplay,
+        }
+
+        let limit = self.limit;
+        let mut count = 0;
+        conn.usage_by_user(&mut |row| {
+            stream.row(Row{
+                user_id: row.user_id,
+                name: row.display_name.unwrap_or_else(String::new),
+                item_bytes: SizeDisplay::bytes(row.items_bytes).short(),
+                attachment_bytes: SizeDisplay::bytes(row.attachments_bytes).short(),
+                total_bytes: SizeDisplay::bytes(row.total_bytes).short(),
+            })?;
+            count += 1;
+            Ok(count < limit)
+        })?;
+
+        stream.finish()?;
 
         Ok(())
     }

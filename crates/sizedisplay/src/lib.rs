@@ -14,13 +14,20 @@ pub struct SizeDisplay {
     bytes: u64,
 
     digits: u8,
+    short: bool,
 }
 
 impl SizeDisplay {
 
     /// Constructor.
     pub fn bytes(bytes: u64) -> Self {
-        Self {bytes, digits: 3}
+        Self {bytes, digits: 3, short: false}
+    }
+
+    /// Use a single-character postfix.
+    pub fn short(mut self) -> Self {
+        self.short = true;
+        self
     }
 
     /// How many significant digits to display.
@@ -39,25 +46,46 @@ impl SizeDisplay {
 }
 
 const SIZES: &[&str] = &[
-    "KiB",
-    "MiB",
-    "GiB",
-    "TiB",
-    "PiB",
-    "EiB",
+    " bytes",
+    " KiB",
+    " MiB",
+    " GiB",
+    " TiB",
+    " PiB",
+    " EiB",
+];
+
+const SHORT_SIZES: &[&str] = &[
+    "b",
+    "K",
+    "M",
+    "G",
+    "T",
+    "P",
+    "E",
 ];
 
 
 impl std::fmt::Display for SizeDisplay {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // 0 is unambiguous.
+        if self.bytes == 0 {
+            return write!(f, "0");
+        }
+
+        let mut postfixes = if self.short {
+            SHORT_SIZES.iter().cloned().peekable()
+        } else {
+            SIZES.iter().cloned().peekable()
+        };
+
+        let mut postfix = postfixes.next().unwrap_or("!?");
         // No fractions for bytes:
         if self.bytes < 1024 {
-            return write!(f, "{} bytes", self.bytes);
+            return write!(f, "{}{}", self.bytes, postfix);
         }
 
         let mut num = self.bytes as f64;
-        let mut postfixes = SIZES.iter().peekable();
-        let mut postfix = " bytes";
         while num >= 1024.0 && postfixes.peek().is_some() {
             num = num / 1024.0;
             postfix = postfixes.next().expect("the value we just peeked");
@@ -74,7 +102,7 @@ impl std::fmt::Display for SizeDisplay {
             self.digits as usize - wholes as usize
         };
 
-        write!(f, "{1:.0$} {2}", frac_digs, num, postfix)
+        write!(f, "{1:.0$}{2}", frac_digs, num, postfix)
     }
 }
 

@@ -9,7 +9,7 @@ mod upgraders;
 
 use std::{io::{Read, Write}, ops::DerefMut, path::Path};
 
-use crate::protos::Item;
+use crate::{backend::UsageByUserRow, protos::Item};
 use actix_web::web::Bytes;
 use backend::{FileMeta, RowCallback, SHA512};
 use futures::Stream;
@@ -1399,6 +1399,72 @@ impl backend::Backend for Connection
         self.conn.execute("VACUUM", params![])?;
 
         Ok(result)
+    }
+
+    fn usage_by_user(&self, callback: RowCallback<'_, backend::UsageByUserRow>) -> Result<(), Error> {
+        let query = "
+            SELECT
+                s1.user_id,
+                s1.display_name,
+                EXISTS(SELECT 1 FROM known_users WHERE user_id=s1.user_id) AS known_user,
+                EXISTS(SELECT 1 FROM server_user WHERE user_id=s1.user_id) AS server_user,
+                item_count,
+                item_size,
+                IFNULL(attachment_size,0) AS attachment_size,
+                IFNULL(attachment_count,0) AS attachment_count,
+                item_size + COALESCE(attachment_size, 0) as total_size
+            FROM (
+                SELECT
+                    user_id,
+                    p.display_name,
+                    COUNT(*) as item_count,
+                    SUM(length(bytes)) as item_size
+                FROM item AS i
+                LEFT OUTER JOIN profile AS p USING (user_id)
+                GROUP BY user_id
+            ) AS s1
+            LEFT OUTER JOIN (
+                SELECT 
+                    user_id,
+                    SUM(IFNULL(LENGTH(contents),0)) as attachment_size,
+                    COUNT(*) AS attachment_count
+                FROM (
+                    SELECT DISTINCT user_id, hash
+                    FROM item
+                    INNER JOIN item_attachment USING (user_id, signature)
+                ) AS user_hashes
+                INNER JOIN store USING (hash)
+                GROUP BY user_id
+            ) AS s2 USING (user_id)
+            ORDER BY total_size DESC
+        ";
+
+        let mut stmt = self.conn.prepare(&query)?;
+        let mut rows = stmt.query(params![])?;
+
+        let mut fetch_more = true;
+        while fetch_more {
+            let row = match rows.next()? {
+                None => return Ok(()), // No more results.
+                Some(row) => row,
+            };
+            
+            let usage = UsageByUserRow {
+                user_id: UserID::from_vec(row.get(0)?)?,
+                display_name: row.get("display_name")?,
+                items_count: row.get::<&str, i64>("item_count")? as u64,
+                items_bytes: row.get::<&str, i64>("item_size")? as u64,
+                attachments_count: row.get::<&str, i64>("attachment_count")? as u64,
+                attachments_bytes: row.get::<&str, i64>("attachment_size")? as u64,
+                known_user: row.get("known_user")?,
+                server_user: row.get("server_user")?,
+                total_bytes: row.get::<&str, i64>("total_size")? as u64,
+            };
+
+            fetch_more = callback(usage)?;
+        }
+
+        Ok(())
     }
 }
 
