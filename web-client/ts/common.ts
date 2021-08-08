@@ -386,7 +386,7 @@ export class TaskTracker
     store: Writable<TaskTracker>|null = null
 
     // A parent we may need to notify of changes.
-    private parent: TaskTracker|undefined
+    public parent: TaskTracker|undefined
 
     // Promises to any running subtasks:
     private subtasks: Promise<unknown>[] = []

@@ -138,8 +138,6 @@ async function syncMyFeedTask(tracker: TaskTracker) {
                     }
                 }
 
-                // TODO: We CAN remove this await to allow multiple users to be sync'd at once.
-                // But want a nice way like prefetch() to limit the parallelism here.
                 await tracker.runSubtask(`Items for ${uid} ("${follow.display_name}")`, (tracker) => {
                     return syncUserItems({tracker, local, userID: uid, servers: followServers})
                 })
@@ -487,70 +485,32 @@ async function syncUserItems({tracker, local, userID, servers}: SyncOptions): Pr
         return
     }
 
-    // TODO: Put some optional limit on how far back we sync. 
-    // let localSignatures = await loadAllSignatures(local, userID)
-    let localItems = await loadItemEntries(local, userID);
+    let syncCount = 0
 
-    // TODO: Instead of loading the world and looping through servers, do a merge from all servers.
-    // I usually only sync from 1 server so far, though, so this isn't the current bottleneck:
-    for (let server of servers) {
-        try {
-            let syncCount = 0
-            let errorSaving = false
+    await tracker.runSubtask(`Syncing from ${[...servers].join(", ")}`, async (tracker) => {
+        let itemsToSync = missingItems({tracker, local, userID, servers})
 
-            await tracker.runSubtask(`Syncing from ${server}`, async (tracker) => {
-                let remote = new Client({base_url: server})
+        let hadError = false
 
-                let remoteItems = prefetch(remote.getUserItems(userID), 1,  async (listEntry) => {
-                    let info: EntryInfo
-                    let signature: Signature
-                    try {
-                        info = entryInfoFrom(listEntry, userID);
-                        signature = info.signature
-                    } catch (e) {
-                        tracker.error(`Invalid signature from server: ${listEntry.signature.bytes}`)
-                        return null
-                    }
-                    if (localItems.has(signature.toString())) return null
-                    return {info, signature}
-                })
-                remoteItems = asyncFilter(remoteItems, async (i) => i != null)
-                let results = prefetch(remoteItems, 4, async (args) => {
-                    let {info, signature} = args! // TypeScript doesn't see we filtered out nulls.
-                    try {
-                        await syncUserItem({
-                            userID,
-                            signature,
-                            to: local,
-                            from: remote,
-                            tracker,
-                        })
-                        ++syncCount
-                    } catch (e) {
-                        tracker.error(`Error saving item: ${e}`)
-                        tracker.warn("This may mean that the user can not post to the server, or has exceeded their quota. Skipping")
-                        errorSaving = true
-                        return // out of the subtask.
-                    }
-
-                    localItems.set(signature.toString(), info)
-                });
-     
-                for await (let result of results) {}
-            }) // subTask
-
-            tracker.log(`Copied ${syncCount} new items`)
-            if (errorSaving) {
-                // Very likely can't save more items for this user. Don't try more.
-                return
+        let results = prefetch(itemsToSync, 4, async (args) => {
+            try {
+                await syncUserItem(args)
+            } catch (e) {
+                // TODO: This could be an error due to the remote being unable to serve the item,
+                // or the local server being unable to accept it.  Distinguish and handle errors separately.
+                tracker.error(`Error saving item: ${e}`)
+                tracker.warn("This may mean that the user can not post to the server, or has exceeded their quota.")
+                hadError = true
             }
-        } catch (e) {
-            // One server failing shouldn't stop us from syncing from others.
-            tracker.error(`${e}`)
-            tracker.warn("Skipping this server")
-        }
+        });
 
-    }
+        for await (let result of results) {
+            syncCount++
+            if (hadError) break
+        }
+    })
+
+    tracker.log(`Copied ${syncCount} new items`)
 }
 
 async function loadItemEntries(client: Client, userID: UserID): Promise<Map<string, EntryInfo>> {
@@ -563,6 +523,7 @@ async function loadItemEntries(client: Client, userID: UserID): Promise<Map<stri
     return entries
 }
 
+// Can throw:
 function entryInfoFrom(entry: ItemListEntry, userID: UserID): EntryInfo {
     let sig = Signature.fromBytes(entry.signature.bytes)
 
@@ -607,6 +568,8 @@ type SyncUserItemParams = {
 async function syncUserItem({userID, signature, to, from, tracker}: SyncUserItemParams) {
 
     tracker.log(`Copying ${signature}`)
+    // Skipping client-side signature verification because we expect the accepting server
+    // to validate it for us anyway.
     let bytes = await from.getItemBytes(userID, signature, {skipSignatureCheck: true})
     if (!bytes) {
         // This would be weird, since the remote server just listed the item for us.
@@ -637,11 +600,158 @@ function serversFromProfile(profile: Profile|undefined|null, tracker = new TaskT
     )
 }
 
+// Get a list of items that exist on remote servers but not the local one.
+
+async function * missingItems({ tracker, local, userID,  servers}: SyncOptions ): AsyncGenerator<SyncUserItemParams> {
+    let localItems = new ServerUserItems(local, userID, tracker);
+    let remotes: ServerUserItems[] = [...servers].map((s) => new ServerUserItems(s, userID, tracker))
+
+    while (!localItems.hadError) {
+        await Promise.all([
+            localItems.fetchNext(),
+            ...remotes.map(r => r.fetchNext())
+        ])
+        remotes = remotes.filter((r) => !r.isDone)
+        if (remotes.length == 0) {
+            return // No more remote items.
+        }
+
+        let localNext = localItems.headItem?.value
+        let headItems = [
+            localNext,
+            ... remotes.map((r) => r.headItem?.value)
+        ]
+        let nextItems = headItems.filter((v) => !!v) as ItemListEntry[]
+
+        nextItems.sort(entryByTimestamp);
+        let first = nextItems[0]
+
+        // Eventually, implement and check some early-end conditions here.
+
+        if (localItems.popIfEquals(first)) {
+            // Have this locally. No need to sync it.
+            remotes.forEach((r) => r.popIfEquals(first))
+            continue
+        }
+
+        // Find servers we could sync this from:
+        let choices = remotes.filter((r) => r.popIfEquals(first))
+        // This could be more intelligent. Maybe we prefer the faster server?
+        // For now, just random:
+        let choice = randomElement(choices)
+
+        let signature: Signature
+        try {
+           signature = Signature.fromBytes(first.signature?.bytes)
+        } catch (error) {
+            tracker.warn(`Bad signature ${first.signature?.bytes} from server ${choice.client.url}`)
+            continue
+        }
+
+        yield {
+            userID,
+            signature,
+            from: choice.client,
+            to: local, 
+            tracker,
+        }
+    }
+}
+
+// TODO: There's an issue here where if:
+// 1. Someone posts a lot of items with the exact same timestamp
+// 2. and the server doesn't order it this way
+// ... then we may try to sync some items that aren't necessary.
+// 
+// We could fix this locally by making sure to order same-timestamp items
+// by their signatures. (TODO)
+//
+// Sort by newest first, then by signature for a full ordering.
+function entryByTimestamp(e1: ItemListEntry, e2: ItemListEntry): number {
+    let cmp = e2.timestamp_ms_utc - e1.timestamp_ms_utc
+    if (cmp != 0) return cmp
+
+    let e1b = e1.signature?.bytes
+    let e2b = e2.signature?.bytes
+    if (!e1b) return -1;
+    if (!e2b) return 1;
+
+    cmp = e2b.length - e1b.length
+    if (cmp != 0) return cmp
+
+    for (let i = 0; i < e1b.length; i++) {
+        cmp = e2b[i] - e1b[i]
+        if (cmp != 0) return cmp
+    }
+
+    return 0
+}
+
+function randomElement<T>(list: T[]): T {
+    if (list.length == 1) {
+        return list[0]
+    }
+
+    let rnd = Math.random() * list.length
+    rnd = Math.floor(rnd)
+    return list[rnd]
+}
+
+// Helper methods for querying/merging user items. 
+class ServerUserItems {
+    client: Client
+    private userItems: AsyncGenerator<ItemListEntry>
+    headItem: IteratorResult<ItemListEntry, void> | undefined
+    
+    isDone = false
+    hadError = false
+        
+    constructor(server: string|Client, userID: UserID, public tracker: TaskTracker) {
+        if (typeof server == "string") {
+            this.client = new Client({base_url: server})
+        } else {
+            this.client = server
+        }
+
+        this.userItems = this.client.getUserItems(userID)
+    }
+
+    async fetchNext(): Promise<void> {
+        if (this.headItem !== undefined) { return }
+        if (this.isDone) { return }
+        try {
+            this.headItem = await this.userItems.next()
+            if (this.headItem.done) { this.isDone = true }
+        } catch (e) {
+            this.tracker.warn(`error reading from ${this.client.url}. Skipping server.`)
+            this.isDone = true
+            this.hadError = true
+        }
+    }
+
+    // If the head item is equal to this value, pop it & return true.
+    popIfEquals(entry: ItemListEntry): boolean {
+        if (!this.headEquals(entry)) return false
+    
+        this.headItem = undefined
+        return true
+    }
+
+    private headEquals(entry: ItemListEntry): boolean {
+        if (this.isDone) return false
+        let head = this.headItem?.value
+        if (!head) return false
+        return entryByTimestamp(head, entry) == 0
+    }
+
+    
+}
 
 function publishMyPosts() {
     taskTracker.run("Publish my posts", publishMyPostsTask)
 }
 
+// TODO: implement a missingRemoteItems to mirror missing[Local]Items(). Use that here to optimize this.
 async function publishMyPostsTask(tracker: TaskTracker) {
     let local = $appState.client
     let result = await local.getProfile(userID)
@@ -718,13 +828,6 @@ async function publishMyPostsTask(tracker: TaskTracker) {
     })
 }
 
-async function * asyncFilter<T>(gen: AsyncGenerator<T, any, undefined>, filter: (t: T) => Promise<boolean>): AsyncGenerator<T, any, undefined> {
-    for await (let item of gen) {
-        if (await filter(item)) {
-            yield item
-        }
-    }
-}
 
 
 </script>

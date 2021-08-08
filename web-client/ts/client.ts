@@ -457,11 +457,11 @@ export class Signature {
 
     static fromBytes(bytes: Uint8Array): Signature {
         if (bytes.length < SIGNATURE_BYTES) {
-            throw "Signature too short"
+            throw new Error("Signature too short")
         }
     
         if (bytes.length > SIGNATURE_BYTES) {
-            throw "Signature too long."
+            throw new Error("Signature too long.")
         }
     
         return new Signature(bytes)
