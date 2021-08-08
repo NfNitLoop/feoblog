@@ -48,7 +48,7 @@ import type { Item, ItemListEntry, Profile } from "../../protos/feoblog";
 import type { AppState } from "../../ts/app"
 import type { AttachmentMeta } from "../../ts/client"
 import { Client, Signature, UserID } from "../../ts/client"
-import { readableSize, TaskTracker, validateServerURL } from "../../ts/common";
+import { prefetch, readableSize, TaskTracker, validateServerURL } from "../../ts/common";
 import Button from "../Button.svelte"
 import InputBox from "../InputBox.svelte"
 import TaskTrackerView from "../TaskTrackerView.svelte";
@@ -138,6 +138,8 @@ async function syncMyFeedTask(tracker: TaskTracker) {
                     }
                 }
 
+                // TODO: We CAN remove this await to allow multiple users to be sync'd at once.
+                // But want a nice way like prefetch() to limit the parallelism here.
                 await tracker.runSubtask(`Items for ${uid} ("${follow.display_name}")`, (tracker) => {
                     return syncUserItems({tracker, local, userID: uid, servers: followServers})
                 })
@@ -489,6 +491,8 @@ async function syncUserItems({tracker, local, userID, servers}: SyncOptions): Pr
     // let localSignatures = await loadAllSignatures(local, userID)
     let localItems = await loadItemEntries(local, userID);
 
+    // TODO: Instead of loading the world and looping through servers, do a merge from all servers.
+    // I usually only sync from 1 server so far, though, so this isn't the current bottleneck:
     for (let server of servers) {
         try {
             let syncCount = 0
@@ -497,18 +501,22 @@ async function syncUserItems({tracker, local, userID, servers}: SyncOptions): Pr
             await tracker.runSubtask(`Syncing from ${server}`, async (tracker) => {
                 let remote = new Client({base_url: server})
 
-                for await (let listEntry of remote.getUserItems(userID)) {
-                    let info
-                    let signature 
+                let remoteItems = prefetch(remote.getUserItems(userID), 1,  async (listEntry) => {
+                    let info: EntryInfo
+                    let signature: Signature
                     try {
                         info = entryInfoFrom(listEntry, userID);
                         signature = info.signature
                     } catch (e) {
                         tracker.error(`Invalid signature from server: ${listEntry.signature.bytes}`)
-                        continue
+                        return null
                     }
-                    if (localItems.has(signature.toString())) continue
-
+                    if (localItems.has(signature.toString())) return null
+                    return {info, signature}
+                })
+                remoteItems = asyncFilter(remoteItems, async (i) => i != null)
+                let results = prefetch(remoteItems, 4, async (args) => {
+                    let {info, signature} = args! // TypeScript doesn't see we filtered out nulls.
                     try {
                         await syncUserItem({
                             userID,
@@ -526,7 +534,9 @@ async function syncUserItems({tracker, local, userID, servers}: SyncOptions): Pr
                     }
 
                     localItems.set(signature.toString(), info)
-                } //for
+                });
+     
+                for await (let result of results) {}
             }) // subTask
 
             tracker.log(`Copied ${syncCount} new items`)
@@ -706,6 +716,14 @@ async function publishMyPostsTask(tracker: TaskTracker) {
 
         tracker.log(`Copied ${readableSize(bytesCopied)}`)
     })
+}
+
+async function * asyncFilter<T>(gen: AsyncGenerator<T, any, undefined>, filter: (t: T) => Promise<boolean>): AsyncGenerator<T, any, undefined> {
+    for await (let item of gen) {
+        if (await filter(item)) {
+            yield item
+        }
+    }
 }
 
 

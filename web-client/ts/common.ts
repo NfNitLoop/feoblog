@@ -308,13 +308,13 @@ function interceptLinkClick(event: Event, anchor: HTMLAnchorElement, params?: Fi
 }
 
 
-// Applies `asyncFilter` to up to `count` items before it begins yielding them.
+// Applies `mapper` to up to `count` items before it begins yielding them.
 // Useful for prefetching things in parallel with promises.
-export async function* prefetch<T, Out>(items: AsyncIterable<T>, count: Number, asyncFilter: (t: T) => Promise<Out>): AsyncGenerator<Out> {
+export async function* prefetch<T, Out>(items: AsyncIterable<T>, count: Number, mapper: (t: T) => Promise<Out>): AsyncGenerator<Out> {
     let outs: Promise<Out>[] = []
 
     for await (let item of items) {
-        outs.push(asyncFilter(item))
+        outs.push(mapper(item))
         while (outs.length > count) {
             yield assertExists(outs.shift())
         }
@@ -387,6 +387,9 @@ export class TaskTracker
 
     // A parent we may need to notify of changes.
     private parent: TaskTracker|undefined
+
+    // Promises to any running subtasks:
+    private subtasks: Promise<unknown>[] = []
  
     private _isRunning = false
     get isRunning() { return this._isRunning }
@@ -419,7 +422,9 @@ export class TaskTracker
 
         let timer = new Timer()
         try {
-            return await asyncTask(this)
+            let out: T = await asyncTask(this)
+            await Promise.all(this.subtasks)
+            return out
         } catch (e) {
             if (!(e instanceof TaskTrackerException)) {
                 console.error("Error in TaskTracker.run():", e)
@@ -450,7 +455,9 @@ export class TaskTracker
         this.writeLog(entry)
         
         try {
-            return await subtask.run(taskName, asyncTask)
+            let promise = subtask.run(taskName, asyncTask)
+            this.subtasks.push(promise)
+            return await promise
         } finally {
             if (subtask.errorCount > 0) {
                 entry.isError = true
