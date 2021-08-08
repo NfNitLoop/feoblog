@@ -306,6 +306,11 @@ struct DbUsageCommand {
     /// Limit output size to the top N users by size.
     #[structopt(long, default_value = "20")]
     limit: usize,
+
+    /// Show the userID as hexadecimal instead of base58.
+    // useful if you need to make a DB query in the form of x'hexadecimal'. 
+    #[structopt(long)]
+    hex: bool,
 }
 
 impl DbUsageCommand {
@@ -316,8 +321,20 @@ impl DbUsageCommand {
 
         let stdout = std::io::stdout();
         let mut lock = stdout.lock();
+    
+        let id_col = if self.hex {
+            Column::new(|f, r: &Row| {
+                for byte in r.user_id.bytes() {
+                    write!(f, "{:02x}", byte)?;
+                }
+                Ok(())
+            }).header("User ID (hex)").min_width(64)
+        } else {
+            col!(Row: .user_id).header("User ID").min_width(44)
+        };
+
         let mut stream = Stream::new(&mut lock, vec![
-            col!(Row: .user_id).header("User ID").min_width(44),
+            id_col,
             col!(Row: .name).header("Display Name"),
             col!(Row: .item_bytes).header("Items").right(),
             col!(Row: .attachment_bytes).header("Attachments").right(),
