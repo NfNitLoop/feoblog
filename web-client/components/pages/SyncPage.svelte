@@ -1,18 +1,11 @@
 <div class="item">
-<div class="body">
-
-    <h1>Sync</h1>
-    <p>Synchronize your posts (and your feed) from/to other servers</p>
-    <ul>
-        <li><strong>Pull My Feed</strong>: Copies posts of those you follow from their various servers onto this one.</li>
-        <li><strong>Push My Posts</strong>: Copies posts you've made on this server to any servers you've listed in your profile.</li>
-    </ul>
-</div>
+<div class="header">
+    <div class="text">Sync</div>
+    <OpenArrow bind:isOpen={settingsOpen}/>
 </div>
 
-
-<div class="item">
-<div class="body">
+{#if settingsOpen}
+<div transition:slide|local class="inset">
     <InputBox 
         label="Server URL"
         placeholder="(Optional. Default: Servers listed in profiles)"
@@ -21,6 +14,18 @@
         bind:errorMessage={serverURLError}
         bind:value={serverURL}
     />
+
+    <CheckBox disabled={taskTracker.isRunning} onGrey bind:checked={backfillAttachments}>Backfill Attachments</CheckBox>
+
+</div>
+{/if}
+
+<div class="body">
+    <p>Synchronize your posts (and your feed) from/to other servers</p>
+    <ul>
+        <li><strong>Pull My Feed</strong>: Copies posts of those you follow from their various servers onto this one.</li>
+        <li><strong>Push My Posts</strong>: Copies posts you've made on this server to any servers you've listed in your profile.</li>
+    </ul>
 
     <div class="buttons">
         <Button 
@@ -39,21 +44,38 @@
 </div>
 
 <style>
-.buttons { margin: 1rem 0rem; }
+
+.text {
+    font-weight: bold;
+    /* margin-left: 0.5em; */
+    padding: 0.5em 0;
+}
+
+.buttons {
+    margin-bottom: 1em;
+}
+
+
 </style>
 
 <script language="ts">
 import type { Writable } from "svelte/store"
-import type { Item, ItemListEntry, Profile } from "../../protos/feoblog";
+import { slide } from "svelte/transition"
+import type { ItemListEntry, Profile } from "../../protos/feoblog";
+import { Item } from "../../protos/feoblog"
 import type { AppState } from "../../ts/app"
 import type { AttachmentMeta } from "../../ts/client"
 import { Client, Signature, UserID } from "../../ts/client"
-import { readableSize, TaskTracker, validateServerURL } from "../../ts/common";
+import { prefetch, readableSize, TaskTracker, validateServerURL } from "../../ts/common";
 import Button from "../Button.svelte"
+import CheckBox from "../CheckBox.svelte"
+import OpenArrow from "../OpenArrow.svelte"
 import InputBox from "../InputBox.svelte"
 import TaskTrackerView from "../TaskTrackerView.svelte";
 
 export let appState: Writable<AppState>
+
+let settingsOpen = false
 
 let userID: UserID
 $: userID = function() {
@@ -65,6 +87,7 @@ $: userID = function() {
 
 let serverURL = ""
 let serverURLError = ""
+let backfillAttachments = false;
 
 let taskTracker = new TaskTracker()
 
@@ -138,7 +161,8 @@ async function syncMyFeedTask(tracker: TaskTracker) {
                     }
                 }
 
-                await tracker.runSubtask(`Items for ${uid} ("${follow.display_name}")`, (tracker) => {
+                await tracker.runSubtask(`Items for "${follow.display_name}"`, (tracker) => {
+                    tracker.log(`User ID: ${uid}`)
                     return syncUserItems({tracker, local, userID: uid, servers: followServers})
                 })
             } catch (e) {
@@ -148,16 +172,18 @@ async function syncMyFeedTask(tracker: TaskTracker) {
         }
     })
 
-    // Now fill in any file attachments for the sync:
-    await tracker.runSubtask("Syncing file attachments", async (tracker) => {
-        await syncFeedAttachments({
-            sourceServer,
-            tracker,
-            to: local,
-            userID,
-            profile: myProfile
+    if (backfillAttachments)
+    {
+        await tracker.runSubtask("Syncing file attachments", async (tracker) => {
+            await syncFeedAttachments({
+                sourceServer,
+                tracker,
+                to: local,
+                userID,
+                profile: myProfile
+            })
         })
-    })
+    }
 }
 
 type SyncFeedAttachmentsArgs = {
@@ -197,7 +223,8 @@ async function syncFeedAttachments({sourceServer, tracker, to, userID, profile}:
     if (myServers.size === 0) {
         tracker.warn("No servers specified for current user. Can't sync user's files.")   
     } else {
-        bytesCopied += await tracker.runSubtask(`User ${userID} ("${profile?.display_name}")`, async (tracker) => {
+        bytesCopied += await tracker.runSubtask(`User "${profile?.display_name}"`, async (tracker) => {
+            tracker.log(`User ID: ${userID}`)
             return syncUserAttachments({tracker, fromServers: myServers, to, userID})
         })
     }
@@ -220,15 +247,14 @@ async function syncFeedAttachments({sourceServer, tracker, to, userID, profile}:
 
 
         try {
-            await tracker.runSubtask(`User ${uid} ("${follow.display_name}")`, (tracker) => {
+            await tracker.runSubtask(`User "${follow.display_name}"`, (tracker) => {
+                tracker.log(`User ID: ${uid}`)
                 return syncUserAttachments({tracker, fromServers: followServers, to, userID: uid})
             })
         } catch (_ignored) {
             // The tracker will have logged and reported the exception.
         }
     }
-    
-
     
 
     tracker.log(`Copied ${readableSize(bytesCopied)}`)
@@ -241,6 +267,8 @@ type SyncUserAttachmentsArgs = {
     to: Client,
 }
 
+// backfill.
+// TODO: Limit backfill timespan?
 async function syncUserAttachments({tracker, userID, fromServers, to}: SyncUserAttachmentsArgs): Promise<number> {
     let bytesCopied = 0
 
@@ -267,6 +295,7 @@ async function syncUserAttachments({tracker, userID, fromServers, to}: SyncUserA
             throw `Error fetching item ${info.signature}`
         }
 
+        // TODO: This is the thing I need to run from syncItem(s):
         let attachments = getAttachments(item)
         for (let attachment of attachments) {
             bytesCopied += await syncAttachment({
@@ -325,7 +354,7 @@ async function syncAttachment({userID, signature, fileName, to, fromServers, tra
         }
 
         if (!buffer) {
-            tracker.warn("Could not find file on any known server.")
+            tracker.warn("Could not find file on any server.")
             return bytesCopied
         }
 
@@ -485,61 +514,31 @@ async function syncUserItems({tracker, local, userID, servers}: SyncOptions): Pr
         return
     }
 
-    // TODO: Put some optional limit on how far back we sync. 
-    // let localSignatures = await loadAllSignatures(local, userID)
-    let localItems = await loadItemEntries(local, userID);
+    let syncCount = 0
+    let attachmentsCopied = 0
+    let bytesCopied = 0
 
-    for (let server of servers) {
-        try {
-            let syncCount = 0
-            let errorSaving = false
+    await tracker.runSubtask(`Syncing from ${[...servers].join(", ")}`, async (tracker) => {
+        let itemsToSync = missingItems({tracker, local, userID, servers})
 
-            await tracker.runSubtask(`Syncing from ${server}`, async (tracker) => {
-                let remote = new Client({base_url: server})
+        let results = prefetch(itemsToSync, 4, syncUserItem);
 
-                for await (let listEntry of remote.getUserItems(userID)) {
-                    let info
-                    let signature 
-                    try {
-                        info = entryInfoFrom(listEntry, userID);
-                        signature = info.signature
-                    } catch (e) {
-                        tracker.error(`Invalid signature from server: ${listEntry.signature.bytes}`)
-                        continue
-                    }
-                    if (localItems.has(signature.toString())) continue
+        for await (let result of results) {
+            syncCount += result.itemsCopied
+            attachmentsCopied += result.attachmentsCopied
+            bytesCopied += result.bytesCopied
 
-                    try {
-                        await syncUserItem({
-                            userID,
-                            signature,
-                            to: local,
-                            from: remote,
-                            tracker,
-                        })
-                        ++syncCount
-                    } catch (e) {
-                        tracker.error(`Error saving item: ${e}`)
-                        tracker.warn("This may mean that the user can not post to the server, or has exceeded their quota. Skipping")
-                        errorSaving = true
-                        return // out of the subtask.
-                    }
-
-                    localItems.set(signature.toString(), info)
-                } //for
-            }) // subTask
-
-            tracker.log(`Copied ${syncCount} new items`)
-            if (errorSaving) {
-                // Very likely can't save more items for this user. Don't try more.
-                return
+            if (result.destError) {
+                tracker.error(`Error saving item: ${result.destError}`)
+                tracker.warn("This may mean that the user can not post to the server, or has exceeded their quota.")
+                break
             }
-        } catch (e) {
-            // One server failing shouldn't stop us from syncing from others.
-            tracker.error(`${e}`)
-            tracker.warn("Skipping this server")
         }
+    })
 
+    tracker.log(`Copied ${syncCount} new items`)
+    if (attachmentsCopied > 0) {
+        tracker.log(`Copied ${attachmentsCopied} attachments totalling ${readableSize(bytesCopied)}`)
     }
 }
 
@@ -553,6 +552,7 @@ async function loadItemEntries(client: Client, userID: UserID): Promise<Map<stri
     return entries
 }
 
+// Can throw:
 function entryInfoFrom(entry: ItemListEntry, userID: UserID): EntryInfo {
     let sig = Signature.fromBytes(entry.signature.bytes)
 
@@ -594,21 +594,103 @@ type SyncUserItemParams = {
     signature: Signature
 }
 
-async function syncUserItem({userID, signature, to, from, tracker}: SyncUserItemParams) {
+async function syncUserItem({userID, signature, to, from, tracker}: SyncUserItemParams): Promise<SyncItemResult> {
 
-    tracker.log(`Copying ${signature}`)
-    let bytes = await from.getItemBytes(userID, signature, {skipSignatureCheck: true})
-    if (!bytes) {
-        // This would be weird, since the remote server just listed the item for us.
-        // But I guess it shouldn't block syncing further items?
-        tracker.warn("404 (not found) from `from` server")
-        return
+    let result: SyncItemResult = {
+        userID,
+        signature,
+        from,
+        to,
+        itemsCopied: 0,
+
+        attachmentsCopied: 0,
+        bytesCopied: 0,
     }
 
-    // Throws & exits if we couldn't put an item.
-    // One possible reason is that the user is not "known" to the server, so the server
-    // won't hold items for that user.  Another is that the user has reached their quota.
-    await to.putItem(userID, signature, bytes)
+    tracker.logTemp(`Copying ${signature}`)
+    // Skipping client-side signature verification because we expect the accepting server
+    // to validate it for us anyway.
+    let opts = {skipSignatureCheck: true}
+
+    let bytes
+
+    try {
+        bytes = await from.getItemBytes(userID, signature, opts)
+        if (!bytes) {
+            // This would be weird, since the remote server just listed the item for us.
+            // But I guess it shouldn't block syncing further items?
+            tracker.warn(`404 (not found) from server ${from.url} for item ${signature}`)
+            return result
+        }
+    } catch (error) {
+        result.sourceError = error
+        return result
+    }
+    
+
+    try { 
+        await to.putItem(userID, signature, bytes)
+    } catch (error) {
+        result.destError = error
+        return result
+    }
+
+    result.itemsCopied += 1
+
+    let item
+    try {
+        item = Item.deserialize(bytes)
+    } catch (error) {
+        tracker.warn(`Error deserializing item ${signature}. Won't be able to copy attachments if they exist.`)
+        return result
+    }
+
+    let attachments
+    try {
+        attachments = getAttachments(item)
+    } catch (error) {
+        tracker.warn(`Error parsing attachments for ${signature}: ${error}. Skipping attachments.`)
+        return result
+    }
+
+    for (let attachment of attachments) {
+        try {
+            let bytes = await syncAttachment({
+                userID,
+                signature,
+                to,
+                tracker,
+                fileName: attachment.name,
+                fromServers: new Set([from.url]),
+            })
+            result.bytesCopied += bytes
+            if (bytes > 0) {
+                result.attachmentsCopied += 1
+            }
+        } catch (error) {
+            // syncAttachment should've logged this error.
+            console.error("syncAttachment threw an error:", error)
+        }
+    }
+
+    return result
+}
+
+interface SyncItemResult {
+    userID: UserID
+    signature: Signature
+    to: Client
+    from: Client
+
+    itemsCopied: number
+    attachmentsCopied: number
+    bytesCopied: number
+
+    /** An error copying from `from` */
+    sourceError?: unknown
+
+    /** an error copying to `to` */
+    destError?: unknown
 }
 
 // Return only valid servers from a Profile.
@@ -627,11 +709,158 @@ function serversFromProfile(profile: Profile|undefined|null, tracker = new TaskT
     )
 }
 
+// Get a list of items that exist on remote servers but not the local one.
+
+async function * missingItems({ tracker, local, userID,  servers}: SyncOptions ): AsyncGenerator<SyncUserItemParams> {
+    let localItems = new ServerUserItems(local, userID, tracker);
+    let remotes: ServerUserItems[] = [...servers].map((s) => new ServerUserItems(s, userID, tracker))
+
+    while (!localItems.hadError) {
+        await Promise.all([
+            localItems.fetchNext(),
+            ...remotes.map(r => r.fetchNext())
+        ])
+        remotes = remotes.filter((r) => !r.isDone)
+        if (remotes.length == 0) {
+            return // No more remote items.
+        }
+
+        let localNext = localItems.headItem?.value
+        let headItems = [
+            localNext,
+            ... remotes.map((r) => r.headItem?.value)
+        ]
+        let nextItems = headItems.filter((v) => !!v) as ItemListEntry[]
+
+        nextItems.sort(entryByTimestamp);
+        let first = nextItems[0]
+
+        // Eventually, implement and check some early-end conditions here.
+
+        if (localItems.popIfEquals(first)) {
+            // Have this locally. No need to sync it.
+            remotes.forEach((r) => r.popIfEquals(first))
+            continue
+        }
+
+        // Find servers we could sync this from:
+        let choices = remotes.filter((r) => r.popIfEquals(first))
+        // This could be more intelligent. Maybe we prefer the faster server?
+        // For now, just random:
+        let choice = randomElement(choices)
+
+        let signature: Signature
+        try {
+           signature = Signature.fromBytes(first.signature?.bytes)
+        } catch (error) {
+            tracker.warn(`Bad signature ${first.signature?.bytes} from server ${choice.client.url}`)
+            continue
+        }
+
+        yield {
+            userID,
+            signature,
+            from: choice.client,
+            to: local, 
+            tracker,
+        }
+    }
+}
+
+// TODO: There's an issue here where if:
+// 1. Someone posts a lot of items with the exact same timestamp
+// 2. and the server doesn't order it this way
+// ... then we may try to sync some items that aren't necessary.
+// 
+// We could fix this locally by making sure to order same-timestamp items
+// by their signatures. (TODO)
+//
+// Sort by newest first, then by signature for a full ordering.
+function entryByTimestamp(e1: ItemListEntry, e2: ItemListEntry): number {
+    let cmp = e2.timestamp_ms_utc - e1.timestamp_ms_utc
+    if (cmp != 0) return cmp
+
+    let e1b = e1.signature?.bytes
+    let e2b = e2.signature?.bytes
+    if (!e1b) return -1;
+    if (!e2b) return 1;
+
+    cmp = e2b.length - e1b.length
+    if (cmp != 0) return cmp
+
+    for (let i = 0; i < e1b.length; i++) {
+        cmp = e2b[i] - e1b[i]
+        if (cmp != 0) return cmp
+    }
+
+    return 0
+}
+
+function randomElement<T>(list: T[]): T {
+    if (list.length == 1) {
+        return list[0]
+    }
+
+    let rnd = Math.random() * list.length
+    rnd = Math.floor(rnd)
+    return list[rnd]
+}
+
+// Helper methods for querying/merging user items. 
+class ServerUserItems {
+    client: Client
+    private userItems: AsyncGenerator<ItemListEntry>
+    headItem: IteratorResult<ItemListEntry, void> | undefined
+    
+    isDone = false
+    hadError = false
+        
+    constructor(server: string|Client, userID: UserID, public tracker: TaskTracker) {
+        if (typeof server == "string") {
+            this.client = new Client({base_url: server})
+        } else {
+            this.client = server
+        }
+
+        this.userItems = this.client.getUserItems(userID)
+    }
+
+    async fetchNext(): Promise<void> {
+        if (this.headItem !== undefined) { return }
+        if (this.isDone) { return }
+        try {
+            this.headItem = await this.userItems.next()
+            if (this.headItem.done) { this.isDone = true }
+        } catch (e) {
+            this.tracker.warn(`error reading from ${this.client.url}. Skipping server.`)
+            this.isDone = true
+            this.hadError = true
+        }
+    }
+
+    // If the head item is equal to this value, pop it & return true.
+    popIfEquals(entry: ItemListEntry): boolean {
+        if (!this.headEquals(entry)) return false
+    
+        this.headItem = undefined
+        return true
+    }
+
+    private headEquals(entry: ItemListEntry): boolean {
+        if (this.isDone) return false
+        let head = this.headItem?.value
+        if (!head) return false
+        return entryByTimestamp(head, entry) == 0
+    }
+
+    
+}
 
 function publishMyPosts() {
     taskTracker.run("Publish my posts", publishMyPostsTask)
 }
 
+// TODO: implement a missingRemoteItems to mirror missing[Local]Items(). Use that here to optimize this.
 async function publishMyPostsTask(tracker: TaskTracker) {
     let local = $appState.client
     let result = await local.getProfile(userID)
@@ -707,6 +936,7 @@ async function publishMyPostsTask(tracker: TaskTracker) {
         tracker.log(`Copied ${readableSize(bytesCopied)}`)
     })
 }
+
 
 
 </script>

@@ -20,16 +20,18 @@
     </div>
 
     <div class="items">
-        <Router {routes}/>
+        <!-- See: https://github.com/ItalyPaleAle/svelte-spa-router/issues/234 -->
+        {#key $location}
+            <Router {routes}/>
+        {/key}
     </div>
 
 </div>
 
 <script context="module" lang="ts">
     import type { RouteDefinition } from "svelte-spa-router"
-    import active from "svelte-spa-router/active"
-    import Router from "svelte-spa-router"
-
+    import { default as Router, location }  from "svelte-spa-router"
+    
     import NotFoundPage from "./NotFoundPage.svelte"
     import * as app from "../ts/app"
 </script>
@@ -103,4 +105,18 @@ $: {
 }
 
 </script>
+
+
+<style>
+
+:global(body) {
+    /* 
+    Always show the scroll bar.
+    Some things we do change the length of the page (ex: lazy-loading Items)
+    and having it constantly pop in/out can be distracting.
+    */
+    overflow-y: scroll;
+}
+
+</style>
 

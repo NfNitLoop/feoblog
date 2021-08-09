@@ -17,7 +17,7 @@
     </div>
 
     {#if hasSettings && !settingsHidden}
-        <div class="settings" transition:slide>
+        <div class="settings" transition:slide|local>
             <slot name="settings"></slot>
         </div>
     {/if}
@@ -113,6 +113,8 @@ class MouseLeftHandler {
     top: 0px;
     transition: all 300ms;
     max-width: 55rem;
+    /* Required so that transform'd items don't bleed through. Weird. */
+    z-index: 1;
 }
 
 .pageHeading :global(h1) {

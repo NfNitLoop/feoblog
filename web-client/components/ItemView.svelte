@@ -24,6 +24,7 @@ export let signature: string
 // Caller can provide a pre-fetched Item. 
 // DO NOT BIND. If you want to see the item loaded, use on:itemLoaded
 let initialItem: Item|null|undefined // = undefined // weird, causes type errors in callers.
+// TODO: types don't seem to work well w/ export aliases like this. Just change the names:
 export {initialItem as item}
 
 
@@ -32,6 +33,8 @@ let item: Item|null|undefined = undefined
 
 
 export let appState: Writable<AppState>
+
+// TODO: Remove
 export let showDetail = false
 
 // Show information about what this is in reply to.
@@ -159,7 +162,7 @@ function onClick(event: Event) {
             No such item: <code>/u/{userID}/i/{signature}/</code>
         </div>
     {:else if item.post}
-        <ItemHeader {appState} {item} userID={UserID.fromString(userID)} {signature} {previewMode} />
+        <ItemHeader {appState} {item} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
         <div class="body">
             {#if item.post.title}
                 <h1 class="title">{ item.post.title }</h1>
@@ -174,23 +177,16 @@ function onClick(event: Event) {
                 <code><pre>{JSON.stringify(item.toObject(), null, 4)}</pre></code>
             {/if}
 
-            {#if showDetail}
-            <div>
-                {#if viewMode != "normal"}<Button on:click={() => viewMode = "normal"}>View Normal</Button>{/if}
-                {#if viewMode != "markdown"}<Button on:click={() => viewMode = "markdown"}>View Markdown</Button>{/if}
-                {#if viewMode != "data"}<Button on:click={() => viewMode = "data"}>View Data</Button>{/if}
-            </div>
-        {/if}
         </div>
     {:else if item.profile}
-        <ItemHeader {appState} {item} userID={UserID.fromString(userID)} {signature} {previewMode} />
+        <ItemHeader {appState} {item} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
         <div class="body">
             <h1 class="title">Profile: {item.profile.display_name}</h1>
             <div class="userIDInfo">
                 id: <UserIdView userID={UserID.fromString(userID)} resolve={false} shouldLink={false} />
             </div>
             {#if viewMode == "normal"}
-                {@html markdownToHtml(item.profile.about)}
+                {@html markdownToHtml(item.profile.about, {relativeBase: `/u/${userID}/i/${signature}`})}
             {:else if viewMode == "markdown"}
                 Markdown source:
                 <code><pre>{item.profile.about}</pre></code>

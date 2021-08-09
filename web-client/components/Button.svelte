@@ -24,6 +24,8 @@ export let disabled = false
 export let requiresConfirmation = false
 
 // Optionally specify an href to make this act like a link.
+// If it starts with #, then it's an internal link and we navigate there.
+// Otherwise, we open up a new window (tab) to the new external URL.
 export let href = ""
 
 // This button requires confirmation, and is currently asking for confirmation
@@ -57,7 +59,11 @@ function clicked(event: MouseEvent) {
     }
 
     if (href) {
-        navigateTo(href)
+        if (href.startsWith("#")) {
+            navigateTo(href)
+        } else {
+            window.open(href)
+        }
         return
     }
 
@@ -79,9 +85,9 @@ function onMouseLeave() {
 .button {
     border-radius: 3px;
     margin: 2px;
-    padding: 3px 8px;
+    padding: 0.2em 8px;
     display: inline-block;
-    box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.5);
+    box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.25);
     user-select: none;
     cursor: pointer;
     background-color: #fff;

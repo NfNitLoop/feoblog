@@ -10,6 +10,7 @@ use anyhow::{Error, Context, bail, format_err};
 use bs58;
 use futures::Stream;
 use serde::{Deserialize, de::{self, Visitor}};
+use sizedisplay::SizeDisplay;
 use sodiumoxide::crypto::{hash::sha512, sign};
 
 /// This trait knows how to build a Factory, which in turn can open Backend connections.
@@ -139,6 +140,13 @@ pub trait Backend
     /// Save a file attachment to our content store.
     /// This assumes you have already validated the content's size and hash match those returned by get_attachment_meta().
     fn save_attachment(&self, size: u64, hash: &SHA512, file: &mut dyn Read) -> Result<(), Error>;
+
+    /// Report on database size usage by user.
+    /// Results sorted by total size desc. 
+    fn usage_by_user(&self, callback: RowCallback<'_, UsageByUserRow>) -> Result<(), Error>;
+
+    /// Remove unused data from the database.
+    fn prune(&self, opts: PruneOpts) -> Result<PruneResult, Error>;
 }
 
 pub struct FileStream {
@@ -209,6 +217,12 @@ impl FromStr for UserID {
     type Err = anyhow::Error;
     fn from_str(value: &str) -> Result<Self, Self::Err> { 
         UserID::from_base58(value)
+    }
+}
+
+impl Display for UserID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_base58())
     }
 }
 
@@ -474,4 +488,91 @@ impl TimeSpan {
             _ => false,
         }
     }
+}
+
+pub struct UsageByUserOpts {
+
+}
+
+pub struct PruneOpts {
+    /// If set, then we don't actually do the delete and just report on what *would* be deleted.
+    pub dry_run: bool,
+
+    /// Should we delete unreferenced attachments?
+    pub attachments: bool,
+
+    // TODO:
+    // blocked_content
+    // blocked_items,
+
+    /// Delete items from users who are no longer followed?
+    pub items: bool,
+}
+
+
+/// Report how many things would be deleted, and their size.
+pub struct PruneResult {
+    /// Was this a dry run?
+    pub dry_run: bool,
+
+    pub attachments_count: u64,
+    pub attachments_bytes: u64,
+
+    pub items_count: u64,
+    pub items_bytes: u64,
+}
+
+impl Display for PruneResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use tablestream::{Stream, col, Column};
+
+        let title = if self.dry_run { "Dry run:" } else { "Pruned:" };
+
+        let mut out = vec![];
+        let mut stream = Stream::new(&mut out, vec![
+            col!(Row: .name).right(),
+            col!(Row: .count).header("Count").right(),
+            col!(Row: .size).header("Size").right(),
+        ]).title(&title).borders(true);
+
+        struct Row {
+            name: &'static str,
+            count: u64,
+            size: SizeDisplay,
+        }
+
+        stream.row(Row{
+            name: "Attachments",
+            count: self.attachments_count,
+            size: SizeDisplay::bytes(self.attachments_bytes),
+        }).map_err(|e| std::fmt::Error)?;
+
+        stream.row(Row{
+            name: "Items",
+            count: self.items_count,
+            size: SizeDisplay::bytes(self.items_count)
+        }).map_err(|e| std::fmt::Error)?;
+
+        let footer = format!("Total size: {}", SizeDisplay::bytes(self.items_bytes + self.attachments_bytes));
+        stream.footer(&footer).map_err(|e| std::fmt::Error)?;
+
+        write!(f, "{}", String::from_utf8_lossy(&out))
+    }
+}
+
+/// Information about a single user's database usage.
+pub struct UsageByUserRow {
+    pub user_id: UserID,
+    pub display_name: Option<String>,
+
+    pub server_user: bool,
+    pub known_user: bool,
+
+    pub attachments_count: u64,
+    pub attachments_bytes: u64,
+
+    pub items_count: u64,
+    pub items_bytes: u64,
+
+    pub total_bytes: u64,
 }
