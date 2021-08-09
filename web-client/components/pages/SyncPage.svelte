@@ -568,7 +568,7 @@ type SyncUserItemParams = {
 
 async function syncUserItem({userID, signature, to, from, tracker}: SyncUserItemParams) {
 
-    tracker.log(`Copying ${signature}`)
+    tracker.logTemp(`Copying ${signature}`)
     // Skipping client-side signature verification because we expect the accepting server
     // to validate it for us anyway.
     let bytes = await from.getItemBytes(userID, signature, {skipSignatureCheck: true})
