@@ -138,7 +138,8 @@ async function syncMyFeedTask(tracker: TaskTracker) {
                     }
                 }
 
-                await tracker.runSubtask(`Items for ${uid} ("${follow.display_name}")`, (tracker) => {
+                await tracker.runSubtask(`Items for "${follow.display_name}"`, (tracker) => {
+                    tracker.log(`User ID: ${uid}`)
                     return syncUserItems({tracker, local, userID: uid, servers: followServers})
                 })
             } catch (e) {
@@ -197,7 +198,8 @@ async function syncFeedAttachments({sourceServer, tracker, to, userID, profile}:
     if (myServers.size === 0) {
         tracker.warn("No servers specified for current user. Can't sync user's files.")   
     } else {
-        bytesCopied += await tracker.runSubtask(`User ${userID} ("${profile?.display_name}")`, async (tracker) => {
+        bytesCopied += await tracker.runSubtask(`User "${profile?.display_name}"`, async (tracker) => {
+            tracker.log(`User ID: ${userID}`)
             return syncUserAttachments({tracker, fromServers: myServers, to, userID})
         })
     }
@@ -220,15 +222,14 @@ async function syncFeedAttachments({sourceServer, tracker, to, userID, profile}:
 
 
         try {
-            await tracker.runSubtask(`User ${uid} ("${follow.display_name}")`, (tracker) => {
+            await tracker.runSubtask(`User "${follow.display_name}"`, (tracker) => {
+                tracker.log(`User ID: ${uid}`)
                 return syncUserAttachments({tracker, fromServers: followServers, to, userID: uid})
             })
         } catch (_ignored) {
             // The tracker will have logged and reported the exception.
         }
     }
-    
-
     
 
     tracker.log(`Copied ${readableSize(bytesCopied)}`)

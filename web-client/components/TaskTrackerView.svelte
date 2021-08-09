@@ -8,19 +8,15 @@
 -->
 {#if $store.logs.length > 0}
 <div class="taskTracker">
-    <div class="taskName" class:error class:warning class:isRunning on:click={clicked}>{$store.name}</div>
+    <div class="superTask entry" class:error class:warning class:isRunning on:click={clicked}>{$store.name}</div>
 
     {#if expanded}
     <div class="logs">
     {#each $store.logs as entry (entry)}
         {#if entry.subtask}
             <svelte:self tracker={entry.subtask} expanded={false}/>
-        {:else if entry.isError}
-            <div class="entry error">{entry.message}</div>
-        {:else if entry.isWarning}
-            <div class="entry warning">⚠ {entry.message}</div>
         {:else}
-            <div class="entry">{entry.message}</div>
+            <div class="entry" class:error={entry.isError} class:warning={entry.isWarning}>{entry.message}</div>
         {/if}
     {/each}
     </div>
@@ -58,27 +54,31 @@ div.taskTracker {
     font-family: Consolas, monospace;
 }
 
-.taskName.isRunning::after {
+.isRunning::after {
     content: " ...";
     animation: pulse 500ms linear 0s infinite alternate;
 }
 
-.taskName.error::after {
-    content: " ❌";
+.error::before {
+    content: "❌ ";
     line-height: 100%;
 }
 
-.taskName.warning::after {
-    content: " ⚠";
+.warning::before {
+    content: "⚠ ";
     line-height: 100%;
+    font-weight: bold;
+    color: orange;
 }
 
-.taskName:not(.error, .warning, .isRunning)::after {
-    content: " ✔";
+.superTask:not(.error, .warning, .isRunning)::before {
+    content: "✔ ";
     line-height: 100%;
+    font-weight: bold;
+    color: green;
 }
 
-.taskName:hover {
+.superTask:hover {
     cursor: pointer;
     background-color: #eee;
 }
