@@ -1,6 +1,47 @@
 Changelog
 =========
 
+Version 0.6.0
+=============
+
+<https://github.com/NfNitLoop/feoblog/releases/tag/v0.6.0>
+
+New Features
+------------
+
+ * Support for the [Open Graph Protocol].  
+   Now when you share links to other web sites, they'll be able to generate previews if they support OGP.
+
+ * Quick access to share links.  
+   Click the arrow at the top-right corner of a post to access share links.
+
+ * `db prune` to remove data that's no longer being used.
+
+ * `db usage` to see who's hogging all your disk space.  
+   (See also: The [tablestream] crate I created to help with this output.)
+
+[Open Graph Protocol]: https://ogp.me/
+[tablestream]: https://crates.io/crates/tablestream
+
+Improvements
+------------
+
+ * [#63] Faster Sync when syncing items between servers.
+ * [#43] Better browser caching for static files.
+ * Logged-in profiles now have a color picker.  
+   You can set custom background colors for each identity you log in as to help keep them separate.
+
+[#63]: https://github.com/NfNitLoop/feoblog/issues/63
+[#43]: https://github.com/NfNitLoop/feoblog/issues/43
+
+Bug Fixes
+---------
+
+ * Fixed [bug][svelte-spa-issue] (re)rendering widgets when changing pages.
+
+[svelte-spa-issue]: https://github.com/ItalyPaleAle/svelte-spa-router/issues/234
+
+
 Version 0.5.1
 =============
 
