@@ -1394,6 +1394,7 @@ impl backend::Backend for Connection
                 WHERE hash = s.hash
             )
             ";
+            self.conn.execute(query, params![])?;
         }
 
         self.conn.execute("VACUUM", params![])?;
