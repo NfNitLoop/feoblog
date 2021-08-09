@@ -3,13 +3,15 @@
     Could add an option to point right if needed.
 -->
 
-<svg on:click={onClick} class:isOpen  viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg on:click={onClick} class:isOpen class:left viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M67 34L133 100L67 166" stroke="black" stroke-width="13" stroke-linecap="round"/>
 </svg>
 
 <script lang="ts">
 
 export let isOpen = false
+export let face: "right" | "left" = "left"
+$: left = face === "left"
 
 function onClick() {
     isOpen = !isOpen
@@ -20,10 +22,13 @@ function onClick() {
 svg {
     height: 1.5em;
     transition: all 200ms;
-    transform: rotate(180deg);
     user-select: none;
     cursor: pointer;
     z-index: 0;
+}
+
+.left {
+    transform: rotate(180deg);
 }
 
 .isOpen {

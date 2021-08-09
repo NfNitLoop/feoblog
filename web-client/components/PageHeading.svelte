@@ -17,7 +17,7 @@
     </div>
 
     {#if hasSettings && !settingsHidden}
-        <div class="settings" transition:slide>
+        <div class="settings" transition:slide|local>
             <slot name="settings"></slot>
         </div>
     {/if}

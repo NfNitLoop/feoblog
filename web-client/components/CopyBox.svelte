@@ -72,7 +72,7 @@ copy-box {
 input, copy-label {
     background: white;
     border: 1px solid #888;
-    padding: 0.5rem;
+    padding: 0.3rem;
 }
 
 
@@ -91,8 +91,12 @@ copy-label {
     border-top-right-radius: var(--box-radius);
     border-bottom-right-radius: var(--box-radius);
     cursor: pointer;
-    box-shadow: inset 0px 0px 2px 1px rgb(0 0 0 / 20%);
     user-select: none;
+}
+
+copy-label:hover {
+    box-shadow: inset 0px 0px 2px 1px rgb(0 0 0 / 20%);
+
 }
 
 copy-label:active {

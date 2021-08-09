@@ -99,11 +99,13 @@ input:hover, input:focus, textarea:hover, textarea:focus {
     background-color: transparent;
     display: flex;
     flex-direction: column;
+
+    --header-color: #eee;
 }
 
 .item .header {
     display: flex;
-    background-color: #eee;
+    background-color: var(--header-color);
     align-items: center;
 
     padding: 0.2rem 1rem;
@@ -126,8 +128,21 @@ input:hover, input:focus, textarea:hover, textarea:focus {
 }
 
 
-.item .header + .body {
+.item .header + .body, .item .inset + .body {
     border-radius: 0 0 20px 20px;
+}
+
+.item .header .text {
+    /* So that the arrow is at the far right */
+    flex-grow: 1;
+}
+
+.item .inset {
+    /* Same as header. TODO: CSS variable? */
+    background: var(--header-color);
+    display: block;
+    padding: 1rem;
+    box-shadow: inset 0px 9px 11px -5px rgb(0 0 0 / 13%), inset 0px -6px 5px -5px rgb(0 0 0 / 7%);
 }
 
 

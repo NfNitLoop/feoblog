@@ -11,7 +11,7 @@ const SMALL_FILE_THRESHOLD = 1024 * 128
 // Encapsulates communication with the server(s).
 export class Client {
 
-    private base_url: String;
+    private base_url: string;
 
     constructor(config: Config) {
         this.base_url = config.base_url

@@ -21,7 +21,7 @@
 </div>
 
 {#if arrowOpen}
-<item-extras class:hasTabs={viewMode} transition:slide|local>
+<item-extras class="inset" class:hasTabs={viewMode} transition:slide|local>
     {#if shareURL && feoBlogURL}
     <share-links>
         <link-label>Share To</link-label>
@@ -142,28 +142,13 @@ $: redditURL = function() {
 </script>
 
 <style>
-.text {
-    /* So that the arrow is at the far right */
-    flex-grow: 1;
-}
 
-item-extras {
-    /* Same as header. TODO: CSS variable? */
-    background: #eee;
-    display: block;
-    padding: 1rem;
-    box-shadow: inset 0px 9px 11px -5px rgb(0 0 0 / 13%), inset 0px -6px 5px -5px rgb(0 0 0 / 7%);
-}
 
 item-extras.hasTabs {
     padding-bottom: 0px;
     margin-bottom: 0px;
 }
 
-item-extras + :global(.body) {
-    border-top-left-radius: 0px;
-    border-top-right-radius: 0px;
-}
 
 
 share-links {
