@@ -3,14 +3,24 @@
 -->
 <svelte:options immutable/>
 
+<script lang="ts" context="module">
+
+export interface PageEvent {
+    signature: string,
+    userID: string,
+    item?: Item|null
+    element: HTMLElement|null
+}
+
+</script>
+
 <script lang="ts">
 // View of a single item.
 import type { Writable } from "svelte/store"
 import { push as navigateTo } from "svelte-spa-router"
 
 import { UserID} from "../ts/client"
-import { markdownToHtml, fixLinks, FileInfo} from "../ts/common"
-import Button from "./Button.svelte"
+import { markdownToHtml, fixLinks, FileInfo, observable} from "../ts/common"
 import type { Item } from "../protos/feoblog"
 import type { AppState } from "../ts/app"
 import UserIdView from "./UserIDView.svelte"
@@ -23,19 +33,13 @@ export let signature: string
 
 // Caller can provide a pre-fetched Item. 
 // DO NOT BIND. If you want to see the item loaded, use on:itemLoaded
-let initialItem: Item|null|undefined // = undefined // weird, causes type errors in callers.
-// TODO: types don't seem to work well w/ export aliases like this. Just change the names:
-export {initialItem as item}
-
+export let item: Item|null|undefined = undefined
 
 // The item that we loaded:
-let item: Item|null|undefined = undefined
+let loadedItem: Item|null|undefined = undefined
 
 
 export let appState: Writable<AppState>
-
-// TODO: Remove
-export let showDetail = false
 
 // Show information about what this is in reply to.
 // Might want to hide if it's obvious from context.
@@ -65,29 +69,32 @@ let viewMode: "normal"|"markdown"|"data" = "normal"
 
 let dispatcher = createEventDispatcher()
 
-$: getItem(userID, signature, initialItem)
+let itemElement: HTMLElement|null = null
+
+$: getItem(userID, signature, item)
 async function getItem(userID: string, signature: string, initialItem: Item|null|undefined) {
     if (initialItem !== undefined) {
-        item = initialItem
+        loadedItem = initialItem
         return
     }
 
     try {
         let result = await $appState.client.getItem(userID, signature)
-        item = result
+        loadedItem = result
     } catch (e) {
         loadError = `Error loading item: ${e}`
         console.error(e)
     }
 
-    dispatcher("itemLoaded", item)
+    dispatcher("itemLoaded", loadedItem)
 }
 
+// If this is a Profile, which users does this profile follow?
 let validFollows: ValidFollow[] = []
 $: validFollows = function(){
-    if (!item?.profile?.follows) { return [] }
+    if (!loadedItem?.profile?.follows) { return [] }
     let valid: ValidFollow[] = []
-    for (let follow of item.profile.follows) {
+    for (let follow of loadedItem.profile.follows) {
         try {
             let id = UserID.fromBytes(follow.user.bytes)
             valid.push({
@@ -136,9 +143,22 @@ function onClick(event: Event) {
         }
     }
 }
+
+function pageEventDetail(): PageEvent {
+    return {userID, signature, item, element: itemElement}
+}
+
+function enteredPage() {
+    dispatcher("enteredPage", pageEventDetail())
+}
+
+function leftPage() {
+    dispatcher("leftPage", pageEventDetail())
+}
+
 </script>   
 
-{#if item === undefined}
+{#if loadedItem === undefined}
     <div class="item">
         <div class="body">
             <p>Loading...
@@ -156,43 +176,51 @@ function onClick(event: Event) {
         </div>
     </div>
 {:else}<!-- item && !loadError-->
-<div class="item" class:clickable class:comment={item?.comment} on:click={onClick} use:fixLinks={{mode: linkMode}}>
-    {#if item === null}
+<div
+    class="item"
+    class:clickable
+    class:comment={loadedItem?.comment}
+    on:click={onClick}
+    use:fixLinks={{mode: linkMode}}
+    use:observable={{enteredPage, leftPage}}
+    bind:this={itemElement}
+>
+    {#if loadedItem === null}
         <div class="body">
             No such item: <code>/u/{userID}/i/{signature}/</code>
         </div>
-    {:else if item.post}
-        <ItemHeader {appState} {item} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
+    {:else if loadedItem.post}
+        <ItemHeader {appState} item={loadedItem} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
         <div class="body">
-            {#if item.post.title}
-                <h1 class="title">{ item.post.title }</h1>
+            {#if loadedItem.post.title}
+                <h1 class="title">{ loadedItem.post.title }</h1>
             {/if}        
             {#if viewMode == "normal"}
-                {@html markdownToHtml(item.post.body || "", {withPreview: previewFiles, relativeBase: `/u/${userID}/i/${signature}/`})}
+                {@html markdownToHtml(loadedItem.post.body || "", {withPreview: previewFiles, relativeBase: `/u/${userID}/i/${signature}/`})}
             {:else if viewMode == "markdown"}
                 Markdown source:
-                <code><pre>{item.post.body}</pre></code>
+                <code><pre>{loadedItem.post.body}</pre></code>
             {:else} 
                 JSON representation of Protobuf Item:
-                <code><pre>{JSON.stringify(item.toObject(), null, 4)}</pre></code>
+                <code><pre>{JSON.stringify(loadedItem.toObject(), null, 4)}</pre></code>
             {/if}
 
         </div>
-    {:else if item.profile}
-        <ItemHeader {appState} {item} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
+    {:else if loadedItem.profile}
+        <ItemHeader {appState} item={loadedItem} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
         <div class="body">
-            <h1 class="title">Profile: {item.profile.display_name}</h1>
+            <h1 class="title">Profile: {loadedItem.profile.display_name}</h1>
             <div class="userIDInfo">
                 id: <UserIdView userID={UserID.fromString(userID)} resolve={false} shouldLink={false} />
             </div>
             {#if viewMode == "normal"}
-                {@html markdownToHtml(item.profile.about, {relativeBase: `/u/${userID}/i/${signature}`})}
+                {@html markdownToHtml(loadedItem.profile.about, {relativeBase: `/u/${userID}/i/${signature}`})}
             {:else if viewMode == "markdown"}
                 Markdown source:
-                <code><pre>{item.profile.about}</pre></code>
+                <code><pre>{loadedItem.profile.about}</pre></code>
             {:else} 
                 JSON representation of Protobuf Item:
-                <code><pre>{JSON.stringify(item.toObject(), null, 4)}</pre></code>
+                <code><pre>{JSON.stringify(loadedItem.toObject(), null, 4)}</pre></code>
             {/if}
 
             <h2>Follows</h2>
@@ -206,7 +234,7 @@ function onClick(event: Event) {
 
             <h2>Servers</h2>
             <ul>
-                {#each item.profile.servers as server (server)}
+                {#each loadedItem.profile.servers as server (server)}
                     <!-- NOT hyperlinking this for now, in case someone tries to inject a javascript: link. -->
                     <li><code>{server.url}</code></li>
                 {:else}
@@ -214,8 +242,8 @@ function onClick(event: Event) {
                 {/each}
             </ul>
         </div>
-    {:else if item.comment}
-        <CommentView {appState} {showReplyTo} {item} 
+    {:else if loadedItem.comment}
+        <CommentView {appState} {showReplyTo} item={loadedItem} 
             userID={UserID.fromString(userID)}
             {signature}
         />

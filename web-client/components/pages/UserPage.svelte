@@ -58,7 +58,7 @@ function createLazyLoader(userID: UserID) {
         itemEntries: $appState.client.getUserItems(userID),
         continueLoading: () => endIsVisible,
         endReached: () => { loadingItems = false },
-        displayItem: (di) => {
+        displayItem: async (di) => {
             if (di.item.profile) {
                 // Don't display profile updates here.
                 return

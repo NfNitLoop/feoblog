@@ -56,7 +56,7 @@ function createLazyLoader() {
         client: $appState.client,
         continueLoading: () => endIsVisible,
         endReached: () => { moreItems = false },
-        displayItem: (di) => {
+        displayItem: async (di) => {
             // Neither comments nor profile updates belong on the homepage.
             if (di.item.post) {
                 items = [...items, di]

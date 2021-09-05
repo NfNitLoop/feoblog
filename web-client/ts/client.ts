@@ -501,7 +501,7 @@ export type LazyItemLoaderOptions = {
     continueLoading: () => boolean,
 
     // A function we'll call when a new item is available to display:
-    displayItem: (nextItem: DisplayItem) => void,
+    displayItem: (nextItem: DisplayItem) => Promise<void>,
 
     // A function we'll call when we've reached the end of the available items.
     endReached: () => void,
@@ -529,7 +529,7 @@ export class LazyItemLoader {
 
     private client: Client
     private continueLoading: () => boolean
-    private displayItemCallback: (nextItem: DisplayItem) => void
+    private displayItemCallback: (nextItem: DisplayItem) => Promise<void>
     private lazyDisplayItems: AsyncGenerator<DisplayItem|null>
     private endReached: () => void
     private log: Logger
@@ -538,8 +538,7 @@ export class LazyItemLoader {
     // We've been stopped, and will never yield more items. Can drop in-progress items.
     private stopped = false;
 
-    // We'll bump this up each time the user bumps into the bottom of the screen.
-    private minItemsToDisplay = 3
+    private minItemsToDisplay = 10
 
     // Are we currently in the middle of displaying more items?
     private displayingMoreItems = false
@@ -565,7 +564,7 @@ export class LazyItemLoader {
         const displayItem = this.displayItemCallback
         this.log.debug("displayMoreItems, continueLoading", continueLoading())
 
-        let minToDisplay = this.minItemsToDisplay++
+        let minToDisplay = this.minItemsToDisplay
 
         while(minToDisplay > 0 || continueLoading()) {
 
@@ -586,14 +585,14 @@ export class LazyItemLoader {
             }
 
 
-            displayItem(n.value)
+            await displayItem(n.value)
             minToDisplay--
 
             // Wait for Svelte to apply state changes.
             // MAY cause continueLoading to toggle off, but at least in Firefox that
             // doesn't always seem to have happened ASAP.
             // I don't mind loading a few more items than necessary, though.
-            await tick()
+            await tick()  
         }
     }
 

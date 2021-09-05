@@ -1,7 +1,6 @@
 <ItemView 
     userID={userID.toString()}
     signature={signature.toString()}
-    showDetail={true}
     {appState}
     on:itemLoaded={itemLoaded}
 />

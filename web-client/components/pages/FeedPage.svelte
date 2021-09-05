@@ -24,12 +24,14 @@
         </div>
     </PageHeading>
 
-    {#each items as entry (entry) }
+    {#each $items as entry (entry) }
     <ItemView 
         userID={entry.userID.toString()}
         signature={entry.signature.toString()}
         item={entry.item}
         {appState}
+        on:enteredPage={itemEnteredScreen}
+        on:leftPage={itemLeftScreen}
     />
     {/each}
     <div class="item"><div class="body">
@@ -44,12 +46,12 @@
     <VisibilityCheck on:itemVisible={lazyLoader.displayMoreItems} bind:visible={endIsVisible}/>
 </div><!-- feed -->
 
-
 <script lang="ts">
 import type { Writable } from "svelte/store";
 
 import type { AppState } from "../../ts/app";
 import type { DisplayItem } from "../../ts/client"
+import type { PageEvent } from "../ItemView.svelte";
 import { FindMatchingString, SkipUsers } from "../../ts/client"
 import { UserID, LazyItemLoader, ItemFilter } from "../../ts/client";
 
@@ -58,10 +60,12 @@ import VisibilityCheck from "../VisibilityCheck.svelte"
 import PageHeading from "../PageHeading.svelte"
 import UserIDView from "../UserIDView.svelte"
 import InputBox from "../InputBox.svelte";
+import { InfiniteScroll } from "../../ts/common";
 
 export let appState: Writable<AppState>
 
-let items: DisplayItem[] = []
+
+let items = new InfiniteScroll<DisplayItem>({getScrollElement})
 let endIsVisible: boolean
 
 // Assume there are more items to lazily load until we find otherwise:
@@ -90,22 +94,24 @@ function createLazyLoader(userID: UserID, itemFilter: ItemFilter) {
     if (lazyLoader) { lazyLoader.stop() }
     moreItems = true
 
-    items = []
+    items.clear()
     const ll = new LazyItemLoader({
         client: $appState.client,
         itemEntries: $appState.client.getUserFeedItems(userID),
         endReached: () => { moreItems = false },
 
-        // TODO: Fold displayItem into itemFilter.
-        displayItem: (di) => {
+        displayItem: async (di) => {
+            // TODO: Fold displayItem into itemFilter.
             if (di.item.profile) {
                 // Don't display profile updates here.
                 return
             }
-            items = [...items, di]
+            await items.pushBottom(di)
         },
         itemFilter,
-        continueLoading: () => endIsVisible
+        continueLoading: () => { 
+            return endIsVisible
+        }
     })
 
     ll.displayMoreItems()
@@ -191,6 +197,34 @@ async function updateFollowedUsers(userID: UserID) {
     newFollows.sort((f1, f2) => f1.displayName.localeCompare(f2.displayName))
 
     followedUsers = newFollows
+}
+
+let visibleElements: PageEvent[] = []
+
+function itemEnteredScreen(event: CustomEvent<PageEvent>) {
+    visibleElements = [...visibleElements, event.detail]
+}
+
+function itemLeftScreen(event: CustomEvent<PageEvent>) {
+    // Could be faster but this should be a  super small array anyway.
+    visibleElements = visibleElements.filter(e => e.signature.toString() != event.detail.signature)
+}
+
+function getScrollElement(): HTMLElement|null {
+    if (visibleElements.length == 0) { return null }
+
+    let element = null
+    let timestamp = null
+    for (const el of visibleElements) {
+        if (!el.item) { continue }
+        let ts = el.item.timestamp_ms_utc
+        if (timestamp == null || ts < timestamp) {
+            element = el.element
+            timestamp = ts
+        }
+    }
+
+    return element
 }
 
 function toggleSkippedUser(uid: string) {

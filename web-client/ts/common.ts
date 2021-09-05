@@ -3,6 +3,7 @@
 import bs58 from "bs58"
 import * as commonmark from "commonmark"
 import { DateTime } from "luxon";
+import { tick } from "svelte";
 import type { Writable } from "svelte/store";
 import nacl from "tweetnacl";
 
@@ -30,7 +31,7 @@ export function parseUserID(userID: string): Uint8Array {
     }
 
     if (buf.length == PASSWORD_BYTES) {
-        throw "UserID too long. (This may be a paswword!?)"
+        throw "UserID too long. (This may be a password!?)"
     }
 
     if (buf.length > USER_ID_BYTES) {
@@ -265,6 +266,41 @@ export function fixLinks(node: HTMLElement, params?: FixLinksParams): {} {
         },
         destroy() {
             node.removeEventListener("click", onClick, useCapture)
+        }
+    }
+}
+
+interface ObservableParams {
+    enteredPage?: () => void,
+    leftPage?: () => void,
+}
+
+export function observable(node: HTMLElement, params?: ObservableParams) {
+    if (!params?.enteredPage && !params?.leftPage) { return {} }
+
+    let visible = false; // start false so we always fire an initial enteredPage
+
+    let observer = new IntersectionObserver((entries: IntersectionObserverEntry[]) => {
+        // We only observe this one element, so this should always be here:
+        let entry = entries[0]
+        let nowVisible = entry.isIntersecting
+
+        if (visible === nowVisible) {
+            return // Nothing to do.
+        }
+
+        visible = nowVisible
+        if (nowVisible) {
+            params?.enteredPage?.()
+        } else {
+            params?.leftPage?.()
+        }
+    })
+    observer.observe(node)
+
+    return {
+        destroy() {
+            observer.disconnect()
         }
     }
 }
@@ -776,4 +812,114 @@ export class Mutex {
             this.setLocked(false)
         }
     }
+}
+
+export interface InfiniteScrollParams {
+    /** How many items we want to render, max. */
+    maxItems?: number,
+    /** How many items to trim when we hit maxItems. */
+    trimBy?: number,
+
+    /** A function that returns an HTML element to use for fixing scroll position after trimming items */
+    getScrollElement: () => HTMLElement|null
+}
+
+/**
+ * Implements an infinite scrolling window.
+ * You can pushBottom(T) or pushTop(T) to add items to the top or bottom of the list.
+ * If the list goes over maxItems long, the other side will be trimmed.
+ * 
+ */
+export class InfiniteScroll<T> {
+    private maxItems: number
+    private trimBy: number;
+    private getScrollElement: () => HTMLElement|null
+    #items: T[] = []
+
+    #subscriptions: ((ts: T[]) => void)[] = []
+
+    constructor(params: InfiniteScrollParams) {
+        this.maxItems = params?.maxItems ?? 200
+        this.trimBy = params?.trimBy ?? 50
+        this.getScrollElement = params.getScrollElement
+    }
+
+    async pushBottom(item: T): Promise<void> {
+        await this.push("bottom", item)
+    }
+
+    async pushTop(item: T): Promise<void> {
+        await this.push("top", item)
+    }
+
+    clear() {
+        this.#items = []
+        this.notify()
+    }
+
+    private async push(where: "bottom"|"top", item: T): Promise<void> {
+        let items = this.#items
+
+        // simple (& hopefully common) case:
+        if (where == "bottom" && this.#items.length < this.maxItems) {
+            this.#items.push(item)
+            this.notify()
+            return
+        }
+
+        // We're either trimming, or inserting at the top, so we'll need to save
+        // scroll position:
+        let getEl = this.getScrollElement
+        let element = getEl()
+        let windowY = window.scrollY
+        let elY = element?.offsetTop
+
+
+        if (items.length >= this.maxItems) {
+            // We need to trim.
+            if (where == "bottom") {
+                items = items.slice(this.trimBy)
+            } else {
+                items = items.slice(0, -this.trimBy)
+            }
+        } 
+        
+        if (where == "bottom") {
+            this.#items = [...items, item]
+        } else {
+            this.#items = [item, ...items]
+        }
+
+        this.notify()
+
+        // If we didn't get an element, we can't adjust position, so just exit:
+        if (!element) { return } 
+
+        await tick()
+        let onScreenY = elY! - windowY
+        let newWindowY = element.offsetTop - onScreenY
+        window.scrollTo(window.scrollX, newWindowY)
+    }
+
+    // Implement Svelte's Store contract:
+    subscribe(subscription: (value: T[]) => void): (() => void) {
+        subscription(this.#items)
+        this.#subscriptions.push(subscription)
+
+        return () => {
+            this.#subscriptions = this.#subscriptions.filter(s => s != subscription)
+        }
+    }
+
+    private notify() {
+        for (const sub of this.#subscriptions) {
+            sub(this.#items)
+        }
+    }
+}
+
+export async function delayMs(timeout: number): Promise<void> {
+    await new Promise((res) => {
+        setTimeout(() => { res(null) }, 500)
+    })
 }
