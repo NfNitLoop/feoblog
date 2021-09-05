@@ -22,7 +22,7 @@
     <div class="items">
         <!-- See: https://github.com/ItalyPaleAle/svelte-spa-router/issues/234 -->
         {#key $location}
-            <Router {routes}/>
+            <Router {routes} on:routeLoaded={routeLoaded}/>
         {/key}
     </div>
 
@@ -30,7 +30,7 @@
 
 <script context="module" lang="ts">
     import type { RouteDefinition } from "svelte-spa-router"
-    import { default as Router, location }  from "svelte-spa-router"
+    import { default as Router, location, querystring }  from "svelte-spa-router"
     
     import NotFoundPage from "./NotFoundPage.svelte"
     import * as app from "../ts/app"
@@ -102,6 +102,13 @@ $: {
     } else {
         html.style.backgroundColor = color
     }
+}
+
+$: console.log("location changed:", $location)
+$: console.log("querystring changed:", $querystring)
+
+function routeLoaded(event: unknown) {
+    console.log("route loaded", event)
 }
 
 </script>

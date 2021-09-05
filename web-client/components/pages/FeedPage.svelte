@@ -65,7 +65,7 @@ import { InfiniteScroll } from "../../ts/common";
 export let appState: Writable<AppState>
 
 
-let items = new InfiniteScroll<DisplayItem>({getScrollElement})
+let items = new InfiniteScroll<DisplayItem>({getScrollElement: () => firstVisible?.element || null})
 let endIsVisible: boolean
 
 // Assume there are more items to lazily load until we find otherwise:
@@ -210,21 +210,40 @@ function itemLeftScreen(event: CustomEvent<PageEvent>) {
     visibleElements = visibleElements.filter(e => e.signature.toString() != event.detail.signature)
 }
 
-function getScrollElement(): HTMLElement|null {
-    if (visibleElements.length == 0) { return null }
+$: firstVisible = getFirstVisible(visibleElements)
+$: setScrollPosition(firstVisible)
 
-    let element = null
-    let timestamp = null
-    for (const el of visibleElements) {
-        if (!el.item) { continue }
-        let ts = el.item.timestamp_ms_utc
-        if (timestamp == null || ts < timestamp) {
-            element = el.element
-            timestamp = ts
+function setScrollPosition(event: PageEvent|null) {
+    if (!event) { return }
+    let ts = event.item?.timestamp_ms_utc
+    if (!ts) { return }
+
+    let spaLoc = window.location.hash.substr(1)
+    let parts = spaLoc.split("?")
+    let params = new URLSearchParams(parts[1] ?? "")
+    params.set("ts", `${ts}`)
+
+    let newHash =  `${parts[0]}?${params}`
+    let newURL = new URL(window.location.href)
+    newURL.hash = newHash
+    window.history.replaceState(null, "FeoBlog Scroll State", newURL.toString())
+    console.log("history.length", window.history.length)
+}
+
+function getFirstVisible(events: PageEvent[]): PageEvent|null {
+    if (events.length == 0) { return null }
+
+
+    let event = null
+    for (const e of events) {
+        if (!e.item) { continue }
+        let ts = e.item.timestamp_ms_utc
+        if (event == null || ts < event.item!.timestamp_ms_utc) {
+            event = e
         }
     }
 
-    return element
+    return event
 }
 
 function toggleSkippedUser(uid: string) {
