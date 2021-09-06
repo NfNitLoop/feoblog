@@ -57,12 +57,14 @@
 {/if}
 
 <script lang="ts">
-import type { Writable } from "svelte/store";
-import { params } from "svelte-hash-router"
-
 import type { AppState } from "../../ts/app";
 import type { DisplayItem } from "../../ts/client"
 import type { PageEvent } from "../ItemView.svelte";
+import type { Writable } from "svelte/store";
+
+import { getContext, onDestroy } from "svelte";
+import { params, query } from "svelte-hash-router"
+
 import { FindMatchingString, SkipUsers } from "../../ts/client"
 import { UserID, LazyItemLoader, ItemFilter } from "../../ts/client";
 
@@ -72,7 +74,6 @@ import PageHeading from "../PageHeading.svelte"
 import UserIDView from "../UserIDView.svelte"
 import InputBox from "../InputBox.svelte";
 import { InfiniteScroll } from "../../ts/common";
-import { getContext } from "svelte";
 
 let appState: Writable<AppState> = getContext("appStateStore")
 
@@ -85,23 +86,9 @@ let moreItems = true
 let search = ""
 
 $: userID = UserID.tryFromString($params.userID)
+$: lazyLoader = createLazyLoader(userID, filter, startScrollPosition)
 
-let userDisplayName = "..."
-$: updateDisplayName(userID)
-
-async function updateDisplayName(userID: UserID|null) {
-    if (userID === null) {
-        userDisplayName = `Invalid userID: ${$params.userID}`
-        return
-    }
-    userDisplayName = "..."
-    let name = await $appState.getPreferredName(userID)
-    userDisplayName = name || userID.toString()
-}
-
-$: lazyLoader = createLazyLoader(userID, filter)
-
-function createLazyLoader(userID: UserID|null, itemFilter: ItemFilter) {
+function createLazyLoader(userID: UserID|null, itemFilter: ItemFilter, scrollPos: number) {
     if (!userID) { return } 
     if (lazyLoader) { lazyLoader.stop() }
     moreItems = true
@@ -109,7 +96,7 @@ function createLazyLoader(userID: UserID|null, itemFilter: ItemFilter) {
     items.clear()
     const ll = new LazyItemLoader({
         client: $appState.client,
-        itemEntries: $appState.client.getUserFeedItems(userID),
+        itemEntries: $appState.client.getUserFeedItems(userID, {before: scrollPos + 1}),
         endReached: () => { moreItems = false },
 
         displayItem: async (di) => {
@@ -225,22 +212,26 @@ function itemLeftScreen(event: CustomEvent<PageEvent>) {
 }
 
 $: firstVisible = getFirstVisible(visibleElements)
-$: setScrollPosition(firstVisible)
+$: saveScrollPosition(firstVisible)
 
-function setScrollPosition(event: PageEvent|null) {
+function saveScrollPosition(event: PageEvent|null) {
     if (!event) { return }
     let ts = event.item?.timestamp_ms_utc
     if (!ts) { return }
 
-    let spaLoc = window.location.hash.substr(1)
-    let parts = spaLoc.split("?")
-    let params = new URLSearchParams(parts[1] ?? "")
-    params.set("ts", `${ts}`)
+    historyThrottle.setParam("ts", `${ts}`)
+}
 
-    let newHash =  `${parts[0]}?${params}`
-    let newURL = new URL(window.location.href)
-    newURL.hash = newHash
-    window.history.replaceState(null, "FeoBlog Scroll State", newURL.toString())
+$: startScrollPosition = parseScrollPosition($query.ts)
+
+
+function parseScrollPosition(ts: string): number {
+    try { 
+        let pos = parseInt(ts) 
+        if (!isNaN(pos)) return pos
+    }
+    catch { }
+    return new Date().valueOf() 
 }
 
 function getFirstVisible(events: PageEvent[]): PageEvent|null {
@@ -267,6 +258,76 @@ function toggleSkippedUser(uid: string) {
     }
     skippedUsers = skippedUsers
 }
+
+
+/**
+ * Provide throttled access to the window.history API via timers.
+ * 
+ * Both Chrome and Firefox behave badly if you call the history API too frequently,
+ * which can happen when a user is quickly scrolling through a page.
+ * Chrome will display a warning about throttling the API, and then the URL bar
+ * just doesn't update for a long while.
+ * Firefox will actually throw an exception, which can be bad for Svelte's continued
+ * operation.
+ */
+class HistoryThrottle {
+    minDelayMS = 500
+
+    #lastReplaceMs = 0
+
+    // The last timer we started.
+    #timer: number|undefined = undefined
+
+    replaceData = {}
+    replaceTitle = "FeoBlog Scroll State"
+    replaceURL: string|undefined = undefined
+
+    setParam(name: string, value: string) {
+        let spaLoc = window.location.hash.substr(1)
+        let parts = spaLoc.split("?")
+        let params = new URLSearchParams(parts[1] ?? "")
+        params.set(name, value)
+
+        let newURL = new URL(window.location.href)
+        newURL.hash = `${parts[0]}?${params}`
+        this.scheduleReplaceState(newURL.toString())
+    }
+
+    scheduleReplaceState(url: string) {
+        this.replaceURL = url
+
+        let now = new Date().valueOf()
+        let delta = now - this.#lastReplaceMs
+        let timeToNext = this.minDelayMS - delta
+        if (this.#timer) {
+            // a replace is already scheduled. Just wait for that.
+            return
+        }
+        if (timeToNext <= 0) {
+            // No need to schedule, just do it now:
+            this.replaceState()
+            return
+        }
+
+        this.#timer = setTimeout(() => this.replaceState(), timeToNext)
+    }
+
+    private replaceState() {
+        this.#lastReplaceMs = new Date().valueOf()
+        this.#timer = undefined
+        window.history.scrollRestoration = 'manual'
+        window.history.replaceState(this.replaceData, this.replaceTitle, this.replaceURL)
+    }
+
+    cancel() {
+        clearTimeout(this.#timer)
+        this.#timer = undefined
+    }
+}
+let historyThrottle = new HistoryThrottle()
+onDestroy(() => {
+    historyThrottle.cancel()
+})
 
 </script>
 

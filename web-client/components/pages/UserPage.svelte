@@ -48,7 +48,7 @@ let endIsVisible: boolean
 let loadingItems = true
 
 
-$: userID = UserID.tryFromString(params.userID)
+$: userID = UserID.tryFromString($params.userID)
 
 
 $: lazyLoader = createLazyLoader(userID)

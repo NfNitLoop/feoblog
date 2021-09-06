@@ -247,8 +247,8 @@ export class Client {
         }
     }
 
-    async * getUserFeedItems(userID: UserID): AsyncGenerator<ItemListEntry> {
-        let before: number|undefined = undefined
+    async * getUserFeedItems(userID: UserID, params?: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
+        let before: number|undefined = params?.before
         while (true) {
 
             let list: ItemList = await this.getItemList(`/u/${userID}/feed/proto3`, {before})
@@ -338,6 +338,15 @@ export class Client {
         let bytes = new Uint8Array(buf)
         return ItemList.deserialize(bytes)
     }
+}
+
+// Should not specify both before and after.
+export interface ItemOffsetParams {
+    /** timestamp in ms utc before which we want to query for items */
+    before?: number
+
+    /** timestamp in ms utc after which we want to query for items */
+    after?: number
 }
 
 export type AttachmentMeta = {
