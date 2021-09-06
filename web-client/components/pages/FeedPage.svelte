@@ -1,6 +1,11 @@
 <!--
     The "friend feed", which shows posts by users a given user follows.    
 -->
+{#if !userID}
+<div class="error">
+    Invalid UserID
+</div>
+{:else}
 <div class="feed">
     <PageHeading>
         <h1>Feed for <UserIDView {userID}/></h1>
@@ -25,14 +30,18 @@
     </PageHeading>
 
     {#each $items as entry (entry) }
-    <ItemView 
-        userID={entry.userID.toString()}
-        signature={entry.signature.toString()}
-        item={entry.item}
-        {appState}
-        on:enteredPage={itemEnteredScreen}
-        on:leftPage={itemLeftScreen}
-    />
+        <ItemView 
+            userID={entry.userID.toString()}
+            signature={entry.signature.toString()}
+            item={entry.item}
+            on:enteredPage={itemEnteredScreen}
+            on:leftPage={itemLeftScreen}
+        />
+        <!-- 
+        {#if entry.item?.timestamp_ms_utc == firstVisible?.item?.timestamp_ms_utc}
+            <div>👆⬆ This guy is the first visible</div>
+        {/if}
+        -->
     {/each}
     <div class="item"><div class="body">
         {#if !moreItems}
@@ -43,11 +52,13 @@
             Loading...
         {/if}
     </div></div>
-    <VisibilityCheck on:itemVisible={lazyLoader.displayMoreItems} bind:visible={endIsVisible}/>
+    <VisibilityCheck on:itemVisible={() => lazyLoader?.displayMoreItems?.()} bind:visible={endIsVisible}/>
 </div><!-- feed -->
+{/if}
 
 <script lang="ts">
 import type { Writable } from "svelte/store";
+import { params } from "svelte-hash-router"
 
 import type { AppState } from "../../ts/app";
 import type { DisplayItem } from "../../ts/client"
@@ -61,9 +72,9 @@ import PageHeading from "../PageHeading.svelte"
 import UserIDView from "../UserIDView.svelte"
 import InputBox from "../InputBox.svelte";
 import { InfiniteScroll } from "../../ts/common";
+import { getContext } from "svelte";
 
-export let appState: Writable<AppState>
-
+let appState: Writable<AppState> = getContext("appStateStore")
 
 let items = new InfiniteScroll<DisplayItem>({getScrollElement: () => firstVisible?.element || null})
 let endIsVisible: boolean
@@ -71,18 +82,18 @@ let endIsVisible: boolean
 // Assume there are more items to lazily load until we find otherwise:
 let moreItems = true
 
-export let params: {
-    userID: string
-}
-
 let search = ""
 
-$: userID = UserID.fromString(params.userID)
+$: userID = UserID.tryFromString($params.userID)
 
 let userDisplayName = "..."
 $: updateDisplayName(userID)
 
-async function updateDisplayName(userID: UserID) {
+async function updateDisplayName(userID: UserID|null) {
+    if (userID === null) {
+        userDisplayName = `Invalid userID: ${$params.userID}`
+        return
+    }
     userDisplayName = "..."
     let name = await $appState.getPreferredName(userID)
     userDisplayName = name || userID.toString()
@@ -90,7 +101,8 @@ async function updateDisplayName(userID: UserID) {
 
 $: lazyLoader = createLazyLoader(userID, filter)
 
-function createLazyLoader(userID: UserID, itemFilter: ItemFilter) {
+function createLazyLoader(userID: UserID|null, itemFilter: ItemFilter) {
+    if (!userID) { return } 
     if (lazyLoader) { lazyLoader.stop() }
     moreItems = true
 
@@ -148,10 +160,12 @@ let followedUsers: FollowedUser[] = []
 let skippedUsers = new Set<string>()
 $: updateFollowedUsers(userID)
 
-async function updateFollowedUsers(userID: UserID) {
+async function updateFollowedUsers(userID: UserID|null) {
 
     followedUsers = []
     skippedUsers = new Set()
+
+    if (!userID) { return }
 
     let client = $appState.client
     let profile
@@ -227,7 +241,6 @@ function setScrollPosition(event: PageEvent|null) {
     let newURL = new URL(window.location.href)
     newURL.hash = newHash
     window.history.replaceState(null, "FeoBlog Scroll State", newURL.toString())
-    console.log("history.length", window.history.length)
 }
 
 function getFirstVisible(events: PageEvent[]): PageEvent|null {
@@ -238,7 +251,7 @@ function getFirstVisible(events: PageEvent[]): PageEvent|null {
     for (const e of events) {
         if (!e.item) { continue }
         let ts = e.item.timestamp_ms_utc
-        if (event == null || ts < event.item!.timestamp_ms_utc) {
+        if (event == null || ts > event.item!.timestamp_ms_utc) {
             event = e
         }
     }

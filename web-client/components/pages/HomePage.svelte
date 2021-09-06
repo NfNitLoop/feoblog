@@ -4,7 +4,6 @@
         userID={entry.userID.toString()}
         signature={entry.signature.toString()}
         item={entry.item}
-        {appState}
     />
 {:else}
     {#if !moreItems}
@@ -26,6 +25,8 @@
 <VisibilityCheck on:itemVisible={lazyLoader.displayMoreItems} bind:visible={endIsVisible}/>
 
 <script lang="ts">
+import { getContext } from "svelte";
+
 import type { Writable } from "svelte/store";
 
 import type { AppState } from "../../ts/app";
@@ -35,7 +36,7 @@ import { LazyItemLoader } from "../../ts/client";
 import ItemView from "../ItemView.svelte"
 import VisibilityCheck from "../VisibilityCheck.svelte";
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 
 let items: DisplayItem[] = []
 let endIsVisible: boolean

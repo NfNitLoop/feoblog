@@ -1,7 +1,6 @@
 <div class="dualPaneEditor">
     {#if mode === "profile"}
         <EditProfile 
-            {appState} 
             {initialItem}
             bind:validationErrors
             bind:item
@@ -19,7 +18,6 @@
     
     <!-- Preview: -->
     <ItemView
-        {appState}
         userID={userID.toString()}
         signature="unknown"
         {item}
@@ -33,7 +31,6 @@
     <div class="item">
         <div class="body">
             <SignAndSend
-                {appState}
                 {item}
                 attachments={fileAttachments}
                 onSendSuccess={clear}
@@ -59,8 +56,9 @@ import EditProfile from './EditProfile.svelte';
 import EditPost from './EditPost.svelte';
 import SignAndSend from "./SignAndSend.svelte";
 import type { FileInfo } from "../ts/common";
+import { getContext } from "svelte";
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 
 // What kind of thing are we editing?
 // I imagine I'll want to make a "reply" type here too.

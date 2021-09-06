@@ -10,7 +10,6 @@
 import type { UserID } from "../ts/client";
 
 // TODO: Eventually we'll want to look up user icons for people.
-// export let appState: Writable<AppState>
 
 export let userID: UserID
 

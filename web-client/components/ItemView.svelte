@@ -17,7 +17,6 @@ export interface PageEvent {
 <script lang="ts">
 // View of a single item.
 import type { Writable } from "svelte/store"
-import { push as navigateTo } from "svelte-spa-router"
 
 import { UserID} from "../ts/client"
 import { markdownToHtml, fixLinks, FileInfo, observable} from "../ts/common"
@@ -26,7 +25,7 @@ import type { AppState } from "../ts/app"
 import UserIdView from "./UserIDView.svelte"
 import CommentView from "./CommentView.svelte"
 import ItemHeader from "./ItemHeader.svelte"
-import { createEventDispatcher } from "svelte";
+import { createEventDispatcher, getContext } from "svelte";
 
 export let userID: string
 export let signature: string
@@ -39,7 +38,7 @@ export let item: Item|null|undefined = undefined
 let loadedItem: Item|null|undefined = undefined
 
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 
 // Show information about what this is in reply to.
 // Might want to hide if it's obvious from context.
@@ -138,7 +137,7 @@ function onClick(event: Event) {
         let selection = window.getSelection()
         // Don't count as a navigation click if user is selecting text:
         if (!selection || selection.isCollapsed) {
-            navigateTo(`#/u/${userID}/i/${signature}`)
+            window.location.hash = `#/u/${userID}/i/${signature}/`
             return
         }
     }
@@ -190,7 +189,7 @@ function leftPage() {
             No such item: <code>/u/{userID}/i/{signature}/</code>
         </div>
     {:else if loadedItem.post}
-        <ItemHeader {appState} item={loadedItem} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
+        <ItemHeader item={loadedItem} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
         <div class="body">
             {#if loadedItem.post.title}
                 <h1 class="title">{ loadedItem.post.title }</h1>
@@ -207,7 +206,7 @@ function leftPage() {
 
         </div>
     {:else if loadedItem.profile}
-        <ItemHeader {appState} item={loadedItem} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
+        <ItemHeader item={loadedItem} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
         <div class="body">
             <h1 class="title">Profile: {loadedItem.profile.display_name}</h1>
             <div class="userIDInfo">
@@ -243,7 +242,7 @@ function leftPage() {
             </ul>
         </div>
     {:else if loadedItem.comment}
-        <CommentView {appState} {showReplyTo} item={loadedItem} 
+        <CommentView {showReplyTo} item={loadedItem} 
             userID={UserID.fromString(userID)}
             {signature}
         />

@@ -384,6 +384,10 @@ export class UserID {
     }
 
     static fromString(userID: string): UserID {
+        let valType = typeof(userID)
+        if (valType !== "string") {
+            throw new Error(`invalid userID string of type ${valType}`)
+        }
         if (userID.length == 0) {
             throw "UserID must not be empty."
         }
@@ -397,6 +401,15 @@ export class UserID {
     
         UserID.validateBytes(buf)
         return new UserID(buf, userID)
+    }
+
+
+    static tryFromString(userID: string): UserID|null {
+        try {
+            return UserID.fromString(userID)
+        } catch (error) {
+            return null
+        }
     }
 
     private static validateBytes(bytes: Uint8Array) {
@@ -453,6 +466,14 @@ export class Signature {
         }
     
         return Signature.fromBytes(buf)
+    }
+
+    static tryFromString(userID: string): Signature|null {
+        try {
+            return Signature.fromString(userID)
+        } catch {
+            return null
+        }
     }
 
     static fromBytes(bytes: Uint8Array): Signature {

@@ -20,28 +20,31 @@
     </div>
 
     <div class="items">
-        <!-- See: https://github.com/ItalyPaleAle/svelte-spa-router/issues/234 -->
-        {#key $location}
-            <Router {routes} on:routeLoaded={routeLoaded}/>
-        {/key}
+        <Router />
     </div>
 
 </div>
 
 <script context="module" lang="ts">
-    import type { RouteDefinition } from "svelte-spa-router"
-    import { default as Router, location, querystring }  from "svelte-spa-router"
-    
     import NotFoundPage from "./NotFoundPage.svelte"
     import * as app from "../ts/app"
 </script>
 
 <script lang="ts">
-import {wrap} from "svelte-spa-router/wrap"
 import { writable } from "svelte/store";
 import { setContext } from "svelte";
 import RootPage from "./pages/RootPage.svelte";
 import NavLink from "./NavLink.svelte";
+import {routes, Router, active, query} from "svelte-hash-router"
+import HomePage from "./pages/HomePage.svelte";
+import FeedPage from "./pages/FeedPage.svelte";
+import UserPage from "./pages/UserPage.svelte";
+import ProfilePage from "./pages/ProfilePage.svelte";
+import ItemPage from "./pages/ItemPage.svelte";
+import Login from "./pages/Login.svelte";
+import PostPage from "./pages/PostPage.svelte";
+import EditProfilePage from "./pages/EditProfilePage.svelte";
+import SyncPage from "./pages/SyncPage.svelte";
 
 // This is a writable() store so that we can notify the app
 // that appState has been modified. Svelte doesn't/can't propagate updates
@@ -52,47 +55,23 @@ let appState = writable(new app.AppState())
 setContext("appStateStore", appState)
 
 
-let routes = function() {
-    let routes: RouteDefinition = {
-        "/": RootPage,
-        "/home": appPage("./pages/HomePage.svelte"),
-        "/u/:userID/": appPage("./pages/UserPage.svelte"),
-        "/u/:userID/feed": appPage("./pages/FeedPage.svelte"),
-        "/u/:userID/profile": appPage("./pages/ProfilePage.svelte"),
-        "/u/:userID/i/:signature/": appPage("./pages/ItemPage.svelte"),
-        "/login": appPage('./pages/Login.svelte'),
-    }
+routes.set({
+    "/": RootPage,
+    "/home": HomePage,
+    "/u/:userID/": UserPage,
+    "/u/:userID/feed": FeedPage,
+    "/u/:userID/profile": ProfilePage,
+    "/u/:userID/i/:signature/": ItemPage,
+    "/login": Login,
 
-    // I tried dynamically updating `routes` based on $appState.loggedIn, 
-    // but it seems like <Router> might not update its routes when they change.
-    // We'll just unconditionally include these routes. We hide them from nav
-    // when they're not applicable.
-    Object.assign(routes, {
-        "/post": appPage("./pages/PostPage.svelte"),
-        "/my_profile": appPage("./pages/EditProfilePage.svelte"),
-        "/sync": appPage("./pages/SyncPage.svelte")
-    })
+    // Technically these require log-in. They're available, we just hide them from nav if the user isn't logged-in.
+    "/post": PostPage,
+    "/my_profile": EditProfilePage,
+    "/sync": SyncPage,
 
-    // Must be last:
-    routes["*"] = NotFoundPage
-    return routes
-}()
+    "*": NotFoundPage,
+})
 
-
-// Dynamically load a page of the app, and also pass through a reference to appState.
-function appPage(templatePath: string) {
-
-    // Snowpack now creates .svelte.js files:
-    templatePath = templatePath.replace(/[.]svelte$/, ".svelte.js")
-
-    return wrap({
-        asyncComponent: () => import(templatePath),
-        // TODO: Do away with manually passing appState props, and use the context instead.
-        props: {
-            "appState": appState,
-        }
-    })
-}
 
 $: {
     let color = $appState.userBGColor
@@ -104,12 +83,7 @@ $: {
     }
 }
 
-$: console.log("location changed:", $location)
-$: console.log("querystring changed:", $querystring)
 
-function routeLoaded(event: unknown) {
-    console.log("route loaded", event)
-}
 
 </script>
 

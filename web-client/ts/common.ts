@@ -233,7 +233,7 @@ type FixLinksParams = {
 // Svelte link fixer: 
 // use:fixLinks={{mode:"ignore"}} to ignore all link clicks.
 // use:fixLinks={{mode:"newWindow"}} to open all link clicks in new windows.
-// use:fixLinks to just fix links to keep them inside the svelte-spa-router.
+// use:fixLinks to just fix links to keep them inside the single-page application.
 export function fixLinks(node: HTMLElement, params?: FixLinksParams): {} {
 
     let activeParams = params

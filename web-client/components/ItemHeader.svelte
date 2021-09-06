@@ -4,13 +4,12 @@
 <div class="header">
     <ProfileImage {userID} />
     <div class="text">
-        <UserIdView {userID} {appState}/>
+        <UserIdView {userID} />
         {#if showReplyTo && item.comment != null}
             <span>replied to</span>
             <UserIdView 
                 userID={UserID.fromBytes(item.comment.reply_to.user_id.bytes)}
                 href={refToLink(item.comment.reply_to)}
-                {appState}
             />
         {:else if item.profile} 
             <span>updated their profile</span>
@@ -57,6 +56,7 @@ export type ViewMode = "normal"|"markdown"|"data"
 </script>
 
 <script lang="ts">
+import { getContext } from "svelte";
 import type { Writable } from "svelte/store";
 import { slide } from "svelte/transition"
 import type { Item, ReplyRef } from "../protos/feoblog";
@@ -70,8 +70,9 @@ import OpenArrow from "./OpenArrow.svelte";
 import CopyBox from "./CopyBox.svelte";
 import Button from "./Button.svelte";
 
+let appState: Writable<AppState> = getContext("appStateStore")
+
 // required:
-export let appState: Writable<AppState>
 export let userID: UserID
 export let signature: string|undefined // could be invalid/missing during preview
 export let item: Item

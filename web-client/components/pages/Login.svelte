@@ -36,6 +36,7 @@
 
 
 <script lang="ts">
+import { getContext } from "svelte";
 import type { Writable } from "svelte/store"
 import type { Item } from "../../protos/feoblog"
 import type { AppState, SavedLogin } from "../../ts/app"
@@ -45,7 +46,7 @@ import Button from "../Button.svelte"
 import ViewSavedLogin from "../ViewSavedLogin.svelte"
 import CreateID from "./CreateID.svelte"
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 let userID = ""
 let validUserID = false
 let errorMessage = ""

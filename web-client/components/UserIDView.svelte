@@ -16,8 +16,7 @@ export let userID: UserID
 // Whether we should resolve an ID into its displayName
 export let resolve = true
 
-// TODO: Remove this param and always use getContext.
-export let appState: Writable<AppState> = getContext("appStateStore")
+let appState: Writable<AppState> = getContext("appStateStore")
 
 export let displayName: string = ""
 export let href: string|undefined = undefined
@@ -30,7 +29,7 @@ $: link = href || defaultHref
 let isPubKey = true
 
 $: {
-    userID || appState
+    userID || $appState
     fetchDisplayName()
 }
 

@@ -59,6 +59,7 @@
 </style>
 
 <script language="ts">
+import { getContext } from "svelte";
 import type { Writable } from "svelte/store"
 import { slide } from "svelte/transition"
 import type { ItemListEntry, Profile } from "../../protos/feoblog";
@@ -73,7 +74,7 @@ import OpenArrow from "../OpenArrow.svelte"
 import InputBox from "../InputBox.svelte"
 import TaskTrackerView from "../TaskTrackerView.svelte";
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 
 let settingsOpen = false
 

@@ -41,12 +41,12 @@ import type { AppState } from "../ts/app";
 import type { Writable } from "svelte/store";
 import { UserID as ClientUserID } from "../ts/client";
 import { parseUserID, validateServerURL } from "../ts/common";
-import { tick } from "svelte";
+import { getContext, tick } from "svelte";
 import bs58 from "bs58";
 import InputBox from "./InputBox.svelte";
 import { DateTime } from "luxon";
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 // Exported so that EditorWithPreview can preview, serialize, & send it for us.
 export let item: Item
 

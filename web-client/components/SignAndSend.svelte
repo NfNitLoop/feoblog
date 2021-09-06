@@ -56,7 +56,7 @@
 
 
 <script lang="ts">
-import { push as navigateTo } from "svelte-spa-router"
+import { getContext } from "svelte";
 import { slide } from "svelte/transition"
 import type { Writable } from "svelte/store";
 import type { Item, File as PFile } from "../protos/feoblog";
@@ -70,7 +70,7 @@ import bs58check from "bs58check"
 import nacl from "tweetnacl";
 import { FileInfo, Mutex, TaskTracker } from "../ts/common";
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 export let item: Item
 
 // Errors sent to us from outside, which can prevent sign & send.
@@ -279,7 +279,7 @@ async function doSubmit(tracker: TaskTracker): Promise<void> {
     }
 
     if (navigateWhenDone) {
-        navigateTo(navigateDestination)
+        window.location.hash = navigateDestination
     }
 }
 

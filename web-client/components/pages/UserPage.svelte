@@ -2,56 +2,60 @@
     Shows posts by a single user.
 -->
 
-<PageHeading>
-    <h1>Posts by <UserIDView {userID}/></h1>
-</PageHeading>
+{#if userID}
+    <PageHeading>
+        <h1>Posts by <UserIDView {userID}/></h1>
+    </PageHeading>
 
-{#each items as entry, index (entry.signature)}
+    {#each items as entry, index (entry.signature)}
     <ItemView 
-        userID={entry.userID.toString()}
-        signature={entry.signature.toString()}
-        item={entry.item}
-        {appState}
+    userID={entry.userID.toString()}
+    signature={entry.signature.toString()}
+    item={entry.item}
     />
-{:else}
+    {:else}
     <div class="item">
         <div class="body">
-            No posts found for user <UserIDView {appState} {userID}/>
+            No posts found for user <UserIDView {userID}/>
         </div>
     </div>
-{/each}
+    {/each}
 
-<VisibilityCheck on:itemVisible={lazyLoader.displayMoreItems} bind:visible={endIsVisible}/>
+    <VisibilityCheck on:itemVisible={() => lazyLoader?.displayMoreItems?.()} bind:visible={endIsVisible}/>
+{:else}
+<h1>Error: UserID is required</h1>
+{/if}
 
 <script lang="ts">
 import type { Writable } from "svelte/store";
-
 import type { AppState } from "../../ts/app";
 import type { DisplayItem } from "../../ts/client"
-import { UserID, LazyItemLoader } from "../../ts/client";
 
+import { getContext } from "svelte";
+import { params } from "svelte-hash-router"
+
+import { UserID, LazyItemLoader } from "../../ts/client";
 import ItemView from "../ItemView.svelte"
 import VisibilityCheck from "../VisibilityCheck.svelte";
 import UserIDView from "../UserIDView.svelte"
 import PageHeading from "../PageHeading.svelte";
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 
 let items: DisplayItem[] = []
 let endIsVisible: boolean
 
 let loadingItems = true
 
-export let params: {
-    userID: string
-}
-$: userID = UserID.fromString(params.userID)
+
+$: userID = UserID.tryFromString(params.userID)
 
 
 $: lazyLoader = createLazyLoader(userID)
-function createLazyLoader(userID: UserID) {
+function createLazyLoader(userID: UserID|null) {
     items = []
     if (lazyLoader) { lazyLoader.stop() }
+    if (!userID) { return }
 
     return new LazyItemLoader({
         client: $appState.client,
