@@ -280,11 +280,7 @@ export function observable(node: HTMLElement, params?: ObservableParams) {
 
     let visible = false; // start false so we always fire an initial enteredPage
 
-    let observer = new IntersectionObserver((entries: IntersectionObserverEntry[]) => {
-        // We only observe this one element, so this should always be here:
-        let entry = entries[0]
-        let nowVisible = entry.isIntersecting
-
+    let setVisibility = (nowVisible: boolean) => {
         if (visible === nowVisible) {
             return // Nothing to do.
         }
@@ -295,11 +291,19 @@ export function observable(node: HTMLElement, params?: ObservableParams) {
         } else {
             params?.leftPage?.()
         }
+    }
+
+    let observer = new IntersectionObserver((entries: IntersectionObserverEntry[]) => {
+        // We only observe this one element, so this should always be here:
+        let entry = entries[0]
+        setVisibility(entry.isIntersecting)
     })
     observer.observe(node)
 
     return {
         destroy() {
+            // One last notification that this element is no longer on the page:
+            setVisibility(false)
             observer.disconnect()
         }
     }

@@ -86,6 +86,8 @@ let moreItems = true
 let search = ""
 
 $: userID = UserID.tryFromString($params.userID)
+$: startScrollPosition = parseScrollPosition($query.ts)
+
 $: lazyLoader = createLazyLoader(userID, filter, startScrollPosition)
 
 function createLazyLoader(userID: UserID|null, itemFilter: ItemFilter, scrollPos: number) {
@@ -201,6 +203,7 @@ async function updateFollowedUsers(userID: UserID|null) {
 }
 
 let visibleElements: PageEvent[] = []
+// $: console.log("visible", visibleElements.map(e => e.item?.timestamp_ms_utc))
 
 function itemEnteredScreen(event: CustomEvent<PageEvent>) {
     visibleElements = [...visibleElements, event.detail]
@@ -222,16 +225,20 @@ function saveScrollPosition(event: PageEvent|null) {
     historyThrottle.setParam("ts", `${ts}`)
 }
 
-$: startScrollPosition = parseScrollPosition($query.ts)
+
 
 
 function parseScrollPosition(ts: string): number {
+    let value = new Date().valueOf() 
     try { 
         let pos = parseInt(ts) 
-        if (!isNaN(pos)) return pos
+        if (!isNaN(pos)) {
+            
+            value = pos  
+        } 
     }
     catch { }
-    return new Date().valueOf() 
+    return value
 }
 
 function getFirstVisible(events: PageEvent[]): PageEvent|null {
