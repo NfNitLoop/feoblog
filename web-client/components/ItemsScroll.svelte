@@ -46,7 +46,7 @@ export let itemFilter: ItemFilter = ItemFilter.allowAll()
 
 let appState: Writable<AppState> = getContext("appStateStore")
 
-let bottomLoader: LazyItemLoader|null = reInitLoader(null, {before: scrollPos + 1})
+let bottomLoader: LazyItemLoader|null = null 
 
 // We only load top if the user bumps it.
 // See bumpedTop()
@@ -55,6 +55,18 @@ let topLoader: LazyItemLoader|null = null
 // We've reached the end of the items at the bottom/top:
 let noMoreBottom = false
 let noMoreTop = false
+
+
+$: onFilterChange(itemFilter)
+function onFilterChange(filter: ItemFilter) { 
+    topLoader?.stop()
+    topLoader = null
+    bottomLoader?.stop()
+    bottomLoader = null
+
+    items.clear()
+    bottomLoader =  reInitLoader(bottomLoader, {before: scrollPos + 1})
+}
 
 
 function reInitLoader(oldLoader: LazyItemLoader|null|undefined, offset: ItemOffsetParams): LazyItemLoader|null {

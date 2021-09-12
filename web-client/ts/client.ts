@@ -1,4 +1,4 @@
-import { Item, ItemList, ItemListEntry, Post } from "../protos/feoblog"
+import { Item, ItemList, ItemListEntry, ItemType, Post } from "../protos/feoblog"
 import bs58 from "bs58"
 import * as nacl from "./naclWorker/nacl"
 import { bytesToHex, ConsoleLogger, Logger, prefetch } from "./common";
@@ -645,6 +645,9 @@ export class LazyItemLoader {
 
     private fetchDisplayItem = async (entry: ItemListEntry): Promise<DisplayItem|null> => {
         const filter = this.itemFilter
+
+        if (!filter.byItemType(entry.item_type)) return null
+
         if (!filter.byTimestampMS(entry.timestamp_ms_utc)) return null
 
         let userID = UserID.fromBytes(entry.user_id.bytes)
@@ -653,7 +656,6 @@ export class LazyItemLoader {
         let signature = Signature.fromBytes(entry.signature.bytes)
         if (!filter.bySignature(signature)) return null
 
-        // TODO: Filter by item type.
 
         let item: Item 
         let bytes: Uint8Array|null
@@ -693,9 +695,8 @@ export class LazyItemLoader {
 /**
  * Allows filtering items as we fetch them with a lazy loader.
  * Methods should return `true` to keep a particular Item.
- * userID, signature, and timestamp filters are called *before*
- * fetching the Item from the server, so are the most efficient.
  * 
+ * Note: The base ItemFilter returns true for everything.
  */
 export class ItemFilter {
 
@@ -707,10 +708,12 @@ export class ItemFilter {
         return new MatchAllFilter(filters)
     }
 
-    // The base implementation returns True for everything.
+    byItemType(item_type: ItemType): boolean { return true }
     byUserID(userID: UserID): boolean { return true }
     bySignature(signature: Signature): boolean { return true }
     byTimestampMS(timestampMS: number): boolean { return true }
+
+    /** The slowest filter, called after the item has been loaded from the server. */
     byItem(item: Item): boolean { return true}
 }
 
@@ -753,9 +756,29 @@ export class SkipUsers extends ItemFilter {
 
 }
 
+export class ExcludeItemTypes extends ItemFilter {
+    #excludedTypes: ItemType[]
+
+    constructor(itemTypes: ItemType[]) {
+        super()
+        this.#excludedTypes = itemTypes
+    }
+
+    byItemType(itemType: ItemType): boolean {
+        return !this.#excludedTypes.some(t => t == itemType)
+    }
+}
+
 class MatchAllFilter implements ItemFilter {
 
     constructor(private filters: ItemFilter[]) {}
+
+    byItemType(itemType: ItemType): boolean {
+        for (const filter of this.filters) {
+            if (!filter.byItemType(itemType)) return false
+        }
+        return true
+    }
 
     byUserID(userID: UserID): boolean {
         for (const filter of this.filters) {

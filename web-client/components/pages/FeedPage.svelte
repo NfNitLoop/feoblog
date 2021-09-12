@@ -46,13 +46,14 @@ import type { Writable } from "svelte/store";
 import { getContext } from "svelte";
 import { params, query } from "svelte-hash-router"
 
-import { FindMatchingString, SkipUsers } from "../../ts/client"
+import { FindMatchingString, SkipUsers, ExcludeItemTypes} from "../../ts/client"
 import { UserID, ItemFilter } from "../../ts/client";
 
 import PageHeading from "../PageHeading.svelte"
 import UserIDView from "../UserIDView.svelte"
 import InputBox from "../InputBox.svelte";
 import ItemsScroll from "../ItemsScroll.svelte";
+import { ItemType } from "../../protos/feoblog";
 
 let appState: Writable<AppState> = getContext("appStateStore")
 
@@ -69,7 +70,11 @@ function createItemLoader(params: ItemOffsetParams) {
 
 
 $: filter = function() { 
-    let filters: ItemFilter[] = []
+    let filters: ItemFilter[] = [
+        // TODO: Filter out comments and/or posts?
+        // TODO: Show profile updates. (Once we've got a profile delta viewer)
+        new ExcludeItemTypes([ItemType.PROFILE])
+    ]
 
     // Search by string.
     // Currently searches all of markdown.
@@ -84,7 +89,6 @@ $: filter = function() {
     }
 
     // TODO: Filter for items with attachments?
-    // TODO: Filter out comments?
 
     return ItemFilter.matchAll(filters)
 }()
