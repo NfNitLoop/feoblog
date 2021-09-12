@@ -145,6 +145,7 @@ function saveScrollPosition(event: PageEvent|null) {
     if (!ts) { return }
 
     historyThrottle.setParam("ts", `${ts}`)
+    scrollPos = ts
 }
 
 
