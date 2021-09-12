@@ -248,10 +248,17 @@ export class Client {
     }
 
     async * getUserFeedItems(userID: UserID, params?: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
-        let before: number|undefined = params?.before
+        let isBefore = typeof(params?.after) != "number"
+        let offset = {...params}
+
         while (true) {
 
-            let list: ItemList = await this.getItemList(`/u/${userID}/feed/proto3`, {before})
+            let list: ItemList = await this.getItemList(`/u/${userID}/feed/proto3`, offset)
+            if (!isBefore) {
+                /// We want to iterate in chronological order for this case, but the server always
+                /// gives reverse order.  Fix it:
+                list.items.reverse()
+            }
 
             if (list.items.length == 0) {
                 // There are no more items.
@@ -264,7 +271,11 @@ export class Client {
                 return
             }
     
-            before = list.items[list.items.length - 1].timestamp_ms_utc
+            if (isBefore) {
+                offset.before = list.items[list.items.length - 1].timestamp_ms_utc
+            } else {
+                offset.after = list.items[list.items.length - 1].timestamp_ms_utc
+            }
         }
     }
 
@@ -563,10 +574,13 @@ export class LazyItemLoader {
     private lazyDisplayItems: AsyncGenerator<DisplayItem|null>
     private endReached: () => void
     private log: Logger
-    private itemFilter: ItemFilter;
+    private itemFilter: ItemFilter
+
+    #hasMore = true
+    get hasMore() { return this.#hasMore && !this.stopped }
     
     // We've been stopped, and will never yield more items. Can drop in-progress items.
-    private stopped = false;
+    private stopped = false
 
     private minItemsToDisplay = 10
 
@@ -576,6 +590,7 @@ export class LazyItemLoader {
     // Call this whenever the UI needs for us to display more items.
     // We'll continue displaying items until !continueLoading (at least).
     displayMoreItems = async () => {
+        if (!this.hasMore) { return }
         if (this.displayingMoreItems) {
             // The user could scroll to the end of the page while we're still loading and displaying more items.
             // No need to fire off another async process:
@@ -605,6 +620,7 @@ export class LazyItemLoader {
             }
 
             if (n.done) {
+                this.#hasMore = false
                 this.endReached()
                 return
             }
@@ -618,6 +634,7 @@ export class LazyItemLoader {
             await displayItem(n.value)
             minToDisplay--
 
+            // TODO: Deprecate continueLoading() and remove this.
             // Wait for Svelte to apply state changes.
             // MAY cause continueLoading to toggle off, but at least in Firefox that
             // doesn't always seem to have happened ASAP.

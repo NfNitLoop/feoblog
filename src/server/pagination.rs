@@ -20,6 +20,7 @@ pub(crate) struct Pagination {
     before: Option<i64>,
 
     /// Time after which to show some posts. can not set before & after, and before takes precedence.
+    /// Note: posts will still be listed in reverse-chronological-order. (newest first).
     after: Option<i64>,
 
     /// Limit how many posts/items appear on a page.

@@ -824,6 +824,7 @@ export interface InfiniteScrollParams {
     /** How many items to trim when we hit maxItems. */
     trimBy?: number,
 
+    // TODO: I think I can deprecate this and just use the window scroll position
     /** A function that returns an HTML element to use for fixing scroll position after trimming items */
     getScrollElement: () => HTMLElement|null
 }
@@ -840,6 +841,8 @@ export class InfiniteScroll<T> {
     private getScrollElement: () => HTMLElement|null
     #items: T[] = []
 
+    logger = new ConsoleLogger()
+
     #subscriptions: ((ts: T[]) => void)[] = []
 
     constructor(params: InfiniteScrollParams) {
@@ -849,18 +852,24 @@ export class InfiniteScroll<T> {
     }
 
     async pushBottom(item: T): Promise<void> {
+        this.logger.debug("pushBottom")
+        this.logger.debug("Before:", window.scrollY, document.body.scrollHeight)
         await this.push("bottom", item)
+        this.logger.debug("After:", window.scrollY, document.body.scrollHeight)
     }
 
     async pushTop(item: T): Promise<void> {
+        this.logger.debug("pushTop")
         await this.push("top", item)
     }
 
     clear() {
+        this.logger.log("InfiniteScroll.clear()")
         this.#items = []
         this.notify()
     }
 
+    // TODO: Global lock for this?
     private async push(where: "bottom"|"top", item: T): Promise<void> {
         let items = this.#items
 
@@ -880,6 +889,7 @@ export class InfiniteScroll<T> {
 
 
         if (items.length >= this.maxItems) {
+            this.logger.debug("InfiniteScroll trimming", where)
             // We need to trim.
             if (where == "bottom") {
                 items = items.slice(this.trimBy)
@@ -902,6 +912,7 @@ export class InfiniteScroll<T> {
         await tick()
         let onScreenY = elY! - windowY
         let newWindowY = element.offsetTop - onScreenY
+        this.logger.debug("InfiniteScroll scrolling from", windowY, "to", newWindowY)
         window.scrollTo(window.scrollX, newWindowY)
     }
 

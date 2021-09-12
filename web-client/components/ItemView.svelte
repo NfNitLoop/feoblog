@@ -12,6 +12,8 @@ export interface PageEvent {
     element: HTMLElement|null
 }
 
+const lock = new Mutex()
+
 </script>
 
 <script lang="ts">
@@ -19,13 +21,13 @@ export interface PageEvent {
 import type { Writable } from "svelte/store"
 
 import { UserID} from "../ts/client"
-import { markdownToHtml, fixLinks, FileInfo, observable} from "../ts/common"
+import { markdownToHtml, fixLinks, FileInfo, observable, Mutex} from "../ts/common"
 import type { Item } from "../protos/feoblog"
 import type { AppState } from "../ts/app"
 import UserIdView from "./UserIDView.svelte"
 import CommentView from "./CommentView.svelte"
 import ItemHeader from "./ItemHeader.svelte"
-import { createEventDispatcher, getContext } from "svelte";
+import { createEventDispatcher, getContext, tick } from "svelte";
 
 export let userID: string
 export let signature: string
@@ -33,6 +35,11 @@ export let signature: string
 // Caller can provide a pre-fetched Item. 
 // DO NOT BIND. If you want to see the item loaded, use on:itemLoaded
 export let item: Item|null|undefined = undefined
+
+// When rendering items above our current location in the page, loading images
+// can cause the block length to change, and cause the page to scroll.
+// We can set their height to be constant to avoid that until they scroll into view.
+export let shrinkImages = false
 
 // The item that we loaded:
 let loadedItem: Item|null|undefined = undefined
@@ -149,6 +156,28 @@ function pageEventDetail(): PageEvent {
 
 function enteredPage() {
     dispatcher("enteredPage", pageEventDetail())
+
+    if (shrinkImages) {
+        lock.run(restoreImages)
+    }
+}
+
+// Note: Should be run within a global lock, to prevent document offset math from having
+// race conditions.
+async function restoreImages() {
+    let beforeLength = document.body.scrollHeight
+    shrinkImages = false
+    await tick()
+    let afterLength = document.body.scrollHeight
+    let deltaY = afterLength - beforeLength
+
+    // TODO: Both scrollBy and scrollTo behave strangely when scrolling with the
+    // mouse wheel in Chrome. It's as if they scrolled too much. Does this have to
+    // do with some scroll smoothing going on w/ the mouse wheel?  Doesn't happen
+    // when using the scrollbar. 
+    // window.scrollBy(0, deltaY)
+    console.log("restoreImages() scrolle by deltaY", deltaY)
+    window.scrollTo(window.scrollX, window.scrollY + deltaY)
 }
 
 function leftPage() {
@@ -179,6 +208,7 @@ function leftPage() {
     class="item"
     class:clickable
     class:comment={loadedItem?.comment}
+    class:shrinkImages
     on:click={onClick}
     use:fixLinks={{mode: linkMode}}
     use:observable={{enteredPage, leftPage}}
@@ -264,6 +294,10 @@ function leftPage() {
 
 .userIDInfo, .userIDInfo :global(.userID) {
     color: #888;
+}
+
+.shrinkImages .body :global(img) {
+    height: 5px;
 }
 
 </style>

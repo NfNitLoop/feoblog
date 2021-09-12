@@ -40,20 +40,18 @@
 
 <script lang="ts">
 import type { AppState } from "../../ts/app";
-import type { DisplayItem, ItemOffsetParams } from "../../ts/client"
-import type { PageEvent } from "../ItemView.svelte";
+import type { ItemOffsetParams } from "../../ts/client"
 import type { Writable } from "svelte/store";
 
-import { getContext, onDestroy } from "svelte";
+import { getContext } from "svelte";
 import { params, query } from "svelte-hash-router"
 
 import { FindMatchingString, SkipUsers } from "../../ts/client"
-import { UserID, LazyItemLoader, ItemFilter } from "../../ts/client";
+import { UserID, ItemFilter } from "../../ts/client";
 
 import PageHeading from "../PageHeading.svelte"
 import UserIDView from "../UserIDView.svelte"
 import InputBox from "../InputBox.svelte";
-import { InfiniteScroll } from "../../ts/common";
 import ItemsScroll from "../ItemsScroll.svelte";
 
 let appState: Writable<AppState> = getContext("appStateStore")
