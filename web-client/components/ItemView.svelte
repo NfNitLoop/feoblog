@@ -176,7 +176,6 @@ async function restoreImages() {
     // do with some scroll smoothing going on w/ the mouse wheel?  Doesn't happen
     // when using the scrollbar. 
     // window.scrollBy(0, deltaY)
-    console.log("restoreImages() scrolle by deltaY", deltaY)
     window.scrollTo(window.scrollX, window.scrollY + deltaY)
 }
 

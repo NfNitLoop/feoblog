@@ -90,7 +90,7 @@ function reInitLoader(oldLoader: LazyItemLoader|null|undefined, offset: ItemOffs
     return newLoader
 }
 
-let items = new InfiniteScroll<DisplayItem>({getScrollElement: () => firstVisible?.element || null})
+let items = new InfiniteScroll<DisplayItem>()
 
 let visibleElements: PageEvent[] = []
 // $: console.log("visible", visibleElements.map(e => e.item?.timestamp_ms_utc))
@@ -208,7 +208,6 @@ onDestroy(() => {
 
 // The top timestamp that's ever been visible.
 // Things before this have shrunken images to avoid scroll issues.
-// TODO: Need to reset after we trim top.
 let shrinkWatermark: number|undefined = undefined
 
 function shrinkImages(entry: DisplayItem): boolean {
@@ -283,6 +282,9 @@ function nearTop() {
         let topTs = $items[0]?.item?.timestamp_ms_utc
         if (!topTs) { return }
         topLoader = reInitLoader(topLoader, {after: topTs})
+        if (shrinkWatermark) {
+            shrinkWatermark = undefined
+        }
     }
 
     if (!topLoader?.hasMore) { return }
