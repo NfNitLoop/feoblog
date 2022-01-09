@@ -3,7 +3,7 @@ use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData, net::TcpListener, o
 use backend::FactoryBox;
 use futures::{Future, StreamExt};
 
-use actix_web::{dev::{HttpResponseBuilder, Service, ServiceRequest, ServiceResponse}, http::{HeaderValue, Method, header::{self, ContentType}}, middleware::DefaultHeaders, web::Query};
+use actix_web::{dev::{HttpResponseBuilder, Service, ServiceRequest, ServiceResponse, Body}, http::{HeaderValue, Method, header::{self, ContentType}}, middleware::DefaultHeaders, web::Query};
 use actix_web::web::{
     self,
     get,
@@ -258,7 +258,7 @@ impl <T: RustEmbed> StaticFilesResponder for T {
                 Ok(str_val) => str_val.contains(&etag)
             };
             if match_found {
-                return Ok(HttpResponse::NotModified().body(""));
+                return Ok(http_not_modified());
             }
         }
 
@@ -277,6 +277,19 @@ impl <T: RustEmbed> StaticFilesResponder for T {
 
         
     }
+}
+
+
+fn http_not_modified() -> HttpResponse {
+    // Must use a Body::None here instead of an empty body.
+    //
+    // See: the "Compatibility Notes" section at:
+    // https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/304
+    //
+    // In particular, when using this behind an Apache ProxyPass config, which uses persistent
+    // connections, Apache seems to always be sending an HTTP 200 with (and maybe because-of?) the
+    // Content-Length == 0, instead of a 304 without a Content-Length header.
+    HttpResponse::NotModified().body(Body::None)
 }
 
 /// Browsers like to re-validate things even when they don't need to. (Say, when the user hits reload.)
@@ -303,8 +316,7 @@ where S: Service<Request=ServiceRequest, Response=ServiceResponse, Error=actix_w
         let mut res = match fut {
             Either::A(fut) => fut.await?,
             Either::B(req) => {
-                let res = HttpResponse::NotModified().body("");
-                let res = req.into_response(res);
+                let res = req.into_response(http_not_modified());
                 return Ok(res);
             }
         };
