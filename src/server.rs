@@ -131,7 +131,12 @@ pub(crate) struct AppData {
 fn routes(cfg: &mut web::ServiceConfig) {
     cfg
         .route("/", get().to(html::view_homepage))
-        .route("/homepage/proto3", get().to(rest::homepage_item_list))
+
+        .service(
+            web::resource("/homepage/proto3")
+            .route(get().to(rest::homepage_item_list))
+            .wrap(cors_ok_headers())
+        )
 
         .route("/u/{user_id}/", get().to(html::get_user_items))
         .service(
