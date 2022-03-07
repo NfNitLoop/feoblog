@@ -11,12 +11,11 @@ export class WorkerProxy {
     private queuedSends: QueuedSend[] =  []
 
 
-    constructor(url: string, options?: WorkerOptions) {
-        let worker = new Worker(url, options)
+    constructor(worker: Worker) {
+        this.worker = worker
+    
         worker.onmessage = (m) => this.onmessage(m)
         worker.onerror = (m) => this.onerror(m)
-
-        this.worker = worker
     }
 
     // Send a message to the worker.
@@ -48,7 +47,7 @@ export class WorkerProxy {
 
     private onmessage(m: MessageEvent<any>) {
         if (!this.inProgress) {
-            console.error("Received message with nothing in progress!?")
+            console.error("Received message with nothing in progress!?", m)
             return
         }
 
@@ -59,7 +58,7 @@ export class WorkerProxy {
 
     private onerror(m: ErrorEvent) {
         if (!this.inProgress) {
-            console.error("Received error with nothing in progress!?")
+            console.error("Received error with nothing in progress!?", m)
             return
         }
 

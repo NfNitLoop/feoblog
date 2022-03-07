@@ -1,6 +1,9 @@
 import * as nacl from "tweetnacl"
 import {WorkerProxy} from "./coms"
 
+// Thank youuuuu https://github.com/mitschabaude/esbuild-plugin-inline-worker
+import NaClWorker from "./nacl.worker.js"
+
 // Wraps tweetnacl functions in async versions that run in a WebWorker if available.
 
 interface NaCl {
@@ -8,6 +11,8 @@ interface NaCl {
 }
 
 // This version just calls the function in the browser, synchronously.
+// CPU-bound operations on the main thread make the UI seem unresponsive.
+// Possible workaround: Defer all of these calculations until the UI goes "quiet", so that the renderer isn't blocked.
 class InBrowser implements NaCl {
     async sign_detached_verify(msg: Uint8Array, sig: Uint8Array, publicKey: Uint8Array): Promise<boolean> {
         return nacl.sign.detached.verify(msg, sig, publicKey)
@@ -23,7 +28,7 @@ class Proxy implements NaCl {
         // Ewww, because of the way webworkers work, the URL is relative to the page that first
         // loaded the script. So we need to use an absolute path to make this always work.
         let workerURL = "/client/ts/naclWorker/worker.js"
-        this.worker = new WorkerProxy(workerURL, {name: "Async TweetNaCl"})
+        this.worker = new WorkerProxy(new NaClWorker())
     }
 
     async sign_detached_verify(msg: Uint8Array, sig: Uint8Array, publicKey: Uint8Array): Promise<boolean> {
