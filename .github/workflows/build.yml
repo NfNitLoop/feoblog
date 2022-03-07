@@ -5,6 +5,10 @@ on:
     branches: [ develop, release ]
   pull_request:
     branches: [ develop, release ]
+  
+  # Allow manual runs:
+  workflow_dispatch:
+
   schedule:
     # Run once a month to alert me of bit-rot. 
     # See: https://docs.github.com/en/actions/reference/events-that-trigger-workflows#schedule
@@ -23,8 +27,7 @@ jobs:
         os:
         - ubuntu-18.04
         - macos-latest
-        # Windows builds are broken, waiting on https://github.com/NfNitLoop/feoblog/issues/16
-        # - windows-latest
+        - windows-latest
       # Don't fail fast, if we have a failure on a specific matrix type
       # we want to know which ones:
       fail-fast: false
