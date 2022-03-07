@@ -58,7 +58,7 @@
 
 </style>
 
-<script language="ts">
+<script lang="ts">
 import { getContext } from "svelte";
 import type { Writable } from "svelte/store"
 import { slide } from "svelte/transition"

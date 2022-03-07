@@ -1,6 +1,9 @@
 import * as nacl from "tweetnacl"
 import {WorkerProxy} from "./coms"
 
+// Thank youuuuu https://github.com/mitschabaude/esbuild-plugin-inline-worker
+import NaClWorker from "./nacl.worker.js"
+
 // Wraps tweetnacl functions in async versions that run in a WebWorker if available.
 
 interface NaCl {
@@ -23,7 +26,7 @@ class Proxy implements NaCl {
         // Ewww, because of the way webworkers work, the URL is relative to the page that first
         // loaded the script. So we need to use an absolute path to make this always work.
         let workerURL = "/client/ts/naclWorker/worker.js"
-        this.worker = new WorkerProxy(workerURL, {name: "Async TweetNaCl"})
+        this.worker = new WorkerProxy(new NaClWorker())
     }
 
     async sign_detached_verify(msg: Uint8Array, sig: Uint8Array, publicKey: Uint8Array): Promise<boolean> {

@@ -2,7 +2,7 @@
 // See: https://bugzilla.mozilla.org/show_bug.cgi?id=1247687
 // So we just use old-style JS here:
 
-importScripts("./tweetnacl.js")
+import nacl from "tweetnacl"
 
 let functions  = {
     "sign_detached_verify": nacl.sign.detached.verify
