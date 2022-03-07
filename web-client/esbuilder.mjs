@@ -4,10 +4,14 @@ import sveltePreprocess from "svelte-preprocess";
 import copy from 'esbuild-copy-plugin';
 import inlineWorkerPlugin from 'esbuild-plugin-inline-worker';
 
+import { exec } from "child_process";
+
 main()
 function main() {
-    let watch = process.argv.includes("--watch")
 
+    protoToTypeScript()
+
+    let watch = process.argv.includes("--watch")
     doEsBuild({watch})
 }
 
@@ -42,3 +46,33 @@ function doEsBuild(opts = {}) {
       }).catch(() => process.exit(1))    
 }
 
+function protoToTypeScript() {
+    let cmd =
+        "protoc"
+        + ` --plugin=./node_modules/.bin/${npmScript('protoc-gen-ts')}`
+        + " --ts_out=protos"
+        + " --proto_path=../protobufs/"
+        + " feoblog.proto"
+    ;
+
+    console.log("Running", cmd);
+
+    exec(cmd, (error, stdout, stderr) => {
+        if (error) {
+            console.log("Error building proto file: ", e);
+           throw error;
+        }
+    });
+    console.log("Done")
+}
+
+function npmScript(name) {
+    if (isWindows()) {
+        return `${name}.cmd`
+    }
+    return name
+}
+
+function isWindows() {
+    return process.platform == "win32"
+}
