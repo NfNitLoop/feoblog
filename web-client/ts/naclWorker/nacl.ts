@@ -11,6 +11,8 @@ interface NaCl {
 }
 
 // This version just calls the function in the browser, synchronously.
+// CPU-bound operations on the main thread make the UI seem unresponsive.
+// Possible workaround: Defer all of these calculations until the UI goes "quiet", so that the renderer isn't blocked.
 class InBrowser implements NaCl {
     async sign_detached_verify(msg: Uint8Array, sig: Uint8Array, publicKey: Uint8Array): Promise<boolean> {
         return nacl.sign.detached.verify(msg, sig, publicKey)

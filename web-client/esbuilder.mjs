@@ -34,6 +34,8 @@ function doEsBuild(opts = {}) {
             "global": "window"
         },
         format: "esm",
+        minify: true,
+        sourcemap: true,
         
         watch: opts.watch,
         logLevel: opts.watch ? "debug" : "info",
