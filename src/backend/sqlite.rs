@@ -779,6 +779,10 @@ impl backend::Backend for Connection
             )
         }).collect();
 
+        if subselects.is_empty() {
+            return Ok(());
+        }
+
         let query = format!(
             "
                 WITH iv AS (
