@@ -1,8 +1,8 @@
 import { Item, ItemList, ItemListEntry, ItemType, Post } from "../protos/feoblog"
-import bs58 from "bs58"
 import * as nacl from "./naclWorker/nacl"
 import { bytesToHex, ConsoleLogger, Logger, prefetch } from "./common";
 import { tick } from "svelte";
+import { decodeBase58, encodeBase58 } from "./fbBase58";
 
 // Before sending files larger than this, we should check whether they exist:
 const SMALL_FILE_THRESHOLD = 1024 * 128
@@ -395,7 +395,7 @@ export class UserID {
     private asString: string
 
     toString(): string {
-        return bs58.encode(this.bytes)
+        return encodeBase58(this.bytes)
     }
 
     // A hex representation of the bytes:
@@ -414,7 +414,7 @@ export class UserID {
     
         let buf: Uint8Array;
         try {
-            buf = bs58.decode(userID)
+            buf = decodeBase58(userID)
         } catch (error) {
             throw "UserID not valid base58"
         }
@@ -448,7 +448,7 @@ export class UserID {
 
     static fromBytes(bytes: Uint8Array): UserID {
         UserID.validateBytes(bytes)
-        return new UserID(bytes, bs58.encode(bytes))
+        return new UserID(bytes, encodeBase58(bytes))
     }
 
     private constructor(bytes: Uint8Array, asString: string) {
@@ -461,7 +461,7 @@ export class Signature {
     readonly bytes: Uint8Array
 
     toString(): string {
-        return bs58.encode(this.bytes)
+        return encodeBase58(this.bytes)
     }
 
     // Check that a signature is valid.
@@ -480,7 +480,7 @@ export class Signature {
     
         let buf: Uint8Array;
         try {
-            buf = bs58.decode(userID)
+            buf = decodeBase58(userID)
         } catch (error) {
             throw "Signature not valid base58"
         }

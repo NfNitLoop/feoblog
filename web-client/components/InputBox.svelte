@@ -6,7 +6,7 @@
         {#if inputType == "text"}
             <input type="text" bind:value={value} {disabled} {placeholder} />
         {:else}
-            <input type="password" bind:value={value} {disabled} {placeholder} />
+            <input type="password" autocomplete="current-password" bind:value={value} {disabled} {placeholder} />
         {/if}
         </div>
     </label>

@@ -1,11 +1,11 @@
 // Common classes/functions for FeoBlog UI.
 
-import bs58 from "bs58"
 import * as commonmark from "commonmark"
 import { DateTime } from "luxon";
 import { tick } from "svelte";
 import type { Writable } from "svelte/store";
 import nacl from "tweetnacl";
+import { decodeBase58 } from "./fbBase58";
 
 const USER_ID_BYTES = 32;
 const PASSWORD_BYTES = USER_ID_BYTES + 4 // 4 bytes b58 checksum.
@@ -21,7 +21,7 @@ export function parseUserID(userID: string): Uint8Array {
 
     let buf: Uint8Array;
     try {
-        buf = bs58.decode(userID)
+        buf = decodeBase58(userID)
     } catch (error) {
         throw "Not valid base58"
     }

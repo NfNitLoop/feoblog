@@ -1,11 +1,10 @@
 <script lang="ts">
 import Button from "../Button.svelte"
-import bs58 from "bs58"
-import bs58check from "bs58check"
 import * as nacl from "tweetnacl"
 import buffer from "buffer"
 import ProfileImage from "../ProfileImage.svelte"
 import { UserID } from "../../ts/client";
+import { encodeBase58, encodeBase58Check } from "../../ts/fbBase58";
 let Buffer = buffer.Buffer
 
 
@@ -27,7 +26,7 @@ function createID() {
         throw new Error(message)
     }
     
-    userID = bs58.encode(pair.publicKey)
+    userID = encodeBase58(pair.publicKey)
 
     let buf = Buffer.from(seed)
 
@@ -36,7 +35,7 @@ function createID() {
     // pasting) the seed could silently result in signing with a wrong/invalid
     // ID. This gives us a way to check that a password is "correct", as well
     // as distinguish between a username and password.
-    privateKey = bs58check.encode(buf)  
+    privateKey = encodeBase58Check(buf)  
 }
 
 function clear() {

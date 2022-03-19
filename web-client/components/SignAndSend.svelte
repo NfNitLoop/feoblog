@@ -32,7 +32,7 @@
             fields.
         -->
         <form>
-            <input type="text" name="login" placeholder="here to satisfy password managers">
+            <input type="text" name="login" autocomplete="username" placeholder="here to satisfy password managers">
             <InputBox 
                 inputType="password"
                 label="Private Key"
@@ -65,10 +65,9 @@ import { Signature } from "../ts/client";
 import Button from "./Button.svelte";
 import InputBox from "./InputBox.svelte"
 import TaskTrackerView from "./TaskTrackerView.svelte"
-import bs58 from "bs58";
-import bs58check from "bs58check"
 import nacl from "tweetnacl";
 import { FileInfo, Mutex, TaskTracker } from "../ts/common";
+import { decodeBase58, decodeBase58Check, encodeBase58 } from "../ts/fbBase58";
 
 let appState: Writable<AppState> = getContext("appStateStore")
 export let item: Item
@@ -166,7 +165,7 @@ $: privateKeyError = function() {
     
     let buf: Uint8Array;
     try {
-        buf = bs58.decode(privateKey)
+        buf = decodeBase58(privateKey)
     } catch (error) {
         return "Not valid base58"
     }
@@ -180,7 +179,7 @@ $: privateKeyError = function() {
     }
 
     try {
-        buf = bs58check.decode(privateKey)
+        buf = decodeBase58Check(privateKey)
     } catch (e) {
         return "Invalid Password"
     }
@@ -188,7 +187,7 @@ $: privateKeyError = function() {
     
     let keypair = nacl.sign.keyPair.fromSeed(buf);
     
-    let pubKey = bs58.encode(keypair.publicKey)
+    let pubKey = encodeBase58(keypair.publicKey)
     if (pubKey != userID.toString()) {
         return "Private key does not match user ID."
     }
@@ -207,10 +206,10 @@ function sign() {
 
     if (!itemBytes) throw `No bytes to sign.`
 
-    let buf = bs58check.decode(privateKey)
+    let buf = decodeBase58Check(privateKey)
     let keypair = nacl.sign.keyPair.fromSeed(buf);
     let binSignature = nacl.sign.detached(itemBytes, keypair.secretKey)
-    signature = bs58.encode(binSignature)
+    signature = encodeBase58(binSignature)
 
     // Delete the privateKey, we don't want to save it any longer than
     // necessary:
