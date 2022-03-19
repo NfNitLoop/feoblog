@@ -23,7 +23,7 @@
     {/if}
 </div>
 
-<div class="detection" bind:this={element}></div>
+<VisibilityCheck hasHeight={false} bind:visible={observerVisible} />
 
 <svelte:window bind:scrollY bind:outerWidth/>
 
@@ -31,22 +31,17 @@
 import { onDestroy } from "svelte";
 import { slide } from "svelte/transition";
 import SVGButton from "./SVGButton.svelte";
+import VisibilityCheck from "./VisibilityCheck.svelte";
 
 let element: HTMLElement
 
 let scrollY: number
 let outerWidth: number
 
+let observerVisible = true
+
+$: atTop = !observerVisible
 $: hasSettings = !!$$slots.settings
-$: atTop = isAtTop(scrollY, outerWidth)
-
-// We really only accept these numbers to trigger a refresh in case they changed:
-function isAtTop(_scrollY: number, _outerWidth: number): boolean {
-    if (!element) return false
-    let rect = element.getBoundingClientRect()
-    return rect.top <= 1
-}
-
 
 let leftHandler = new MouseLeftHandler(() => { settingsHidden = true })
 onDestroy(() => {
