@@ -4,9 +4,16 @@
         {#if label}{label}: {/if}{#if errorMessage}<span class="error">{errorMessage}</span>{/if}
         <div>
         {#if inputType == "text"}
-            <input type="text" bind:value={value} {disabled} {placeholder} />
+            <input type="text" bind:value={value} {disabled} {placeholder} on:focus={gotFocus} on:blur={lostFocus} />
         {:else}
-            <input type="password" autocomplete="current-password" bind:value={value} {disabled} {placeholder} />
+            <input 
+                type="password" 
+                autocomplete="current-password" 
+                on:focus={gotFocus} on:blur={lostFocus}
+                bind:value={value} 
+                {disabled} 
+                {placeholder} 
+            />
         {/if}
         </div>
     </label>
@@ -18,6 +25,7 @@ export let disabled = false
 export let label = ""
 export let inputType: "text"|"password" = "text"
 export let placeholder = label
+export let hasFocus = false
 
 // Callback to validate the contents of the InputBox.
 // Should return a non-empty error string if there's an error.
@@ -39,5 +47,8 @@ function checkValue(value: string) {
         }
     }
 }
+
+function gotFocus() { hasFocus = true }
+function lostFocus() { hasFocus = false }
 
 </script>

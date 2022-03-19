@@ -1,3 +1,34 @@
+
+<!-- Browse As: -->
+<div class="item">
+    <div class="body">
+    <form>
+        <UserIDInput label="Browse as" bind:value={userID} bind:valid={validUserID} bind:hasFocus />
+    </form>
+
+    <p>
+    {#if validUserID}
+        {#await profileLoad}
+            Loading profile ...
+        {:then profile}
+                {#if profile} 
+                    Browse as user "{profile.profile?.display_name}"?
+                {:else}
+                    Could not load profile for that user ID. Log in anwyay?
+                {/if}
+        {:catch err}
+            Error: {err}
+        {/await}
+    {/if}
+    </p>
+    <Button on:click={confirmLogin} disabled={!validUserID}>Confirm</Button>
+
+    
+    </div>
+    </div>
+
+<CreateID></CreateID>
+
 {#each $appState.savedLogins as savedLogin, index (savedLogin.userID)}
     <ViewSavedLogin {savedLogin} isLoggedIn={index===0} on:logIn={logInSaved} on:remove={removeSaved} on:change={updateSavedLogin}/>
 {:else}
@@ -8,39 +39,17 @@
 </div>
 {/each}
 
-<div class="item">
-<div class="body">
-<form>
-    
-    <UserIDInput label="Log in as" bind:value={userID} bind:valid={validUserID}/>
-    <br><Button on:click={logIn} disabled={!validUserID}>Log in</Button>
-</form>
 
-{#if errorMessage != ""}
-    <p>Error: {errorMessage}</p>
-{/if}
 
-{#if attemptedProfileLoad}
-    {#if profile} 
-        <p>Log in as user "{profile.profile?.display_name}"?</p>
-    {:else}
-        <p>Could not load profile for that user ID. Log in anwyay?</p>
-    {/if}
-    <Button on:click={confirmLogin}>Confirm</Button>
-{/if}
-</div>
-</div>
-
-<CreateID></CreateID>
 
 
 
 <script lang="ts">
 import { getContext } from "svelte";
 import type { Writable } from "svelte/store"
-import type { Item } from "../../protos/feoblog"
+import type { Item, Profile } from "../../protos/feoblog"
 import type { AppState, SavedLogin } from "../../ts/app"
-import { Client, UserID } from "../../ts/client"
+import { UserID } from "../../ts/client"
 import UserIDInput from "../UserIDInput.svelte"
 import Button from "../Button.svelte"
 import ViewSavedLogin from "../ViewSavedLogin.svelte"
@@ -49,33 +58,32 @@ import CreateID from "./CreateID.svelte"
 let appState: Writable<AppState> = getContext("appStateStore")
 let userID = ""
 let validUserID = false
-let errorMessage = ""
+let hasFocus = false
 
-let attemptedProfileLoad = false
-let profile: Item|null = null
+let profileLoad: null | Promise<Item|null> = null
 
-async function logIn() {
+$: if (userID && validUserID) { fetchProfile() }
+
+// Get rid of the manual login here and just load profile when we have a possibly-valid userID.
+function fetchProfile() {
     // Load the user profile.
-    let client = new Client({
-        base_url: ""
-    })
+    let client = $appState.client
 
-    try {
-        attemptedProfileLoad = true
+    let loadProfile = async () => {
         let result = await client.getProfile(UserID.fromString(userID))
-        profile = result?.item || null
-    } catch (exception) {
-        console.log("error", exception)
-        errorMessage = `${exception}`
+        return result?.item || null
     }
+    profileLoad = loadProfile()
 }
-function confirmLogin() {
-    // Log in via app state.
-    appState.update((state) => {
-        let login: SavedLogin = {userID}
-        let displayName = profile?.profile?.display_name
-        if (displayName) { login.displayName = displayName}
 
+async function confirmLogin() {
+    // Log in via app state.
+
+    let login: SavedLogin = {userID}
+    let displayName = (await profileLoad)?.profile?.display_name
+
+    appState.update((state) => {
+        if (displayName) { login.displayName = displayName}
         state.logIn(login)
         return state
     })
@@ -84,8 +92,7 @@ function confirmLogin() {
 }
 
 function reset() {
-    attemptedProfileLoad = false
-    profile = null
+    profileLoad = null
     userID = ""
 }
 
