@@ -82,7 +82,7 @@ function onMouseLeave() {
 }
 
 .button {
-    border-radius: 3px;
+    border-radius: 6px;
     margin: 2px;
     padding: 0.2em 8px;
     display: inline-block;

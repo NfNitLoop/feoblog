@@ -1,3 +1,5 @@
+<PageHeading {breadcrumbs} />
+
 <div class="dualPaneEditor">
     {#if mode === "profile"}
         <EditProfile 
@@ -43,13 +45,31 @@
 
 </div>
 
+<style>
+
+@media (min-width: 70em) {
+    .dualPaneEditor {
+        display: inline-grid;
+        width: 100%;
+        /* an .item has max-width 55em. +1em grid gap */
+        max-width: 111em;
+        grid-template-columns: 1fr 1fr;
+        grid-gap: 1em;
+        padding: 1em;
+        padding-top: 0;
+    }
+    .dualPaneEditor > :global(*) {
+        margin: 0px;
+    }
+}
+</style>
 
 <script lang="ts">
 import type { Writable } from "svelte/store"
 import { Item } from "../protos/feoblog"
 
 
-import type { UserID as ClientUserID } from "../ts/client"
+import type { UserID as ClientUserID, UserID } from "../ts/client"
 import type { AppState } from '../ts/app';
 import ItemView from './ItemView.svelte'
 import EditProfile from './EditProfile.svelte';
@@ -57,6 +77,7 @@ import EditPost from './EditPost.svelte';
 import SignAndSend from "./SignAndSend.svelte";
 import type { FileInfo } from "../ts/common";
 import { getContext } from "svelte";
+import PageHeading from "./PageHeading.svelte";
 
 let appState: Writable<AppState> = getContext("appStateStore")
 
@@ -72,6 +93,25 @@ let fileAttachments: FileInfo[] = []
 
 let userID: ClientUserID
 $: userID = $appState.requireLoggedInUser()
+$: breadcrumbs = getBreadcrumbs(userID)
+
+function getBreadcrumbs(userID: UserID|null) {
+
+    let crumbs = []
+
+    if (userID) {
+        crumbs.push({userID})
+    }
+
+    if (mode == "post") {
+        crumbs.push({text: "New Post"})
+    } else if (mode == "profile") {
+        crumbs.push({text: "Edit Profile"})
+    }
+    
+    return {crumbs}
+}
+
 
 // Validation Errors from EditProfile/EditPost:
 let validationErrors: string[] = []

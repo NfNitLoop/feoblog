@@ -1,5 +1,5 @@
 import type { Item, Profile } from "../protos/feoblog"
-import { Client, UserID } from "./client"
+import { Client, Signature, UserID } from "./client"
 
 let instance: AppState|null = null
 
@@ -11,6 +11,8 @@ export class AppState
     private _client: Client
 
     private profileService: ProfileService
+
+    readonly navigator = new Navigator()
 
     constructor() {
         this._client = new Client({
@@ -254,4 +256,52 @@ export class SavedLogin
 
     // A background color like: #ff0000
     bgColor?: string
+}
+
+// Get the proper URL to navigate to a page in the app. 
+// Let us encode this in one place instead of all over the place.
+export class Navigator {
+    // old name: "Home"
+    frontPage(): Location { return new Location(`#/home`) }
+    logIn(): Location { return new Location(`#/login`) }
+    newPost() { return new Location(`#/post`) }
+    sync() { return new Location(`#/sync`) }
+
+    userFeed(user: string|UserID) {
+        return new Location(`#/u/${user}/feed`)
+    }
+
+    userPosts(user: string|UserID) {
+        return new Location(`#/u/${user}/`)
+    }
+
+    userProfile(user: string|UserID) {
+        return new Location(`#/u/${user}/profile`)
+    }
+
+    itemPage(user: string|UserID, sig: string|Signature) {
+        return new Location(`#/u/${user}/i/${sig}/`)
+    }
+
+    editProfile() {
+        return new Location(`#/my_profile`)
+    }
+
+}
+
+
+
+export class Location {
+    constructor(readonly hash: string) {}
+
+    // The relative URL without the leading #
+    get path() {
+        return this.hash.substring(1)
+    }
+
+    goTo() {
+        // TODO
+    }
+
+    // TODO: withParams(...)
 }

@@ -1,3 +1,5 @@
+<PageHeading {breadcrumbs}/>
+
 <div class="item">
 <div class="header">
     <div class="text">Sync</div>
@@ -73,6 +75,7 @@ import CheckBox from "../CheckBox.svelte"
 import OpenArrow from "../OpenArrow.svelte"
 import InputBox from "../InputBox.svelte"
 import TaskTrackerView from "../TaskTrackerView.svelte";
+import PageHeading from "../PageHeading.svelte";
 
 let appState: Writable<AppState> = getContext("appStateStore")
 
@@ -84,6 +87,19 @@ $: userID = function() {
     if (!id) throw `Must be logged in`
     return id
 }()
+
+$: breadcrumbs = getBreadcrumbs(userID)
+
+function getBreadcrumbs(userID: UserID|null) {
+    let crumbs = []
+    if (userID) {
+        crumbs.push({userID})
+    }
+
+    crumbs.push({text: "Sync"})
+
+    return {crumbs}
+}
 
 
 let serverURL = ""

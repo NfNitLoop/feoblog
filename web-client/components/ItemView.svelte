@@ -237,7 +237,6 @@ function leftPage() {
     {:else if loadedItem.profile}
         <ItemHeader item={loadedItem} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
         <div class="body">
-            <h1 class="title">Profile: {loadedItem.profile.display_name}</h1>
             <div class="userIDInfo">
                 id: <UserIdView userID={UserID.fromString(userID)} resolve={false} shouldLink={false} />
             </div>

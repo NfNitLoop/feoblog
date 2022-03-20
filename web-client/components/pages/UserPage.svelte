@@ -1,11 +1,10 @@
 <!--
     Shows posts by a single user.
+    TODO: Implement infinite scroll like on the feed page.
 -->
 
 {#if userID}
-    <PageHeading>
-        <h1>Posts by <UserIDView {userID}/></h1>
-    </PageHeading>
+    <PageHeading navItems={getNav(userID)} breadcrumbs={breadcrumbs(userID)} />
 
     {#each items as entry, index (entry.signature)}
     <ItemView 
@@ -38,7 +37,8 @@ import { UserID, LazyItemLoader } from "../../ts/client";
 import ItemView from "../ItemView.svelte"
 import VisibilityCheck from "../VisibilityCheck.svelte";
 import UserIDView from "../UserIDView.svelte"
-import PageHeading from "../PageHeading.svelte";
+import PageHeading, { Breadcrumbs, NavItem } from "../PageHeading.svelte";
+import ProfileImage from "../ProfileImage.svelte";
 
 let appState: Writable<AppState> = getContext("appStateStore")
 
@@ -49,6 +49,31 @@ let loadingItems = true
 
 
 $: userID = UserID.tryFromString($params.userID)
+
+function getNav(userID: UserID): NavItem[] {
+    let app = $appState
+    let nav = app.navigator
+    let loggedIn = app.loggedInUser?.toString() == userID.toString()
+    let my = loggedIn ? "My " : ""
+
+    let items = [
+        { text: `${my}Feed`, href: nav.userFeed(userID).hash },
+        { text: `${my}Profile`, href: nav.userProfile(userID).hash },
+    ]
+    if (loggedIn) {
+        items = items.concat([
+            { text: "New Post", href: nav.newPost().hash },
+            { text: "Sync", href: nav.sync().hash },
+        ])
+    }
+    return items
+}
+
+function breadcrumbs(userID: UserID): Breadcrumbs {
+    return {
+        crumbs: [ { userID } ]
+    }
+}
 
 
 $: lazyLoader = createLazyLoader(userID)

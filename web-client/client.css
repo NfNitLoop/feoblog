@@ -14,20 +14,6 @@ body {
     color: black;
 }
 
-@media (min-width: 70em) {
-    .dualPaneEditor {
-        display: inline-grid;
-        width: 100%;
-        /* an .item has max-width 55em. +1em grid gap */
-        max-width: 111em;
-        grid-template-columns: 1fr 1fr;
-        grid-gap: 1em;
-        padding: 1em;
-    }
-    .dualPaneEditor > * {
-        margin: 0px;
-    }
-}
 
 input[type="text"], input[type="password"], textarea {
     width: 100%;

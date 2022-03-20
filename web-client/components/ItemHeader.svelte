@@ -6,11 +6,13 @@
     <div class="text">
         <UserIdView {userID} />
         {#if showReplyTo && item.comment != null}
-            <span>replied to</span>
+            <a href={refToLink(item.comment.reply_to)}>
+            replied to
             <UserIdView 
                 userID={UserID.fromBytes(item.comment.reply_to.user_id.bytes)}
-                href={refToLink(item.comment.reply_to)}
+                shouldLink={false}
             />
+            </a>
         {:else if item.profile} 
             <span>updated their profile</span>
         {/if}

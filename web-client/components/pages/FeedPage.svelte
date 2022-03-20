@@ -7,9 +7,7 @@
 </div>
 {:else}
 <div class="feed">
-    <PageHeading>
-        <h1>Feed for <UserIDView {userID}/></h1>
-
+    <PageHeading breadcrumbs={{crumbs: [{userID}, {text: "Feed"}]}}>
         <div slot="settings">
             <div class="searchBox">
                 <InputBox bind:value={search} placeholder="Search"/>

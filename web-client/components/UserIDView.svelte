@@ -22,7 +22,7 @@ export let displayName: string = ""
 export let href: string|undefined = undefined
 export let shouldLink = true
 
-$: defaultHref = `#/u/${userID}/profile`
+$: defaultHref = $appState.navigator.userPosts(userID).hash
 $: link = href || defaultHref
 
 // The display name is actually the public key until we fetch the real name:
@@ -35,8 +35,10 @@ $: {
 
 async function fetchDisplayName() {
     // Placeholder value while we fetch things:
-    if (!displayName) displayName = userID.toString()
-    isPubKey = true
+    if (!displayName) {
+        displayName = userID.toString()
+        isPubKey = true
+    }
 
     if (!resolve) return
 

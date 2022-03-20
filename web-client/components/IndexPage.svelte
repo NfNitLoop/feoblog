@@ -2,16 +2,16 @@
 <div class="nav-layout-container">
     <div class="nav-container">
         <div class="nav">
-            {#if !$appState.loggedIn}
+            {#if currentUser == null}
                 <NavLink href="#/home">Home</NavLink>
                 <NavLink href="#/login">Log in</NavLink>
             {:else}
-                <div>{$appState.userName || "(unknown user)"}</div>
-                <NavLink href="#/u/{$appState.loggedInUser}/feed">My Feed</NavLink>
+                <NavLink href={$appState.navigator.userPosts(currentUser).hash}>{$appState.userName || "(unknown user)"}</NavLink>
+                <!-- <NavLink href="#/u/{$appState.loggedInUser}/feed">My Feed</NavLink>
                 <NavLink href="#/u/{$appState.loggedInUser}/profile">My Profile</NavLink>
                 <NavLink href="#/u/{$appState.loggedInUser}/">My Posts</NavLink>
                 <NavLink href="#/post">New Post</NavLink>
-                <NavLink href="#/sync">Sync</NavLink>
+                <NavLink href="#/sync">Sync</NavLink> -->
                 <NavLink href="#/login">Change User</NavLink>
                 <NavLink href="#/home">Home</NavLink>
             {/if}
@@ -53,6 +53,8 @@ import SyncPage from "./pages/SyncPage.svelte";
 // Then consumers of the store will be rerendered.
 let appState = writable(new app.AppState())
 setContext("appStateStore", appState)
+
+$: currentUser = $appState.loggedInUser
 
 
 routes.set({
