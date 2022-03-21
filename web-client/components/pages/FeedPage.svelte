@@ -7,7 +7,7 @@
 </div>
 {:else}
 <div class="feed">
-    <PageHeading breadcrumbs={{crumbs: [{userID}, {text: "Feed"}]}}>
+    <PageHeading breadcrumbs={{crumbs: [{userID}, {text: "Feed"}]}} navItems={getNav(userID)}>
         <div slot="settings">
             <div class="searchBox">
                 <InputBox bind:value={search} placeholder="Search"/>
@@ -64,6 +64,18 @@ $: scrollPos = parseScrollPosition($query.ts)
 function createItemLoader(params: ItemOffsetParams) {
     if (!userID) return null
     return $appState.client.getUserFeedItems(userID, params)
+}
+
+function getNav(userID: UserID) {
+    let app = $appState
+    let nav = app.navigator
+    let loggedIn = userID.toString() == app.loggedInUser?.toString()
+    if (loggedIn) {
+        return [
+            { text: "New Post", href: nav.newPost().hash },
+            { text: "Sync", href: nav.sync().hash }
+        ]
+    }
 }
 
 
