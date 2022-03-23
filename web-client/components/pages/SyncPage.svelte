@@ -69,7 +69,7 @@ import { Item } from "../../protos/feoblog"
 import type { AppState } from "../../ts/app"
 import type { AttachmentMeta } from "../../ts/client"
 import { Client, Signature, UserID } from "../../ts/client"
-import { prefetch, readableSize, TaskTracker, validateServerURL } from "../../ts/common";
+import { bytesToHex, prefetch, readableSize, TaskTracker, validateServerURL } from "../../ts/common";
 import Button from "../Button.svelte"
 import CheckBox from "../CheckBox.svelte"
 import OpenArrow from "../OpenArrow.svelte"
@@ -784,26 +784,27 @@ async function * missingItems({ tracker, local, userID,  servers}: SyncOptions )
     }
 }
 
-// TODO: There's an issue here where if:
-// 1. Someone posts a lot of items with the exact same timestamp
-// 2. and the server doesn't order it this way
-// ... then we may try to sync some items that aren't necessary.
-// 
-// We could fix this locally by making sure to order same-timestamp items
-// by their signatures. (TODO)
-//
-// Sort by newest first, then by signature for a full ordering.
+
+// Sort by (timestamp, signature) descending.
 function entryByTimestamp(e1: ItemListEntry, e2: ItemListEntry): number {
     let cmp = e2.timestamp_ms_utc - e1.timestamp_ms_utc
     if (cmp != 0) return cmp
 
     let e1b = e1.signature?.bytes
     let e2b = e2.signature?.bytes
-    if (!e1b) return -1;
-    if (!e2b) return 1;
+    if (!e1b) {
+        console.error("ItemListEntry missing signature bytes:", e1);
+        return 0;
+    }
+    if (!e2b) {
+        console.error("ItemListEntry missing signature bytes:", e2);
+        return 0;
+    }
 
-    cmp = e2b.length - e1b.length
-    if (cmp != 0) return cmp
+    if (e2b.length != e1b.length) {
+        console.error("Can not compare signatures of different length", e1b, e2b)
+        return 0;
+    }
 
     for (let i = 0; i < e1b.length; i++) {
         cmp = e2b[i] - e1b[i]
@@ -828,6 +829,7 @@ class ServerUserItems {
     client: Client
     private userItems: AsyncGenerator<ItemListEntry>
     headItem: IteratorResult<ItemListEntry, void> | undefined
+    private previousItem: ItemListEntry|null = null
     
     isDone = false
     hadError = false
@@ -847,6 +849,7 @@ class ServerUserItems {
         if (this.isDone) { return }
         try {
             this.headItem = await this.userItems.next()
+            this.warnOutOfOrder()
             if (this.headItem.done) { this.isDone = true }
         } catch (e) {
             this.tracker.warn(`error reading from ${this.client.url}. Skipping server.`)
@@ -859,6 +862,7 @@ class ServerUserItems {
     popIfEquals(entry: ItemListEntry): boolean {
         if (!this.headEquals(entry)) return false
     
+        this.previousItem = this.headItem!.value!
         this.headItem = undefined
         return true
     }
@@ -870,7 +874,22 @@ class ServerUserItems {
         return entryByTimestamp(head, entry) == 0
     }
 
-    
+    private warnOutOfOrder() {
+        let previous = this.previousItem
+        let current = this.headItem?.value
+
+        if (!previous) { return }
+        if (!current) { return }
+
+        let cmp = entryByTimestamp(previous, current)
+        // Check for reverse chronological order. We expect "previous" to get chosen first.
+        // if not, something's off:
+        if (cmp >= 0) {
+            console.warn("Server", this.client.url, "returned items out of order. This may lead to unnecessary work during sync.")
+            console.debug("newer timestamp", previous.timestamp_ms_utc, "sig:", bytesToHex(previous.signature?.bytes))
+            console.debug("older timestamp", current.timestamp_ms_utc, "sig:", bytesToHex(current.signature?.bytes))
+        }
+    }
 }
 
 function publishMyPosts() {

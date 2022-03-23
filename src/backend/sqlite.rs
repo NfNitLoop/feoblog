@@ -558,7 +558,7 @@ impl backend::Backend for Connection
                         FROM server_user
                         WHERE on_homepage = 1
                     )
-                    ORDER BY unix_utc_ms DESC
+                    ORDER BY unix_utc_ms DESC, i.signature DESC
                 "
             },
             TimeSpan::After(after) => {
@@ -579,7 +579,7 @@ impl backend::Backend for Connection
                         FROM server_user
                         WHERE on_homepage = 1
                     )
-                    ORDER BY unix_utc_ms ASC
+                    ORDER BY unix_utc_ms ASC, i.signature DESC
                 "
             },
         };
@@ -637,7 +637,7 @@ impl backend::Backend for Connection
                         unix_utc_ms < ?
                         AND user_id = ?
                         AND EXISTS(SELECT user_id FROM known_users WHERE user_id = i.user_id)
-                    ORDER BY unix_utc_ms DESC
+                    ORDER BY unix_utc_ms DESC, i.signature DESC
                 "
             },
             TimeSpan::After(after) => {
@@ -655,7 +655,7 @@ impl backend::Backend for Connection
                         unix_utc_ms > ?
                         AND user_id = ?
                         AND EXISTS(SELECT user_id FROM known_users WHERE user_id = i.user_id)
-                    ORDER BY unix_utc_ms ASC
+                    ORDER BY unix_utc_ms ASC, i.signature ASC
                 "          
             }
         };
@@ -708,7 +708,7 @@ impl backend::Backend for Connection
                 AND r.to_user_id = ?
                 AND r.to_signature = ?
                 AND EXISTS(SELECT user_id FROM known_users WHERE user_id = i.user_id)
-            ORDER BY unix_utc_ms DESC
+            ORDER BY unix_utc_ms DESC, i.signature DESC
         ")?;
 
         let mut rows = stmt.query(params![
@@ -796,7 +796,7 @@ impl backend::Backend for Connection
                     WHERE {filter_ts}
                 )
                 {subselects}
-                ORDER BY unix_utc_ms {ts_order}
+                ORDER BY unix_utc_ms {ts_order}, signature {ts_order}
             ", 
             filter_ts=filter_ts,
             ts_order=ts_order,

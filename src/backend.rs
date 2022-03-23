@@ -473,6 +473,7 @@ impl Display for SHA512 {
     }
 }
 
+// TODO: Add signature to allow for pagination w/ full ordering:
 /// A(n unbounded) range of time we're requesting data for.
 #[derive(Debug)]
 pub enum TimeSpan {

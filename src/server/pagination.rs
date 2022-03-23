@@ -23,6 +23,8 @@ pub(crate) struct Pagination {
     /// Note: posts will still be listed in reverse-chronological-order. (newest first).
     after: Option<i64>,
 
+    // TODO: add sig (signature) here for correct pagination.
+
     /// Limit how many posts/items appear on a page.
     count: Option<usize>,
 }
