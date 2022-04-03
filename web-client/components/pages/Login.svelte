@@ -1,3 +1,4 @@
+<PageHeading breadcrumbs={getBreadcrumbs()} />
 
 <!-- Browse As: -->
 <div class="item">
@@ -54,6 +55,7 @@ import UserIDInput from "../UserIDInput.svelte"
 import Button from "../Button.svelte"
 import ViewSavedLogin from "../ViewSavedLogin.svelte"
 import CreateID from "./CreateID.svelte"
+import PageHeading from "../PageHeading.svelte";
 
 let appState: Writable<AppState> = getContext("appStateStore")
 let userID = ""
@@ -123,6 +125,15 @@ function updateSavedLogin(event: LoginChangeEvent) {
         state.updateSavedLogin(savedLogin)
         return state
     })
+}
+
+function getBreadcrumbs() {
+
+    return {
+        crumbs: [
+            {text: "Log In"}
+        ]
+    }
 }
 
 </script>

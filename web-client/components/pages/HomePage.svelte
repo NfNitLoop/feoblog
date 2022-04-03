@@ -1,4 +1,6 @@
 <!-- Displays the homepage feed in the client. -->
+<PageHeading {breadcrumbs} />
+
 {#each items as entry, index (entry.signature)}
     <ItemView 
         userID={entry.userID.toString()}
@@ -34,6 +36,7 @@ import type { DisplayItem } from "../../ts/client"
 import { LazyItemLoader } from "../../ts/client";
 
 import ItemView from "../ItemView.svelte"
+import PageHeading from "../PageHeading.svelte";
 import VisibilityCheck from "../VisibilityCheck.svelte";
 
 let appState: Writable<AppState> = getContext("appStateStore")
@@ -45,7 +48,12 @@ let endIsVisible: boolean
 // Assume there are more items to lazily load until we find otherwise:
 let moreItems = true
 
-// 
+let breadcrumbs = {
+    crumbs: [
+        // I suppose I should let the server choose its name somehow?  *shrug*
+        { text: window.location.hostname }
+    ]
+}
 
 $: lazyLoader = createLazyLoader()
 function createLazyLoader() {

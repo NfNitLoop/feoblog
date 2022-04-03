@@ -62,11 +62,17 @@ routes.set({
     "/home": HomePage,
     "/u/:userID/": UserPage,
     "/u/:userID/feed": FeedPage,
+
+    "/u/:userID/post": PostPage,
+    "/u/:userID/profile/edit": EditProfilePage,
+    "/u/:userID/sync": SyncPage,
+
     "/u/:userID/profile": ProfilePage,
     "/u/:userID/i/:signature/": ItemPage,
     "/login": Login,
 
-    // Technically these require log-in. They're available, we just hide them from nav if the user isn't logged-in.
+    // These are deprecated old paths.
+    // TODO: Figure out a succinct way to do redirects?
     "/post": PostPage,
     "/my_profile": EditProfilePage,
     "/sync": SyncPage,

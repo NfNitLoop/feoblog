@@ -71,7 +71,7 @@ function getNav(userID: UserID): NavItem[] {
 
 function breadcrumbs(userID: UserID): Breadcrumbs {
     return {
-        crumbs: [ { userID } ]
+        crumbs: [ { userID }, {text: "Posts"} ]
     }
 }
 

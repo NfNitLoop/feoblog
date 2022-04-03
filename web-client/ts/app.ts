@@ -264,8 +264,14 @@ export class Navigator {
     // old name: "Home"
     frontPage(): Location { return new Location(`#/home`) }
     logIn(): Location { return new Location(`#/login`) }
-    newPost() { return new Location(`#/post`) }
-    sync() { return new Location(`#/sync`) }
+    newPost(userID?: UserID) { 
+        if (!userID) return new Location(`#/post`) 
+        return new Location(`#/u/${userID}/post`)
+    }
+    sync(userID?: UserID) { 
+        if (!userID) return new Location(`#/sync`) 
+        return new Location(`#/u/${userID}/sync`)
+    }
 
     userFeed(user: string|UserID) {
         return new Location(`#/u/${user}/feed`)
