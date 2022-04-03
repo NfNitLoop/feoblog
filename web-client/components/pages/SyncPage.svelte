@@ -1,4 +1,4 @@
-<PageHeading {breadcrumbs}/>
+<PageHeading />
 
 <div class="item">
 <div class="header">

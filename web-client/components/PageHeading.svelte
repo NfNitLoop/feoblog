@@ -12,7 +12,7 @@
     <div class="top">
         <div class="breadcrumbs">
             
-            {#each breadcrumbs.crumbs as crumb, index}
+            {#each breadcrumbs as crumb, index}
                 <h1>
                 {#if "text" in crumb }
                     {#if crumb.href}
@@ -25,7 +25,7 @@
                     <UserIdView userID={crumb.userID} />
                 {/if}
                 </h1>
-                {#if index < breadcrumbs.crumbs.length - 1}
+                {#if index < breadcrumbs.length - 1}
                     <h1>&gt;</h1>
                 {/if}
             {/each}
@@ -62,15 +62,13 @@ import UrlPattern from "url-pattern"
 
 import { UserID } from "../ts/client"
 import SVGButton from "./SVGButton.svelte"
-import Button from "./Button.svelte"
 import ProfileImage from "./ProfileImage.svelte";
 import UserIdView from "./UserIDView.svelte";
 import type { AppState } from "../ts/app";
 import type { Writable } from "svelte/store";
 
-// TODO: don't actually accept these.
-export let navItems: NavItem[] = []
-export let breadcrumbs: Breadcrumbs = { crumbs: []}
+let navItems: NavItem[] = []
+let breadcrumbs: Breadcrumb[] = []
 
 
 let appState: Writable<AppState> = getContext("appStateStore")

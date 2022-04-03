@@ -1,4 +1,4 @@
-<PageHeading breadcrumbs={getBreadcrumbs()} />
+<PageHeading />
 
 <!-- Browse As: -->
 <div class="item">
@@ -125,15 +125,6 @@ function updateSavedLogin(event: LoginChangeEvent) {
         state.updateSavedLogin(savedLogin)
         return state
     })
-}
-
-function getBreadcrumbs() {
-
-    return {
-        crumbs: [
-            {text: "Log In"}
-        ]
-    }
 }
 
 </script>

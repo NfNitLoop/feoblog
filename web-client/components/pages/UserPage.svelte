@@ -4,7 +4,7 @@
 -->
 
 {#if userID}
-    <PageHeading navItems={getNav(userID)} breadcrumbs={breadcrumbs(userID)} />
+    <PageHeading />
 
     {#each items as entry, index (entry.signature)}
     <ItemView 
@@ -49,31 +49,6 @@ let loadingItems = true
 
 
 $: userID = UserID.tryFromString($params.userID)
-
-function getNav(userID: UserID): NavItem[] {
-    let app = $appState
-    let nav = app.navigator
-    let loggedIn = app.loggedInUser?.toString() == userID.toString()
-    let my = loggedIn ? "My " : ""
-
-    let items = [
-        { text: `${my}Feed`, href: nav.userFeed(userID).hash },
-        { text: `${my}Profile`, href: nav.userProfile(userID).hash },
-    ]
-    if (loggedIn) {
-        items = items.concat([
-            { text: "New Post", href: nav.newPost().hash },
-            { text: "Sync", href: nav.sync().hash },
-        ])
-    }
-    return items
-}
-
-function breadcrumbs(userID: UserID): Breadcrumbs {
-    return {
-        crumbs: [ { userID }, {text: "Posts"} ]
-    }
-}
 
 
 $: lazyLoader = createLazyLoader(userID)

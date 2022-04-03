@@ -1,5 +1,5 @@
 <!-- Displays the homepage feed in the client. -->
-<PageHeading {breadcrumbs} />
+<PageHeading />
 
 {#each items as entry, index (entry.signature)}
     <ItemView 
@@ -48,12 +48,6 @@ let endIsVisible: boolean
 // Assume there are more items to lazily load until we find otherwise:
 let moreItems = true
 
-let breadcrumbs = {
-    crumbs: [
-        // I suppose I should let the server choose its name somehow?  *shrug*
-        { text: window.location.hostname }
-    ]
-}
 
 $: lazyLoader = createLazyLoader()
 function createLazyLoader() {

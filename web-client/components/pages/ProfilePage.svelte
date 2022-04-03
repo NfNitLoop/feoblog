@@ -3,7 +3,7 @@
     Loads their existing profile first.
 -->
 
-<PageHeading {breadcrumbs} {navItems} />
+<PageHeading />
 
 {#await loadedProfile}
     <div class="item"><div class="body">Loading...</div></div>

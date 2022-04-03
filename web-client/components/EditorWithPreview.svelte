@@ -1,4 +1,4 @@
-<PageHeading {breadcrumbs} />
+<PageHeading />
 
 <div class="dualPaneEditor">
     {#if mode === "profile"}
@@ -93,24 +93,6 @@ let fileAttachments: FileInfo[] = []
 
 let userID: ClientUserID
 $: userID = $appState.requireLoggedInUser()
-$: breadcrumbs = getBreadcrumbs(userID)
-
-function getBreadcrumbs(userID: UserID|null) {
-
-    let crumbs = []
-
-    if (userID) {
-        crumbs.push({userID})
-    }
-
-    if (mode == "post") {
-        crumbs.push({text: "New Post"})
-    } else if (mode == "profile") {
-        crumbs.push({text: "Edit Profile"})
-    }
-    
-    return {crumbs}
-}
 
 
 // Validation Errors from EditProfile/EditPost:
