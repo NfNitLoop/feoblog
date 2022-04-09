@@ -38,7 +38,7 @@
                 label="Private Key"
                 placeholder=""
                 bind:value={privateKey}
-                bind:errorMessage={privateKeyError}
+                errorMessage={privateKeyError}
             />
             <Button on:click={sign} disabled={!privateKey || anyErrors || !validPrivateKey}>Sign</Button>
         </form>

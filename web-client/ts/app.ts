@@ -13,6 +13,7 @@ export class AppState
     private profileService: ProfileService
 
     readonly navigator = new Navigator()
+    private _loggedInUser: UserID | null = null
 
     constructor() {
         this._client = new Client({
@@ -20,6 +21,7 @@ export class AppState
         })
         this.profileService = new ProfileService(null, this._client)
         this.loadSavedLogins()
+        this.loadLoggedIn()
     }
 
     get client(): Client {
@@ -31,26 +33,31 @@ export class AppState
     }
 
     get loggedInUser(): UserID|null {
-        let userID = this._savedLogins[0]?.userID
-        if (!userID) return null;
-        return UserID.fromString(userID)
+        return this._loggedInUser
     }
 
     // Like loggedInUser, but throws an exception if no one is "logged in":
     requireLoggedInUser(): UserID {
-        let userID = this._savedLogins[0]?.userID
-        if (!userID) throw `Must be logged in.`
-        return UserID.fromString(userID)
-
+        if (!this.loggedInUser) throw `Must be logged in.`
+        return this.loggedInUser
     }
 
     get userBGColor(): string|null {
-        return this._savedLogins[0]?.bgColor || null
+        return this.activeLogin?.bgColor || null
+    }
+
+    private get activeLogin(): SavedLogin|null {
+        if (this._loggedInUser == null) { return null }
+        let matches = this._savedLogins.filter((sl) => sl.userID == this._loggedInUser!.toString())
+        if (matches.length != 1) {
+            console.warn("Excpected to find 1 profile for active login but found", matches.length)
+        }
+        return matches[0] || null;
     }
 
     // Name of the logged-in user:
     get userName(): string|null {
-        let login = this._savedLogins[0]
+        let login = this.activeLogin
         return login?.displayName || null
     }
 
@@ -76,28 +83,45 @@ export class AppState
     }
 
     // Logins that the client knows about.
-    // The first one is alwasy the ID that the client is currently "logged in" as.
-    get savedLogins(): SavedLogin[] {
-        return [...this._savedLogins]
+    get savedLogins(): readonly SavedLogin[] {
+        return this._savedLogins
     }
 
     // Save a new login (as the first item), OR, move it to the top if it already exists.
     logIn(newLogin: SavedLogin) {
-        this.removeLogin(newLogin.userID)
-        this._savedLogins.unshift(newLogin)
+        let foundIndex = this._savedLogins.findIndex(
+            (it) => it.userID == newLogin.userID
+        )
+        
+        if (foundIndex < 0) {
+            this._savedLogins.unshift(newLogin)
+        }
+
         this.writeSavedLogins()
+
+        this._loggedInUser = UserID.fromString(newLogin.userID)
+        this.saveLoggedIn()
+        this.userProfileChanged()
+    }
+
+    logOut() {
+        if (this._loggedInUser == null) { return }
+
+        this._loggedInUser = null
+        this.saveLoggedIn()
     }
 
     // Update a savedLogin in place w/ a new value.
-    updateSavedLogin(savedLogin: SavedLogin) {
+    updateSavedLogin(login: SavedLogin) {
         let foundIndex = this._savedLogins.findIndex(
-            (it) => it.userID == savedLogin.userID
+            (it) => it.userID == login.userID
         )
         if (foundIndex < 0) {
-            throw `No saved login for userID: ${savedLogin.userID}`
+            this._savedLogins.push(login)
+        } else {
+            this._savedLogins[foundIndex] = login
         }
 
-        this._savedLogins[foundIndex] = savedLogin
         this.writeSavedLogins()
     }
 
@@ -105,7 +129,7 @@ export class AppState
     // Display names are calculated in this way:
     // * If the ID is the logged-in user, use their profile display_name.
     // * If the ID is followed by the logged-in user, and they specify a display_name, use that.
-    // * If the ID has a profile that we can fetch from this server, use that.
+    // * If the ID has a profile that we can fetch from this server, use its display name.
     // * Otherwise, return null, this user has no preferred name.
     async getPreferredName(userID: UserID): Promise<string|null> {
         return await this.profileService.lookup(userID)
@@ -137,16 +161,33 @@ export class AppState
             // TODO: Some validation here?
             this._savedLogins = logins
 
-            this.initLoggedIn()
-
         } catch (exception) {
             console.error("Couldn't load saved logins", exception)
         }
     }
 
-    // initialize sate for a logged-in user:
-    private initLoggedIn() {
-        this.profileService.userID = this.loggedInUser
+    private loadLoggedIn() {
+        let userIdString = window.localStorage.getItem("logged-in-ID")
+        if (userIdString === null) {
+            this._loggedInUser = null
+            this.userProfileChanged()
+            return;
+        }
+
+        try {
+            this._loggedInUser = UserID.fromString(userIdString)
+            this.userProfileChanged()
+        } catch (error) {
+            console.error("Couldn't load logge-in user ID", error)
+        }
+    }
+
+    private saveLoggedIn() {
+        if (this._loggedInUser) {
+            window.localStorage.setItem("logged-in-ID", this._loggedInUser.toString())
+        } else {
+            window.localStorage.removeItem("logged-in-ID")
+        }
     }
 
     // Notify AppState that the currently logged-in user's profile was (possibly)

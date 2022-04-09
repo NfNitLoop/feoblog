@@ -1,142 +1,115 @@
+<!--
+    Shows a saved login, allows editing and switching IDs
+    emits events:
+
+    change - when values here are changed (and valid)
+    checked - user checked this box
+    unchecked - user unchecked this box.
+    remove - remove button clicked
+
+    
+-->
+
+<div class="item" class:collapsed>
+    <div class="header" on:click={headerClicked}>
+        <input type="checkbox" bind:this={checkbox} bind:checked on:click={checkClicked}>
+        <ProfileImage userID={UserID.fromString(savedLogin.userID)} slot="headerLeft"/>
+        <div class="mid">
+            <input type="text" 
+                bind:value={savedLogin.displayName} 
+                placeholder="(unknown display name)"
+                on:change={changed}
+            >
+            <br><span class="userID">id: {savedLogin.userID}</span>    
+        </div>
+        <OpenArrow bind:isOpen/>
+    </div>
+    <div class="body">
+        <action-bar>
+            <Button href="#/u/{savedLogin.userID}/feed">View Feed</Button>
+            <Button href="#/u/{savedLogin.userID}/profile">View Profile</Button>
+            <Button on:click={removeMe}>Delete</Button>
+            <ColorPicker bind:color={savedLogin.bgColor} on:change={changed}/>
+        </action-bar>
+
+    </div>
+</div>
+
+
 <script lang="ts">
-/*
- * Shows a saved login, allows editing and switching IDs
- *
- * emits events:
- * change({savedLogin: SavedLogin}) when values here are changed (and valid)
- * logIn({savedLogin: SavedLogin}) when the user clicks the "Log In" button.
- * logOut({savedLogin: SavedLogin}) when the user clicks the "Log Out" button.
- */
 
 import type { SavedLogin } from "../ts/app";
 import { createEventDispatcher } from "svelte";
 import Button from "./Button.svelte"
 import ProfileImage from "./ProfileImage.svelte";
 import { UserID } from "../ts/client";
+import OpenArrow from "./OpenArrow.svelte";
+import ColorPicker from "./ColorPicker.svelte";
 
 export let savedLogin: SavedLogin
-export let isLoggedIn = false
+export let checked = false
 
-// derived from savedLogin, so that we never modify it directly:
-export let displayName = savedLogin.displayName || ""
-export let userID = savedLogin.userID
-export let bgColor = savedLogin.bgColor || ""
+export let isOpen = false
 
-$: itemStyle = function(){
-    if (isLoggedIn) {
-        return ""
-    }
-    let color = bgColor
-    if (!validColor(color)) {
-        color = "rgba(0,0,0,0)"
-    }
-    return `border: 5px solid ${color};`
-}()
-
-function validColor(color: string): boolean {
-    return (
-        /^#[0-9a-f]{3}$/i.test(color) 
-        || /^#[0-9a-f]{6}$/i.test(color) 
-    )   
-}
+let checkbox: HTMLInputElement
 
 let dispatch = createEventDispatcher()
 
-function logIn() {
-    dispatch("logIn", eventData())
+$: collapsed = !isOpen
+
+function headerClicked(event: MouseEvent) {
+    // TODO: Make the whole header change logged-in user.
 }
 
-function remove() {
-    dispatch("remove", eventData())
+function changed() {
+    dispatch("change")
 }
 
-function onChange(...ignored: any) {
-    if (bgColor && !validColor(bgColor)) return
-    dispatch("change", eventData())
+function checkClicked() {
+    let newValue = !checked
+    let action = newValue ? "checked" : "unchecked"
+    console.log("action", action)
+    dispatch(action)
 }
 
-function eventData(): EventData {
-    return {
-        savedLogin: {
-            userID,
-            displayName,
-            bgColor,
-        }
-    }
+function removeMe() {
+    dispatch("remove")
 }
 
-$: { displayName; bgColor; onChange() }
-
-
-class EventData {
-    savedLogin: SavedLogin
-}
 </script>
 
 
-<div class="savedLogin" >
-<div class="item">
-<div class="body" style={itemStyle}>
-    <div class="imageBox" on:click={logIn}>
-        <ProfileImage userID={UserID.fromString(userID)} size={100}/>
-    </div>
-    <table>
-        {#if isLoggedIn}
-        <tr>
-            <th colspan=2>Logged in as:</th>
-        </tr>
-        {/if}
-        <tr>
-            <td>Name:</td>
-            <td><input type="text" bind:value={displayName} placeholder="(unknown display name)"></td>
-        </tr>
-        <tr>
-            <td>User ID:</td>
-            <td><span class="userID">{userID}</span></td>
-        </tr>
-        <tr>
-            <td>Color:</td>
-            <td><input class="color" type="color" bind:value={bgColor}></td>
-        </tr>
-        <tr>
-            <td></td>
-            <td>
-                {#if !isLoggedIn}<Button on:click={logIn}>Log In</Button>{/if}
-                <Button on:click={remove} requiresConfirmation>Remove</Button>
-            </td>
-        </tr>
-    </table>
-</div>
-</div>
-</div>
-
 <style>
-input {
-    border: 1px solid rgba(0, 0, 0, 0);
-    font-family: inherit;
-    font-size: inherit;
-}
-input:hover, input:focus {
-    border: 1px solid black;
+.userID {
+    font-family: monospace;
 }
 
-th {
-    text-align: left;
+.header input {
+    background: inherit;
+    border: 0px;
 }
 
-.userID, .color {
-    font-family: Consolas, monospace;
+.header .mid {
+    flex-grow: 1;
 }
 
-.body {
+
+.item .header {
+    padding: 0.5rem 1.0rem;
+}
+
+.item.collapsed .body {
+    display: none
+}
+.item.collapsed .header {
+    border-radius: 20px;
+}
+
+action-bar {
     display: flex;
-    flex-direction: row;
-    align-items: center;
+    width: 100%;
+    justify-content: space-between;
+    
+    gap: 0.5rem;
 }
-
-.body .imageBox {
-    margin-right: 1em;
-    cursor: pointer;
-}
-
 </style>

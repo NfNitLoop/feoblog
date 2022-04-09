@@ -22,14 +22,6 @@
             signature={loaded.profile.signature.toString()}
         />
         {/if}
-
-        <div class="item">
-            <div class="body">
-             
-                <Button href={`#/u/${userID}/`}>View Posts</Button>
-            </div>
-        </div>
-
     {/if}
 {:catch e} 
     <div class="item"><div class="body error">

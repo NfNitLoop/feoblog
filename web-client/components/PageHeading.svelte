@@ -15,7 +15,9 @@
             {#each breadcrumbs as crumb, index}
                 <h1>
                 {#if "text" in crumb }
-                    {#if crumb.href}
+                    {#if crumb.href && crumb.text == "🏠"}
+                        <a href={crumb.href}><SVGButton icon="home"/></a>
+                    {:else if crumb.href}
                         <a href={crumb.href}>{crumb.text}</a>
                     {:else}
                         {crumb.text}
@@ -26,18 +28,16 @@
                 {/if}
                 </h1>
                 {#if index < breadcrumbs.length - 1}
-                    <h1>&gt;</h1>
+                    <h1>:</h1>
                 {/if}
             {/each}
         </div>
         {#if hasSettings}
         <h1 class="settingsButton">
-            <SVGButton src="/client/images/magnifying_glass.svg" alt="search" on:click={toggleSettings} />
+            <SVGButton icon="search" on:click={toggleSettings} />
         </h1>
         {/if}
     </div>
-
-
 
     {#if hasSettings && !settingsHidden}
         <div class="settings" transition:slide|local>
@@ -100,7 +100,7 @@ function toggleSettings() {
     settingsHidden = !settingsHidden
 }
 
-
+$: getNav($appState)
 $: hasNav = navItems.length > 0
 $: navHidden = !settingsHidden
 
@@ -124,11 +124,36 @@ function onScroll(event: UIEvent) {
     }
 }
 
+// TODO: Move this up to IndexPage along side the Router config?
+// TODO: I ended up not being able to use the Navigator here.  Delete it?
 let navTree = new NavNode({
     pattern: "/home",
     title: window.location.hostname,
     children: [
-        // TODO:  Log in/out/settings/etc.
+        {
+            loginState: "logged-in",
+            title: "My Feed",
+            pattern: "/",
+        },
+        { 
+            loginState: "logged-out",
+            pattern: "/login",
+            title: "Log In",
+            children: [
+                {title: "Log In", pattern: "/login" },
+                {title: "Create ID", pattern: "/login/create-id" },
+            ]
+        },
+        { 
+            loginState: "logged-in",
+            pattern: "/login",
+            title: "Log In/Out",
+            children: [
+                {title: "Log In", pattern: "/login" },
+                // {title: "Settings", pattern: "/login/settings"},
+                {title: "Create ID", pattern: "/login/create-id" },
+            ]
+        },
         {
             title: "User Posts",
             pattern: "/u/:userID/(*)",
@@ -139,25 +164,24 @@ let navTree = new NavNode({
                 { pattern: "/u/:userID/profile", title: "Profile" },
                 { pattern: "/u/:userID/feed", title: "Feed" },
                 { loginState: "current-user", pattern: "/u/:userID/post", title: "New Post"},
+                { loginState: "current-user", pattern: "/u/:userID/profile/edit", title: "Edit Profile"},
                 { loginState: "current-user", pattern: "/u/:userID/sync", title: "Sync"},
             ]
         },
     ]
 })
 
-getNav()
 
 
-function getNav() {
-    let app = $appState
+function getNav(app: AppState) {
     let url = window.location.hash.substring(1).replace(/\?.*/, "")
-    let node = navTree.getDisplayNode(url)
+    let node = navTree.getDisplayNode(app, url)
     if (!node) {
         navItems = [{text: "Error loading nav items", href: "#/"} ]
         return
     }
     navItems = node.getNavItems(app, url)
-    breadcrumbs.crumbs = node.getBreadcrumbs(url)
+    breadcrumbs = node.getBreadcrumbs(url)
 }
 
 </script>
@@ -206,7 +230,7 @@ class NavNode {
             items.push({
                 text: child.title,
                 href: '#' + child.getUrl(url),
-                isActive: child.matches(url),
+                isActive: child.matches(app, url),
             })
         }
 
@@ -233,6 +257,11 @@ class NavNode {
             })
         }
 
+        // TODO: Use SVG:
+        if (crumbs.length > 1 && "text" in crumbs[0]) {
+            crumbs[0].text = "🏠"
+        }
+
         return crumbs
     }
 
@@ -252,22 +281,31 @@ class NavNode {
 
     getUrl(currentUrl: string): string {
         let params = this.compileParams(currentUrl)
-        console.log(currentUrl, this.urlPattern.toString(), "params:", params)
 
         return this.urlPattern.stringify(params)
     }
 
     /** Get the node from which to show nav & breadcrumbs */
-    getDisplayNode(url: string): NavNode | null {
+    getDisplayNode(app: AppState, url: string): NavNode | null {
         // Depth-first search:
         let node: NavNode|null = null
 
+        // ... unless this node should be hidden:
+        
+        if (this.loginState) {
+            let user = app.loggedInUser
+            if (this.loginState == "logged-out" && user) { return null }
+            if (this.loginState == "logged-in" && !user) { return null }
+            let pathUserID = this.compileParams(url).userID
+            if (this.loginState == "current-user" && user?.toString() != pathUserID) { return null }
+        }
+
         for (let child of this.children) {
-            node = child.getDisplayNode(url)
+            node = child.getDisplayNode(app, url)
             if (node != null) { break }
         }
 
-        if (node == null && this.matches(url)) {
+        if (node == null && this.matches(app, url)) {
             if (this.children.length == 0 && this.parent) {
                 // Go up one level to show sibling nav:
                 node = this.parent
@@ -279,8 +317,11 @@ class NavNode {
         return node
     }
 
-    matches(url: string): boolean {
-        return this.urlPattern.match(url)
+    matches(app: AppState, url: string): boolean {
+        if (!this.urlPattern.match(url)) { return false }
+
+
+        return true
     }
 
 }

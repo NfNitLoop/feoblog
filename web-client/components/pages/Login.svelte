@@ -1,48 +1,45 @@
 <PageHeading />
 
-<!-- Browse As: -->
-<div class="item">
-    <div class="body">
+{#each $appState.savedLogins as savedLogin, index (savedLogin.userID)}
+    <ViewSavedLogin 
+        {savedLogin}
+        checked={savedLogin.userID == $appState.loggedInUser?.toString()}
+        on:change={() => update(savedLogin)}
+        on:checked={() => checked(savedLogin)}
+        on:unchecked={() => unchecked(savedLogin)}
+        on:remove={() => removeID(savedLogin)}
+    />
+{:else}
+<ItemBox>
+    FeoBlog allows you to save multiple identities which you can easily switch between. Why have one blog when you can have as many as you want! :)
+</ItemBox>        
+{/each}
+
+
+<ItemBox>
     <form>
-        <UserIDInput label="Browse as" bind:value={userID} bind:valid={validUserID} bind:hasFocus />
+        <UserIDInput label="" placeholder="Add User ID" bind:value={userID} bind:valid={validUserID} bind:hasFocus />
     </form>
 
-    <p>
     {#if validUserID}
+    <p>
         {#await profileLoad}
             Loading profile ...
         {:then profile}
                 {#if profile} 
-                    Browse as user "{profile.profile?.display_name}"?
+                    Add "{profile.profile?.display_name}"?
                 {:else}
-                    Could not load profile for that user ID. Log in anwyay?
+                    Could not load profile for that user ID. Add it anyway?
                 {/if}
         {:catch err}
             Error: {err}
-        {/await}
-    {/if}
+        {/await} 
     </p>
-    <Button on:click={confirmLogin} disabled={!validUserID}>Confirm</Button>
-
-    
-    </div>
-    </div>
-
-<CreateID></CreateID>
-
-{#each $appState.savedLogins as savedLogin, index (savedLogin.userID)}
-    <ViewSavedLogin {savedLogin} isLoggedIn={index===0} on:logIn={logInSaved} on:remove={removeSaved} on:change={updateSavedLogin}/>
-{:else}
-<div class="item">
-<div class="body">
-        You are not currently logged in.
-</div>
-</div>
-{/each}
-
-
-
-
+    {/if}
+    {#if userID?.length > 0}
+        <Button on:click={addUserID} disabled={!validUserID}>Confirm</Button>
+    {/if}
+</ItemBox>
 
 
 <script lang="ts">
@@ -54,8 +51,9 @@ import { UserID } from "../../ts/client"
 import UserIDInput from "../UserIDInput.svelte"
 import Button from "../Button.svelte"
 import ViewSavedLogin from "../ViewSavedLogin.svelte"
-import CreateID from "./CreateID.svelte"
 import PageHeading from "../PageHeading.svelte";
+import ItemBox from "../ItemBox.svelte";
+
 
 let appState: Writable<AppState> = getContext("appStateStore")
 let userID = ""
@@ -78,7 +76,7 @@ function fetchProfile() {
     profileLoad = loadProfile()
 }
 
-async function confirmLogin() {
+async function addUserID() {
     // Log in via app state.
 
     let login: SavedLogin = {userID}
@@ -86,7 +84,7 @@ async function confirmLogin() {
 
     appState.update((state) => {
         if (displayName) { login.displayName = displayName}
-        state.logIn(login)
+        state.updateSavedLogin(login)
         return state
     })
 
@@ -98,33 +96,36 @@ function reset() {
     userID = ""
 }
 
-type LoginChangeEvent = {
-    detail: {
-        savedLogin: SavedLogin
-    }
-}
-
-function logInSaved(event: LoginChangeEvent) {
-    let savedLogin: SavedLogin = event.detail.savedLogin
-    appState.update((state) => {
-        state.logIn(savedLogin)
-        return state
+function update(login: SavedLogin) {
+    appState.update((app) => {
+        app.updateSavedLogin(login)
+        return app
     })
 }
 
-function removeSaved(event: LoginChangeEvent) {
-    let savedLogin: SavedLogin = event.detail.savedLogin
+function removeID(savedLogin: SavedLogin) {
     appState.update((state) => {
         state.forgetLogin(savedLogin.userID)
         return state
     })
 }
-function updateSavedLogin(event: LoginChangeEvent) {
-    let savedLogin: SavedLogin = event.detail.savedLogin
-    appState.update((state) => {
-        state.updateSavedLogin(savedLogin)
-        return state
+
+function checked(login: SavedLogin) {
+    appState.update((app) => {
+            app.logIn(login)
+            return app
     })
 }
+
+function unchecked(login: SavedLogin) {
+    appState.update((app) => {
+            app.logOut()
+            return app
+    })
+}
+
+
+
+
 
 </script>

@@ -63,45 +63,18 @@ body
 }
 
 
-/* Nav floats left */
+/** Once we get to a max reasonable size for reading, center: */
 @media (min-width: 55em) {
-	.nav-layout-container {
-		display: flex;
-		flex-direction: horizontal;
-	}
-	
-	.nav-container {
-		min-width: 10em;
-		max-width: 20%;
-		margin: 0;
-		padding: 0;
-	}
-
-	.nav {
-		margin-right: 0;
-		position: sticky;
-		top: 1em;
-	}
-
-	.nav a, .nav div {
-		text-align: right;
-	}
-
 	.items {
 		flex-grow: 10;
-		min-width: 0;
+		min-width: 10em;
+		max-width: 55em;
+		margin-left: auto;
+		margin-right: auto;
 	}
 }
 
-/* Show wide code: */
-@media (min-width: 90em) {
-	.item pre {
-		border-radius: 5px;
-		min-width: 100%;
-		width: max-content;
-		box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.2);
-	}
-}
+
 
 code {
 	font-family: Consolas, monospace;

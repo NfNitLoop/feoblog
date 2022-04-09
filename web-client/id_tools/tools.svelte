@@ -17,13 +17,10 @@ table th {
     text-align: right
 }
 
-.userID, .privateKey {
+.userID {
     font-family: Consolas, monospace;
 }
-.privateKey {
-    font-weight: bold;
-    color: red;
-}
+
 
 </style>
 

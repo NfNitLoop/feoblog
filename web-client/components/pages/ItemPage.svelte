@@ -1,3 +1,4 @@
+<PageHeading/>
 {#if !userID || !signature}
 <div class="error">
     Username and Signature are required to render this view.
@@ -55,6 +56,7 @@ import { Signature, UserID } from "../../ts/client"
 import ItemView from "../ItemView.svelte"
 import CommentEditor from "../CommentEditor.svelte"
 import Button from "../Button.svelte"
+import PageHeading from "../PageHeading.svelte";
 
 let appState: Writable<AppState> = getContext("appStateStore")
 

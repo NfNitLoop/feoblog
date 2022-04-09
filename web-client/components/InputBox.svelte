@@ -3,8 +3,8 @@
     <label>
         {#if label}{label}: {/if}{#if errorMessage}<span class="error">{errorMessage}</span>{/if}
         <div>
-        {#if inputType == "text"}
-            <input type="text" bind:value={value} {disabled} {placeholder} on:focus={gotFocus} on:blur={lostFocus} />
+        {#if inputType == "text" || inputType == "userID"}
+            <input type="text" class:mono={inputType=="userID"} bind:value={value} {disabled} {placeholder} on:focus={gotFocus} on:blur={lostFocus} />
         {:else}
             <input 
                 type="password" 
@@ -23,13 +23,13 @@
 export let value = ""
 export let disabled = false
 export let label = ""
-export let inputType: "text"|"password" = "text"
+export let inputType: "text"|"userID"|"password" = "text"
 export let placeholder = label
 export let hasFocus = false
 
 // Callback to validate the contents of the InputBox.
 // Should return a non-empty error string if there's an error.
-export let validationCallback: ((value: string) => string) = (_:string) => { return "" }
+export let validationCallback: ((value: string) => string)|null = null
 
 export let errorMessage = ""
 
@@ -52,3 +52,9 @@ function gotFocus() { hasFocus = true }
 function lostFocus() { hasFocus = false }
 
 </script>
+
+<style>
+.mono {
+    font-family: monospace;
+}
+</style>

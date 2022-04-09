@@ -45,25 +45,6 @@
 
 </div>
 
-<style>
-
-@media (min-width: 70em) {
-    .dualPaneEditor {
-        display: inline-grid;
-        width: 100%;
-        /* an .item has max-width 55em. +1em grid gap */
-        max-width: 111em;
-        grid-template-columns: 1fr 1fr;
-        grid-gap: 1em;
-        padding: 1em;
-        padding-top: 0;
-    }
-    .dualPaneEditor > :global(*) {
-        margin: 0px;
-    }
-}
-</style>
-
 <script lang="ts">
 import type { Writable } from "svelte/store"
 import { Item } from "../protos/feoblog"
