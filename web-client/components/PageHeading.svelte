@@ -5,9 +5,9 @@
 -->
 <svelte:window on:scroll={onScroll} />
 
-<heading-container class:stuckAtTop class:hideHeading>
+<heading-container class:stuckAtTop class:hideHeading class:sticky>
 
-<div class="pageHeading" class:stuckAtTop bind:this={headingElement}>
+<div class="pageHeading" class:stuckAtTop class:shrink bind:this={headingElement}>
 
     <div class="top">
         <div class="breadcrumbs">
@@ -72,19 +72,22 @@ let breadcrumbs: Breadcrumb[] = []
 
 
 let appState: Writable<AppState> = getContext("appStateStore")
-
-
 let headingElement: HTMLElement;
-let stuckAtTop = false
+
+let sticky = true
 let hideHeading = false
-
-
+let stuckAtTop = false
+let shrink = false
 
 let observer = new IntersectionObserver(observerCallback, {threshold: [1]})
+let intersectionRatio = 1;
 function observerCallback(entries: IntersectionObserverEntry[], observer: IntersectionObserver) {
     // We only observe this one element, so this should always be here:
     let entry = entries[0]
-    stuckAtTop = entry.intersectionRatio < 1
+
+    intersectionRatio = entry.intersectionRatio
+
+    stuckAtTop = intersectionRatio < 1
 }
 
 onMount(() => {
@@ -116,25 +119,22 @@ function onScroll(event: UIEvent) {
 
     if (delta < -10) {
         hideHeading = false
-    }
-    if (delta > 100) {
+    } else if (delta > 100) {
+        // Cap the delta so switching directions works:
         scrollYDelta.delta = 100
 
         hideHeading = true
     }
+
+    shrink = window.scrollY > headingElement.offsetHeight
 }
 
 // TODO: Move this up to IndexPage along side the Router config?
-// TODO: I ended up not being able to use the Navigator here.  Delete it?
+// TODO: Can I use the Navigator class here for URLs?
 let navTree = new NavNode({
     pattern: "/home",
     title: window.location.hostname,
     children: [
-        {
-            loginState: "logged-in",
-            title: "My Feed",
-            pattern: "/",
-        },
         { 
             loginState: "logged-out",
             pattern: "/login",
@@ -147,10 +147,9 @@ let navTree = new NavNode({
         { 
             loginState: "logged-in",
             pattern: "/login",
-            title: "Log In/Out",
+            title: "Identities",
             children: [
-                {title: "Log In", pattern: "/login" },
-                // {title: "Settings", pattern: "/login/settings"},
+                {title: "Identities", pattern: "/login" },
                 {title: "Create ID", pattern: "/login/create-id" },
             ]
         },
@@ -166,6 +165,7 @@ let navTree = new NavNode({
                 { loginState: "current-user", pattern: "/u/:userID/post", title: "New Post"},
                 { loginState: "current-user", pattern: "/u/:userID/profile/edit", title: "Edit Profile"},
                 { loginState: "current-user", pattern: "/u/:userID/sync", title: "Sync"},
+                { loginState: "current-user", pattern: "/login", title: "Identities" },
             ]
         },
     ]
@@ -222,6 +222,20 @@ class NavNode {
         }
 
         let items: NavItem[] = []
+
+        if (this.parent) {
+            let root = this.parent
+            while (root.parent) {
+                root = root.parent
+            }
+
+            let home = root.getUrl(url)           
+            items.push({
+                text: "Home",
+                href: `#${home}`
+            })
+        }
+
         for (let child of this.children) {
             if (child.placeholder) { continue }
             if (child.loginState == "current-user" && loginState != "current-user") { continue }
@@ -238,31 +252,33 @@ class NavNode {
     }
 
     getBreadcrumbs(url: string): Breadcrumb[] {
-        let crumbs: Breadcrumb[] = []
-        if (this.parent) {
-            crumbs = this.parent.getBreadcrumbs(url)
+        let trail = []
+        for (let node: NavNode|undefined = this; node; node = node.parent) {
+            trail.push(node)
         }
 
+        let crumbs = trail.reverse().map((n) => n.getBreadCrumb(url))
+        if (crumbs.length > 1 && "text" in crumbs[0]) {
+            crumbs = crumbs.slice(1)
+        }
+
+        return crumbs
+    }
+
+    private getBreadCrumb(url: string): Breadcrumb {
         if (this.userIDcrumb) {
             let params = this.compileParams(url)
             let userID = params[this.userIDcrumb]
             if (!userID) { throw new Error(`no such userIDCrumb in path: ${this.userIDcrumb}`)}
-            crumbs.push({
+            return {
                 userID: UserID.fromString(userID)
-            })
-        } else {
-            crumbs.push({
-                text: this.title,
-                href: '#' + this.getUrl(url)
-            })
+            }
+        } 
+        return {
+            text: this.title,
+            href: '#' + this.getUrl(url)
         }
 
-        // TODO: Use SVG:
-        if (crumbs.length > 1 && "text" in crumbs[0]) {
-            crumbs[0].text = "🏠"
-        }
-
-        return crumbs
     }
 
     // Get URL path params from all of my parents, and this.
@@ -424,15 +440,20 @@ export interface NavItem {
 
 <style>
 
+
+
 heading-container {
     display: block;
-	position: sticky;
-    top: -1px;
+
     overflow-y: visible;
     /* Required so that transform'd items don't bleed through. Weird. */
     z-index: 1;
     transition: all 300ms;
+}
 
+heading-container.sticky {
+	position: sticky;
+    top: -1px;
 }
 
 .pageHeading {
@@ -449,12 +470,20 @@ heading-container {
 }
 
 .pageHeading.stuckAtTop {
-    padding: 0.5rem 1.3rem;
-    border-top-left-radius: 0px;
-    border-top-right-radius: 0px;
+    margin-left: 0;
+    margin-right: 0;
+    border-radius: 0 0 20px 20px;
 }
 
-.pageHeading.stuckAtTop :global(h1) {
+/**
+    Shrinking the text & padding can change the overlap detection, which causes infinite loops/redraws.
+    So, we delay it a bit longer:
+*/
+.pageHeading.stuckAtTop.shrink {
+    padding: 0.5rem 1.3rem;
+
+}
+.pageHeading.stuckAtTop.shrink :global(h1) {
     font-size: 1rem;
 }
 
@@ -462,11 +491,6 @@ heading-container {
     padding-top: 1rem;
 }
 
-.pageHeading.stuckAtTop {
-    margin-left: 0;
-    margin-right: 0;
-    border-radius: 0;
-}
 
 
 
@@ -475,7 +499,6 @@ heading-container {
     .pageHeading.stuckAtTop {
         margin: 0.5rem;
         max-width: 56rem;
-        border-radius: 0 0 20px 20px;
     }
 }
 
@@ -495,14 +518,10 @@ heading-container.stuckAtTop.hideHeading {
     overflow-x: scroll;
     white-space: nowrap;
     -webkit-overflow-scrolling: touch;
-
 }
 
 .navItems {
-    margin-top: 0.1em;
-}
-
-.navItems {
+    margin-top: 0.3em;
     gap: 0.3em;
 }
 
@@ -511,10 +530,11 @@ heading-container.stuckAtTop.hideHeading {
     padding: 0.2em 0.4em;
     transition-property: background-color, color;
     transition-duration: 300ms;
+    background-color: #eee;
+    color: #888;
 }
 
 .navItems a:hover, .navItems a.active {
-    background-color: #eee;
     color: black;
 }
 

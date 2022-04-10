@@ -27,8 +27,9 @@
     <div class="body">
         <action-bar>
             <Button href="#/u/{savedLogin.userID}/feed">View Feed</Button>
+            <Button href="#/u/{savedLogin.userID}/">View Posts</Button>
             <Button href="#/u/{savedLogin.userID}/profile">View Profile</Button>
-            <Button on:click={removeMe}>Delete</Button>
+            <Button on:click={removeMe}>Remove</Button>
             <ColorPicker bind:color={savedLogin.bgColor} on:change={changed}/>
         </action-bar>
 
@@ -68,7 +69,9 @@ function changed() {
 function checkClicked() {
     let newValue = !checked
     let action = newValue ? "checked" : "unchecked"
-    console.log("action", action)
+    if (newValue) {
+        isOpen = true
+    }
     dispatch(action)
 }
 
