@@ -1,6 +1,7 @@
 <PageHeading />
 
 {#each $appState.savedLogins as savedLogin, index (savedLogin.userID)}
+    <div animate:flip={{duration: 200}}>
     <ViewSavedLogin 
         {savedLogin}
         checked={savedLogin.userID == $appState.loggedInUser?.toString()}
@@ -8,7 +9,12 @@
         on:checked={() => checked(savedLogin)}
         on:unchecked={() => unchecked(savedLogin)}
         on:remove={() => removeID(savedLogin)}
+        on:up={() => move(savedLogin, "up")}
+        on:down={() => move(savedLogin, "down")}
+        first={index == 0}
+        last={index == $appState.savedLogins.length - 1}
     />
+    </div>
 {:else}
 <ItemBox>
     FeoBlog allows you to save multiple identities which you can easily switch between. Why have one blog when you can have as many as you want! :)
@@ -45,6 +51,8 @@
 <script lang="ts">
 import { getContext } from "svelte";
 import type { Writable } from "svelte/store"
+import { flip } from "svelte/animate"
+
 import type { Item, Profile } from "../../protos/feoblog"
 import type { AppState, SavedLogin } from "../../ts/app"
 import { UserID } from "../../ts/client"
@@ -97,34 +105,65 @@ function reset() {
 }
 
 function update(login: SavedLogin) {
-    appState.update((app) => {
+    updateApp((app) => {
         app.updateSavedLogin(login)
-        return app
     })
 }
 
 function removeID(savedLogin: SavedLogin) {
-    appState.update((state) => {
+    updateApp((state) => {
         state.forgetLogin(savedLogin.userID)
-        return state
     })
 }
 
 function checked(login: SavedLogin) {
-    appState.update((app) => {
-            app.logIn(login)
-            return app
+    updateApp((app) => {
+        app.logIn(login)
     })
 }
 
 function unchecked(login: SavedLogin) {
-    appState.update((app) => {
-            app.logOut()
-            return app
+    updateApp((app) => {
+        app.logOut()
     })
 }
 
+function move(login: SavedLogin, direction: "up"|"down") {
+    let logins = [...$appState.savedLogins]
+    let pos = logins.findIndex((l) => l.userID.toString() == login.userID.toString())
 
+    if (direction == "up") {
+        if (pos == 0) {
+            console.warn("Can't move login up, already at top:", login)
+            return
+        }
+        swap(logins, pos, pos - 1) 
+    } else { // direction == "down"
+        if (pos == logins.length - 1) {
+            console.warn("Can't move login down, already at end:", login)
+            return
+        }
+        swap(logins, pos, pos + 1)
+    }
+
+    updateApp((app) => {
+        app.updateSavedLogins(logins)
+    })
+}
+
+function updateApp(callback: (app: AppState) => void) {
+    appState.update((app) => {
+        callback(app)
+        return app
+    })
+}
+
+function swap<T>(arr: T[], index1: number, index2: number) {
+    if (index1 == index2) { return }
+    let tmp = arr[index1]
+    arr[index1] = arr[index2]
+    arr[index2] = tmp
+}
 
 
 

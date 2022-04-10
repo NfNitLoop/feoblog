@@ -125,6 +125,13 @@ export class AppState
         this.writeSavedLogins()
     }
 
+    updateSavedLogins(logins: SavedLogin[]) {
+        // TODO: Log out if not in saved logins.
+
+        this._savedLogins = logins
+        this.writeSavedLogins()
+    }
+
     // Calculate the preferred display name for a given user ID. 
     // Display names are calculated in this way:
     // * If the ID is the logged-in user, use their profile display_name.

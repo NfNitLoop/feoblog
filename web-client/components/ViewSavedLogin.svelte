@@ -6,11 +6,10 @@
     checked - user checked this box
     unchecked - user unchecked this box.
     remove - remove button clicked
-
-    
+   
 -->
 
-<div class="item" class:collapsed>
+<div class="item" class:collapsed transition:slide|local>
     <div class="header" on:click={headerClicked}>
         <input type="checkbox" bind:this={checkbox} bind:checked on:click={checkClicked}>
         <ProfileImage userID={UserID.fromString(savedLogin.userID)} slot="headerLeft"/>
@@ -29,6 +28,10 @@
             <Button href="#/u/{savedLogin.userID}/feed">View Feed</Button>
             <Button href="#/u/{savedLogin.userID}/">View Posts</Button>
             <Button href="#/u/{savedLogin.userID}/profile">View Profile</Button>
+            <div>
+                <Button disabled={first} on:click={() => dispatch("up")}>⬆️</Button>
+                <Button disabled={last} on:click={() => dispatch("down")}>⬇️</Button>
+            </div>
             <Button on:click={removeMe}>Remove</Button>
             <ColorPicker bind:color={savedLogin.bgColor} on:change={changed}/>
         </action-bar>
@@ -38,6 +41,8 @@
 
 
 <script lang="ts">
+
+import { slide } from "svelte/transition"
 
 import type { SavedLogin } from "../ts/app";
 import { createEventDispatcher } from "svelte";
@@ -49,6 +54,8 @@ import ColorPicker from "./ColorPicker.svelte";
 
 export let savedLogin: SavedLogin
 export let checked = false
+export let first = false
+export let last = false
 
 export let isOpen = false
 
