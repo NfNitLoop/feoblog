@@ -10,7 +10,7 @@
                 type="password" 
                 autocomplete="current-password" 
                 on:focus={gotFocus} on:blur={lostFocus}
-                bind:value={value} 
+                bind:value
                 {disabled} 
                 {placeholder} 
             />

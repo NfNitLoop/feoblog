@@ -33,13 +33,12 @@ input {
 }
 
 div {
-    width: 2rem;
-    height: 2rem;
+    display: inline-block;
 }
 
-color-box, input {
-    width: 100%;
-    height: 100%;
+color-box, input, div {
+    width: 2rem;
+    height: 2rem;
 }
 
 color-box {

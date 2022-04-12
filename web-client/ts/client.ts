@@ -1,8 +1,9 @@
 import { Item, ItemList, ItemListEntry, ItemType, Post } from "../protos/feoblog"
 import * as nacl from "./naclWorker/nacl"
+import tweetnacl from "tweetnacl"
 import { bytesToHex, ConsoleLogger, Logger, prefetch } from "./common";
 import { tick } from "svelte";
-import { decodeBase58, encodeBase58 } from "./fbBase58";
+import { decodeBase58, decodeBase58Check, encodeBase58 } from "./fbBase58";
 
 // Before sending files larger than this, we should check whether they exist:
 const SMALL_FILE_THRESHOLD = 1024 * 128
@@ -473,14 +474,14 @@ export class Signature {
         return nacl.sign_detached_verify_sync(bytes, this.bytes, userID.bytes)
     }
 
-    static fromString(userID: string): Signature {
-        if (userID.length == 0) {
+    static fromString(signature: string): Signature {
+        if (signature.length == 0) {
             throw "Signature must not be empty."
         }
     
         let buf: Uint8Array;
         try {
-            buf = decodeBase58(userID)
+            buf = decodeBase58(signature)
         } catch (error) {
             throw "Signature not valid base58"
         }
@@ -511,6 +512,49 @@ export class Signature {
     private constructor(bytes: Uint8Array) {
         this.bytes = bytes
     }
+}
+
+export class PrivateKey {
+    readonly userID: UserID;
+
+    static fromBase58(privateKey: string) {
+
+        // Error to display about the private key:
+        let buf: Uint8Array;
+        try {
+            buf = decodeBase58(privateKey)
+        } catch (error) {
+            throw "Not valid base58"
+        }
+
+        // Secret is 32 bytes, + 4 for checked base58.
+        if (buf.length < 36) {
+            throw "Password is too short."
+        }
+        if (buf.length > 36) {
+            throw "Password is too long."
+        }
+
+        try {
+            buf = decodeBase58Check(privateKey)
+        } catch (e) {
+            throw "Invalid Password"
+        }
+
+        // Signing is not usually a bottleneck so just using current thread:
+        let keypair = tweetnacl.sign.keyPair.fromSeed(buf);        
+
+        return new PrivateKey(keypair)
+    }
+
+    private constructor(private keyPair: tweetnacl.SignKeyPair) {
+        this.userID = UserID.fromBytes(keyPair.publicKey)
+    }
+
+    signDetached(message: Uint8Array) {
+        return tweetnacl.sign.detached(message, this.keyPair.secretKey)
+    }
+           
 }
 
 const USER_ID_BYTES = 32;

@@ -33,14 +33,8 @@
         -->
         <form>
             <input type="text" name="login" autocomplete="username" placeholder="here to satisfy password managers">
-            <InputBox 
-                inputType="password"
-                label="Private Key"
-                placeholder=""
-                bind:value={privateKey}
-                errorMessage={privateKeyError}
-            />
-            <Button on:click={sign} disabled={!privateKey || anyErrors || !validPrivateKey}>Sign</Button>
+            <SecretKeyInput userID={$appState.loggedInUser} bind:valid={validPrivateKey} bind:value={privateKeyString} />
+            <Button on:click={sign} disabled={!validPrivateKey}>Sign</Button>
         </form>
     {:else}
         <InputBox
@@ -61,13 +55,14 @@ import { slide } from "svelte/transition"
 import type { Writable } from "svelte/store";
 import type { Item, File as PFile } from "../protos/feoblog";
 import type { AppState } from "../ts/app";
-import { Signature } from "../ts/client";
+import { PrivateKey, Signature } from "../ts/client";
 import Button from "./Button.svelte";
 import InputBox from "./InputBox.svelte"
 import TaskTrackerView from "./TaskTrackerView.svelte"
 import nacl from "tweetnacl";
 import { FileInfo, Mutex, TaskTracker } from "../ts/common";
 import { decodeBase58, decodeBase58Check, encodeBase58 } from "../ts/fbBase58";
+import SecretKeyInput from "./SecretKeyInput.svelte";
 
 let appState: Writable<AppState> = getContext("appStateStore")
 export let item: Item
@@ -89,7 +84,8 @@ $: itemBytes = item.serialize()
 
 $: userID = $appState.requireLoggedInUser()
 
-let privateKey = ""
+let validPrivateKey = false
+let privateKeyString = ""
 let signature = ""
 
 // Additional errors we check before sending any Items:
@@ -157,63 +153,23 @@ $: validSignature = function(): boolean {
     return isValid
 }()
 
-// Error to display about the private key:
-$: privateKeyError = function() {
-    if (privateKey.length == 0) {
-        return "";
-    }
-    
-    let buf: Uint8Array;
-    try {
-        buf = decodeBase58(privateKey)
-    } catch (error) {
-        return "Not valid base58"
-    }
-
-    // Secret is 32 bytes, + 4 for checked base58.
-    if (buf.length < 36) {
-        return "Password is too short."
-    }
-    if (buf.length > 36) {
-        return "Password is too long."
-    }
-
-    try {
-        buf = decodeBase58Check(privateKey)
-    } catch (e) {
-        return "Invalid Password"
-    }
-
-    
-    let keypair = nacl.sign.keyPair.fromSeed(buf);
-    
-    let pubKey = encodeBase58(keypair.publicKey)
-    if (pubKey != userID.toString()) {
-        return "Private key does not match user ID."
-    }
-
-    return ""    
-}()
-$: validPrivateKey = !privateKeyError
-
 
 // Create a signature, delete the password.
 function sign() {
-    if (privateKeyError) {
+    if (!validPrivateKey) {
         console.error("Shouldn't be able to call sign w/ invalid private key.")
         return
     }
 
     if (!itemBytes) throw `No bytes to sign.`
 
-    let buf = decodeBase58Check(privateKey)
-    let keypair = nacl.sign.keyPair.fromSeed(buf);
-    let binSignature = nacl.sign.detached(itemBytes, keypair.secretKey)
+    let privateKey = PrivateKey.fromBase58(privateKeyString)
+    let binSignature = privateKey.signDetached(itemBytes)
     signature = encodeBase58(binSignature)
 
     // Delete the privateKey, we don't want to save it any longer than
     // necessary:
-    privateKey = ""
+    privateKeyString = ""
 }
 
 let inProgress = false
