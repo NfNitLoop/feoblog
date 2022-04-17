@@ -10,7 +10,7 @@
 -->
 
 <div class="item" class:collapsed transition:slide|local>
-    <div class="header" on:click={headerClicked}>
+    <div class="header">
         <input type="checkbox" bind:this={checkbox} bind:checked on:click={checkClicked}>
         <ProfileImage userID={UserID.fromString(savedLogin.userID)} slot="headerLeft"/>
         <div class="mid">
@@ -36,59 +36,57 @@
             <ColorPicker bind:color={savedLogin.bgColor} on:change={changed}/>
         </action-bar>
 
-        <setting-section class={`securityLevel${securityLevelID}`}>
-            <h3>Security Level: {securityLevel.name}</h3>
-            <action-bar>
-                <Button on:click={() => editingSecurity = !editingSecurity }>{#if editingSecurity}Cancel{:else}Edit{/if}</Button>
-            </action-bar>
+        <setting-section>
+            <h3>
+                Security Level: {#if editingSecurity}{securityScore}{:else}{currentSecurity.score}{/if}%
+                {#if !editingSecurity}<Button on:click={() => editingSecurity = true }>Edit</Button>{/if}
+            </h3>
 
             {#if editingSecurity}
-            <div>
-                <p>Select your security level: 
-                <input type="range" min="0" max="{securityLevels.length - 1}" bind:value={securityLevelID} >
-            </div>
-
-            <dual-pane>
-                <pane-content>
-                    <h1>Pros</h1>
-                    <ul>
-                    {#each securityLevel.pros as pro}
-                        <li>{pro}</li>
-                    {/each}
-                    </ul>
-                </pane-content>
-                <pane-content>
-                    <h1>Cons</h1>
-                    <ul>
-                    {#each securityLevel.cons as con}
-                        <li>{con}</li>
-                    {/each}
-                    </ul>
-                </pane-content>
-                <pane-content>
-                    <h1>Remember</h1>
-                    <ul>
-                        <li>The server never receives a copy of your private key or password.</li>
-                        <li>You should never share your private key or password with anyone.</li>
-                        <li>Regardless of security level, you MUST also store your private key in a separate, secure location. 
-                            (Use a <a href="https://en.wikipedia.org/wiki/Password_manager">password manager</a>!)</li>
-                    </ul>
-                </pane-content>
-            </dual-pane>
-
-                {#if securityLevel.key == "insecure"}
-                <div><SecretKeyInput
-                    userID={UserID.fromString(savedLogin.userID)}
-                    bind:value={privateKeyString}
-                    bind:valid={validPrivateKey} 
-                /></div>
-                <Button disabled={!validPrivateKey} on:click={() => {
-                    securityManager.setInsecure(savedLogin.userID.toString(), privateKeyString)
-                    privateKeyString = ""
-                    editingSecurity = false
-                }}>Confirm</Button>
+                
+                <label><input type="checkbox" bind:checked={savePrivateKey}>Save my private key</label>
+                {#if savePrivateKey}
+                <div>
+                    <SecretKeyInput
+                        userID={UserID.fromString(savedLogin.userID)}
+                        bind:value={privateKeyString}
+                        bind:valid={validPrivateKey} 
+                        label=""
+                    />
+                    <label><input type="checkbox" bind:checked={saveWithPassword}>With a password:</label>
+                    {#if saveWithPassword}
+                        <InputBox placeholder="Password" inputType="password" bind:value={keyPassword}/>
+                    {/if}
+                </div>
                 {/if}
-            
+
+
+                <label><input type="checkbox" bind:checked={saveTemporarily}>Temporarily remember my key after use</label>
+                {#if saveTemporarily}
+                    <p>For up to {saveTimeSpan}</p>
+                    <input type="range" min=0 max={timeSpans.length - 1} bind:value={saveTimeSpanIndex}/>
+                {/if}
+
+                {#if errors.length > 0}
+                    <h3>Errors:</h3>
+                    <ul>
+                        {#each errors as error}
+                            <li>{error}</li>
+                        {/each}
+                    </ul>
+                {:else if securityDetails.length > 0}
+                    <h3>Security Summary:</h3>
+                    <ul>
+                    {#each securityDetails as detail}
+                        <li>{detail}</li>
+                    {/each}
+                    </ul>
+                {/if}
+
+                <action-bar>
+                    <Button disabled={errors.length > 0} on:click={confirmSecuritySettings}>Confirm</Button>            
+                    <Button on:click={() => editingSecurity = false}>Cancel</Button>
+                </action-bar>
             {/if}
 
             <!-- <input type="password" value="*****************"/>
@@ -112,8 +110,9 @@ import ProfileImage from "./ProfileImage.svelte";
 import { UserID } from "../ts/client";
 import OpenArrow from "./OpenArrow.svelte";
 import ColorPicker from "./ColorPicker.svelte";
-import { securityLevels, SecurityManager } from "../ts/storage"
+import { SecurityManager, SecurityManagerOptions } from "../ts/storage"
 import SecretKeyInput from "./SecretKeyInput.svelte";
+import InputBox from "./InputBox.svelte";
 
 export let savedLogin: SavedLogin
 export let checked = false
@@ -123,7 +122,6 @@ export let last = false
 export let isOpen = checked
 
 let appState: Writable<AppState> = getContext("appStateStore")
-let securityManager = new SecurityManager(appState)
 
 let checkbox: HTMLInputElement
 
@@ -134,14 +132,83 @@ let editingSecurity = false
 let privateKeyString = ""
 let validPrivateKey = false
 
-$: securityLevelKey = securityManager.currentLevel(savedLogin)
-$: securityLevelID = securityLevels.findIndex((l) => l.key == securityLevelKey)
-$: securityLevel = securityLevels[securityLevelID] || securityLevels[securityLevels.length - 1]
+let savePrivateKey = false
+let saveWithPassword = true
+let keyPassword = ""
+
+// Every time we uncheck savePrivateKey or saveWithPassword, unset the corresponding (potentially sensitive!) data:
+$: if (!editingSecurity || !savePrivateKey) privateKeyString = ""
+$: if (!editingSecurity || !savePrivateKey || !saveWithPassword) keyPassword = ""
+
+let saveTemporarily = false
+// Human readable timespan:
+let saveTimeSpan = ""
+let saveTimeSpanIndex = 0
+
+
+const timeSpans = [
+    // {secs: 60, text: "1 minute"},
+    {secs: 60 * 5, text: "5 minutes"},
+    {secs: 60 * 15, text: "15 minutes"},
+    {secs: 60 * 60, text: "1 hour"},
+    {secs: 60 * 60 * 4, text: "4 hours"},
+    {secs: 60 * 60 * 24, text: "24 hours"},
+    {secs: 60 * 60 * 24 * 7, text: "7 days"},
+] as const
+
+$: securityManager = new SecurityManager(appState, $appState)
+$: currentSecurity = securityManager.getSettings(savedLogin.userID)
+
+$: saveTimeSpan = timeSpans[saveTimeSpanIndex].text
 
 $: collapsed = !isOpen
 
-function headerClicked(event: MouseEvent) {
-    // TODO: Make the whole header change logged-in user?
+
+
+function confirmSecuritySettings() {
+    securityManager.applySettings(securityOptions)
+    reset()
+}
+
+function reset() {
+    editingSecurity = false
+    savePrivateKey = false
+    saveWithPassword = true
+    keyPassword = ""
+    privateKeyString = ""
+    saveTemporarily = false
+    saveTimeSpanIndex = 0
+}
+
+let securityDetails: string[] = []
+let errors: string[] = []
+
+let securityScore = 100
+let securityOptions: SecurityManagerOptions
+$: securityOptions = {
+    userID: savedLogin.userID,
+    privateKeyBase58Check: savePrivateKey ? privateKeyString : undefined,
+    privateKeyPassword: saveWithPassword ? keyPassword : undefined,
+    rememberKeySecs: saveTemporarily ? timeSpans[saveTimeSpanIndex].secs : undefined,
+}
+$:{
+    let result = securityManager.calculateLevel(securityOptions)
+    securityScore = result.score
+
+    let prefix = ""
+    if (securityScore < 50) {
+        prefix = "☠️"
+    } else if (securityScore < 80) {
+        prefix = "⚠️"
+    } else if (securityScore >= 95) {
+        prefix = "✅"
+    }
+
+    securityDetails = [
+        `${prefix} Overall security score: ${securityScore}%`,
+        ...result.details
+    ]
+    errors = result.errors   
 }
 
 function changed() {
@@ -190,32 +257,6 @@ function removeMe() {
     border-radius: 20px;
 }
 
-dual-pane {
-    display: flex; 
-    flex-wrap: wrap;
-    gap: 1em;
-}
-
-dual-pane h1 , dual-pane ul{
-    font-size: 1em;
-    margin: 0px;
-}
-
-dual-pane ul {
-    padding-left: 1em;
-}
-
-dual-pane pane-content {
-    flex: 1;
-}
-
-dual-pane > * {
-    min-width: 10em;
-}
-
-li:not(:first-of-type) {
-    margin-top: 0.3em;
-}
 
 setting-section {
     display: block;
@@ -229,6 +270,11 @@ setting-section > *:first-child {
 
 input[type="range"] {
     border: 0px;
+}
+
+setting-section label {
+    display: block;
+    /* padding-left: 2em; */
 }
 
 action-bar {

@@ -66,6 +66,7 @@ import ProfileImage from "./ProfileImage.svelte";
 import UserIdView from "./UserIDView.svelte";
 import type { AppState } from "../ts/app";
 import type { Writable } from "svelte/store";
+import { CancelTimer } from "../ts/common";
 
 let navItems: NavItem[] = []
 let breadcrumbs: Breadcrumb[] = []
@@ -361,23 +362,6 @@ interface NavNodeParams {
     children?: NavNodeParams[]
 }
 
-class CancelTimer {
-    delayMs = 5000
-
-    private timer: number|null = null
-
-    start(callback: () => unknown) {
-        this.cancel()
-        this.timer = setTimeout(callback, this.delayMs)
-    }
-
-    cancel() {
-        if (this.timer) {
-            clearTimeout(this.timer)
-        }
-        this.timer = null
-    }
-}
 
 class ScrollDelta {
     delta = 0

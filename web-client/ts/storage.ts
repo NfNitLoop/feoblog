@@ -1,112 +1,223 @@
 /// Implement obfuscated, timed local storage.
 
+import { PasswordMeter } from "password-meter";
 import type { Writable } from "svelte/store"
 import * as nacl from "tweetnacl"
 import type { AppState, SavedLogin } from "./app"
-import type { UserID } from "./client";
+import { PrivateKey, UserID } from "./client";
 
-export const securityLevels: LevelInfo[] = [
-    { 
-        key: "insecure", 
-        // Note: At least in Chromium on Windows, adding an emoji causes the line-height to change.
-        // To avoid UI twitching, add an emoji to every name.
-        name: "☠️ Insecure",
-        pros: [
-            "You don't have to enter your password."
-        ],
-        cons: [
-            "Your private key is stored in the browser unencrypted, indefinitely.",
-            "☠️ If an attacker gains access to your computer, or compromises your browser, it is trivial for them to get your private key."
-        ],
-    },
-    {
-        key: "weak-password",
-        name: "⚠️ Weak Password",
-        pros: [
-            "Relaxes the password security requirements so you can use a simpler password."
-        ],
-        cons: [
-            "⚠️ Weak passwords can be \"cracked\" by brute-force. An attacker could recover both your password and your private key."
-        ],
+export interface SecurityManagerOptions {
+    userID: string,
 
-    },
-    {
-        key: "strong-password-cached",
-        name: "✅ Strong Password + Timeout",
-        pros: [
-            "After entering your password once, the browser remembers your private key for a short time.",
-            "Makes it easier to make lots of posts/comments without having to re-enter your password every time.",
-            "The browser re-locks your private key if you close the window/tab.",
-        ],
-        cons: [
-            "An unencrypted version of your private key is easily accessible if your browser is compromised while it's still in memory."
-        ]
-    },
-    {
-        key: "strong-password",
-        name: "✅ Strong Password",
-        cons: [
-            "Strong passwords are still difficult to remember and type.",
-            "⚠️ TODO: Password strength checking not yet implemented.",
-        ],
-        pros: [
-            "A strong password might be easier to remember than a private key.",
-            "While the private key is stored in the browser, it's securely protected by a strong password."
-        ]
-    },
+    privateKeyBase58Check?: string
+    privateKeyPassword?: string
 
-    { 
-        key: "most-secure",
-        name: "✅ Most Secure",
-        pros: [
-            "✅ This is the most secure option.",
-            "This is the default and recommended option.",
-            "The browser never stores your private key. (Recommended: Use a third-party password manager.)",
-        ],
-        cons: [
-            "You must enter your private key every time you make a post or comment, or edit your profile."
-        ]
-    }
-]
+    rememberKeySecs?: number
+}
+
+export interface SecurityRating {
+    // 0-100 (%)
+    score: number
+
+    details: string[]
+
+    errors: string[]
+}
+
+export interface SecuritySettings {
+    // Since we don't have the password handy, have to store this calculated security score:
+    score: number
+
+    hasEncryptedKey: boolean,
+    hasUnencryptedKey: boolean,
+    hasUnlockedKey: boolean,
+
+    keyTimeoutSecs?: number
+
+    // TODO: keyTimeoutRemaining: number
+}
+
+let passwordMeter = new PasswordMeter()
+
 
 // TODO: Move to app?  Might have a circular dependency here.
 export class SecurityManager {
     
+    // Stores unencrypted (but obfuscated) passwords permanently. ☠️☠️
     private insecureStore: ObfusatingStore;
-    private passwordStore: PrefixedStorage;
+
+    // Stores encrypted passwords
+    private secureStore: SecretStorage;
+
+    // Stores unencrypted (but obfuscated) keys which have been "unlocked" by being used recently.
     private tempStore: TimedStorage;
 
     constructor(
-        private app: Writable<AppState>,
+        private writableApp: Writable<AppState>,
+        private app: AppState,
     ) {
         this.insecureStore = new ObfusatingStore(new PrefixedStorage(window.localStorage, `insecureKeyStore`));
-        this.passwordStore = new PrefixedStorage(window.localStorage, `privateKeyStore`);
+        this.secureStore = new SecretStorage(new PrefixedStorage(window.localStorage, `privateKeyStore`));
         this.tempStore = new TimedStorage(`timedKeyStore`)
     }
 
-    currentLevel(login: SavedLogin): SecurityLevelKey {
-        // let matches = this.app.savedLogins.filter((l) => l.userID.toString() == this.login.userID.toString())
-        // if (matches.length != 1) {
-        //     throw new Error(`Expected to find userid: ${this.login.userID} but found ${matches.length} matches`)
-        // }
+    calculateLevel(opts: SecurityManagerOptions): SecurityRating {
+        let score = 100
+        let details: string[] = []
+        let errors: string[] = []
 
-        if (this.insecureStore.getItem(login.userID.toString())) {
-            return 'insecure'
+        let securityImpact = (pct: number) => {
+            let maxScore = 100 - pct
+            score = Math.min(score, maxScore)
         }
 
+        let {privateKeyBase58Check, privateKeyPassword, rememberKeySecs} = opts
+        let savePrivateKey = privateKeyBase58Check !== undefined
+        let storeWithPassword = privateKeyPassword !== undefined
+        if (privateKeyBase58Check !== undefined) {
 
+            if (privateKeyBase58Check == "") {
+                return {score: 0, details: [], errors: ["Private Key must not be empty."]}
+            }
 
+            let privateKey
+            try {
+                privateKey = PrivateKey.fromBase58(privateKeyBase58Check)
+            } catch (e) {
+                return {score: 0, details: [], errors: ["Invalid private key"]}
+            }
 
-        // TODO:
-        if (!("securityLevel" in login)) {
-            // old/default behavior:
-            return "most-secure"
+            if (privateKey.userID.asBase58 != opts.userID) {
+                return {score: 0, details: [], errors: ["Private key is not for this user ID"]}
+            }
         }
 
-        throw new Error("TODO: implement me")
+        let saveTemporarily = rememberKeySecs !== undefined && rememberKeySecs > 0
+
+        if (savePrivateKey) {
+            if (storeWithPassword) {
+                securityImpact(5)
+                details.push("You'll be able to enter your password instead of your private key.")
+    
+                let result = passwordMeter.getResult(privateKeyPassword!)
+                let score = result.score
+                if (score < 80) {
+                    securityImpact(100)
+                }
+                if (score < 100) {
+                    securityImpact(90)
+                }
+                if (score < 120) {
+                    securityImpact(60)
+                    details.push("☠️ Weak Password. If your browser is compromised, a weak password can be brute-forced, revealing both your password and your private key.")
+                } else if (score > 180) {
+                    details.push("✅ Strong password")
+                } else {
+                    securityImpact(10)
+                }
+                // details.push(`Password score: ${result.score} ${result.status}`)
+    
+    
+            } else {
+                details.push("☠️ Without a password, storing your private key in the browser could allow it to be compromised.")
+                securityImpact(100)
+            }
+        } 
+        
+        if (!savePrivateKey && !saveTemporarily) {
+            details.push("✅ You'll enter your private key any time you need to save a post. This is the most secure option.")
+        }
+    
+        if (saveTemporarily) {
+            details.push(`Each time you use your key, it will be stored temporarily to use again.`)
+            details.push(
+                `⚠️ During this time your key can be easily recovered if your browser is compromised.`
+            )
+            details.push("Your temporarily-stored key will always be cleared when the browser or tab is closed.")
+    
+            securityImpact(5)
+            if (rememberKeySecs! > 15 * 60) {
+                securityImpact(10)
+            }
+            if (rememberKeySecs! > 60 * 60 * 24) {
+                securityImpact(15)
+            }
+        }
+    
+        details.push("Regardless of security options, your private key and password are never shared with the server.")
+        details.push("A server admin will never need to know your private key or password.")
+        if (savePrivateKey) {
+            details.push("Remember: Despite saving it here, you must save your private key in a secure location, like a password manager.")
+        }
+
+        let savedLogin = this.app.getSavedLogin(opts.userID)
+        if (savedLogin == null) {
+            return {score: 0, details: [], errors: ["That user ID is not among the saved logins."] }
+        }
+
+        return { score, details, errors }
     }
 
-    setInsecure(uid: string, privateKey: string) {
+    applySettings(opts: SecurityManagerOptions) {
+        let check = this.calculateLevel(opts)
+        if (check.errors.length > 0) {
+            throw new Error(`tried to apply bad settings: ${check.errors[0]}`)
+        }
+
+        // Start from scratch:
+        this.forgetKeys(opts.userID)
+
+        if (opts.privateKeyBase58Check != undefined) {
+            let password = opts.privateKeyPassword
+            if (password != undefined) {
+                this.secureStore.setItem(password, opts.userID, opts.privateKeyBase58Check)
+            } else {
+                this.insecureStore.setItem(opts.userID, opts.privateKeyBase58Check)
+            }
+
+            // Also save key in temp storage, since we just "used" it:
+            if (opts.rememberKeySecs && opts.rememberKeySecs > 0) {
+                this.tempStore.setItem(opts.userID, opts.privateKeyBase58Check, opts.rememberKeySecs * 1000)
+            }
+        }
+
+        let savedLogin = this.app.getSavedLogin(opts.userID)
+        if (savedLogin == null) { throw new Error(`I thought we already checked savedLogin was not null...`) }
+        savedLogin.rememberKeySecs = opts.rememberKeySecs
+        savedLogin.securityScore = check.score
+        this.app.updateSavedLogin(savedLogin)
+        this.updateApp()
+
+
+    }
+
+    getSettings(userID: string): SecuritySettings {
+        let login = this.app.getSavedLogin(userID)
+        return {
+            // If we haven't saved any info, then security is 100%:
+            score: login?.securityScore || 100,
+
+            keyTimeoutSecs: login?.rememberKeySecs,
+            hasEncryptedKey: this.hasEncryptedKey(userID),
+            hasUnencryptedKey: this.hasUnencryptedKey(userID),
+            hasUnlockedKey: this.hasUnlockedKey(userID),
+        }
+    }
+
+    /** True if the user stores a key, w/ or w/o password. */
+    hasEncryptedKey(userID: string): boolean {
+        return this.secureStore.hasItem(userID)
+    }
+
+    hasUnencryptedKey(userID: string): boolean {
+        return this.insecureStore.getItem(userID) != null
+    }
+
+    hasUnlockedKey(userID: string): boolean {
+        return this.tempStore.hasItem(userID) != null
+    }
+
+    private setInsecure(uid: string, privateKey: string) {
         this.forgetKeys(uid)
         this.insecureStore.setItem(uid, privateKey)
         this.updateApp()
@@ -114,34 +225,52 @@ export class SecurityManager {
 
     private forgetKeys(uid: string) {
         this.insecureStore.removeItem(uid)
-        this.passwordStore.removeItem(uid)
+        this.secureStore.removeItem(uid)
         this.tempStore.removeItem(uid)
     }
 
     private updateApp() {
-        console.log("updating app")
-        this.app.update((app) => app)
+        this.writableApp.update((app) => app)
     }
 }
-
-interface LevelInfo {
-    // Don't use integer keys in case we want to introduce something 
-    key: SecurityLevelKey
-    name: string
-    pros: string[]
-    cons: string[]
-}
-
-export type SecurityLevelKey = "insecure"| "most-secure"|"weak-password"|"strong-password"|"strong-password-cached"
 
 
 interface BetterStorage extends Storage {
     // A more efficient (and handy!) way to list keys.
-    keys: string[]
+    readonly keys: string[]
 
     // Aww, was hoping VSCode would show me warnings for these.
     /** @deprecated Don't use this, use `keys`. */
     key(index: number): string|null
+}
+
+/** Like Storage, but requires a password to get/set keys. */
+class SecretStorage {
+    constructor(private inner: BetterStorage) {}
+
+    hasItem(key: string): boolean {
+        return this.inner.getItem(key) != null
+    }
+
+    get keys() { return this.inner.keys }
+
+    getItem(password: string, key: string): string|null {
+        let boxed = this.inner.getItem(key)
+        if (boxed == null) { return null }
+
+        let box = SecretBoxKey.fromPassword(password)
+        return box.decryptString(boxed)
+    }
+
+    setItem(password: string, key: string, value: string) {
+        let box = SecretBoxKey.fromPassword(password)
+        let boxed = box.encryptString(value)
+        this.inner.setItem(key, boxed)
+    }
+
+    removeItem(key: string) {
+        this.inner.removeItem(key)
+    }
 }
 
 
@@ -176,7 +305,6 @@ export class PrefixedStorage implements BetterStorage {
         return this.removePrefix(innerKey)
     }
 
-    // BLEH, this breaks composability. Probably won't get used, but IS more efficient.
     get keys(): string[] {
         return this.matchingInnerKeys.map((key) => this.removePrefix(key))
     }
@@ -293,9 +421,10 @@ interface JSONConverter<T> {
  * Values are obfuscated.  (encrypted, but the key is also present)
  */
 export class TimedStorage {
+
     private storage: JSONStorage<TimedData>;
 
-    constructor(storeName: string) {
+    constructor(private storeName: string) {
         // Why use session storage?
         // * gets deleted when the page is closed.
         // * is saved across a page reload, which is especially handy during development.
@@ -307,6 +436,23 @@ export class TimedStorage {
 
     setItem(key: string, value: string, timeoutMs: number) {
         this.storage.setItem(key, new TimedData(value, timeoutMs))
+    }
+
+    /** Checks if an item exists. Does NOT refresh its duration. */
+    hasItem(key: string): boolean {
+        let data = this.storage.getItem(key)
+        if (data == null) { return false }
+        if (this.prune(key, data)) { return false }
+        return true
+    }
+
+    private prune(key: string, data: TimedData): boolean {
+        if (data.timedOut) {
+            console.debug("Pruning old key:", `${this.storeName}:${key}`)
+            this.removeItem(key)
+            return true
+        }
+        return false
     }
 
     getItem(key: string): string|null {
@@ -329,10 +475,7 @@ export class TimedStorage {
     pruneExpired() {
         for (let key of this.storage.keys) {
             let data = this.storage.getItem(key)!
-            if (data.timedOut) {
-                this.storage.removeItem(key)
-                console.debug("Removed expired item", key)
-            }
+            this.prune(key, data)
         }
     }
 }
@@ -365,7 +508,7 @@ class TimedData {
     }
 
     get timedOut() {
-        return this.expiresAt >= this.now()
+        return this.expiresAt <= this.now()
     }
 
     refresh() {
@@ -392,7 +535,6 @@ const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
 
-// TODO: This is probably overkill for obfuscating! 😅
 // Handles the details of encrypting/decrypting String values using a scret key.
 class SecretBoxKey {
 
@@ -404,7 +546,14 @@ class SecretBoxKey {
         return new SecretBoxKey(Base64.decode(value))
     }
 
-    // TODO: fromPassword.
+    static fromPassword(password: string): SecretBoxKey {
+        // 64 bytes:
+        let hash = nacl.hash(encoder.encode(password))
+        // 32 bytes:
+        let secret = hash.subarray(0, nacl.secretbox.keyLength)
+
+        return new SecretBoxKey(secret)
+    }
 
     toString(): string {
         return this.toBase64()

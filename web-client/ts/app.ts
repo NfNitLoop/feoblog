@@ -82,10 +82,7 @@ export class AppState
         return null
     }
 
-    // Logins that the client knows about.
-    get savedLogins(): readonly SavedLogin[] {
-        return this._savedLogins
-    }
+
 
     // Save a new login (as the first item), OR, move it to the top if it already exists.
     logIn(newLogin: SavedLogin) {
@@ -111,6 +108,11 @@ export class AppState
         this.saveLoggedIn()
     }
 
+    // Logins that the client knows about.
+    get savedLogins(): readonly SavedLogin[] {
+        return this._savedLogins
+    }
+
     // Update a savedLogin in place w/ a new value.
     updateSavedLogin(login: SavedLogin) {
         let foundIndex = this._savedLogins.findIndex(
@@ -126,10 +128,18 @@ export class AppState
     }
 
     updateSavedLogins(logins: SavedLogin[]) {
-        // TODO: Log out if not in saved logins.
-
         this._savedLogins = logins
         this.writeSavedLogins()
+
+        let currentUser = this.loggedInUser?.asBase58
+        let userInLogins = logins.map(it => it.userID).filter(it => it == currentUser).length > 0
+        if (!userInLogins) {
+            this.logOut()
+        }
+    }
+
+    getSavedLogin(userID: string): SavedLogin|null {
+        return this.savedLogins.filter(it => it.userID == userID)[0] || null
     }
 
     // Calculate the preferred display name for a given user ID. 
@@ -304,6 +314,12 @@ export class SavedLogin
 
     // A background color like: #ff0000
     bgColor?: string
+
+    // How many seconds should we remember our private key after it's used?
+    rememberKeySecs?: number
+
+    // What was our calculated security score last time we saved those settings?
+    securityScore?: number
 }
 
 // Get the proper URL to navigate to a page in the app. 

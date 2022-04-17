@@ -390,13 +390,8 @@ export class Config {
 }
 
 export class UserID {
-    readonly bytes: Uint8Array
-    // These almost always get turned into strings
-    // Just save one to save from repeated allocations:
-    private asString: string
-
     toString(): string {
-        return encodeBase58(this.bytes)
+        return this.asBase58
     }
 
     // A hex representation of the bytes:
@@ -452,10 +447,7 @@ export class UserID {
         return new UserID(bytes, encodeBase58(bytes))
     }
 
-    private constructor(bytes: Uint8Array, asString: string) {
-        this.bytes = bytes
-        this.asString = asString
-    }
+    private constructor(readonly bytes: Uint8Array, readonly asBase58: string) { }
 }
 
 export class Signature {
@@ -529,16 +521,16 @@ export class PrivateKey {
 
         // Secret is 32 bytes, + 4 for checked base58.
         if (buf.length < 36) {
-            throw "Password is too short."
+            throw "Key is too short."
         }
         if (buf.length > 36) {
-            throw "Password is too long."
+            throw "Key is too long."
         }
 
         try {
             buf = decodeBase58Check(privateKey)
         } catch (e) {
-            throw "Invalid Password"
+            throw "Invalid Key"
         }
 
         // Signing is not usually a bottleneck so just using current thread:

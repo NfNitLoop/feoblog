@@ -160,6 +160,7 @@ function saveScrollPosition(event: PageEvent|null) {
  * operation.
  */
  class HistoryThrottle {
+    // TODO: I can probably replace most of this by delegating to CancelTimer.
     minDelayMS = 500
 
     #lastReplaceMs = 0

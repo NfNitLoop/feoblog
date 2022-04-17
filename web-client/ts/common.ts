@@ -635,6 +635,30 @@ class Timer {
     }
 }
 
+/**
+ * Improved timer.
+ * * Has a nice .cancel() method.
+ * * Will get canceled if you try to start() a new task to replace it.
+ */
+ export class CancelTimer {
+    delayMs = 5000
+
+    private timer: number|null = null
+
+    start(callback: () => unknown) {
+        this.cancel()
+        this.timer = setTimeout(callback, this.delayMs) as unknown as number
+    }
+
+    cancel() {
+        if (this.timer) {
+            clearTimeout(this.timer)
+        }
+        this.timer = null
+    }
+}
+
+
 type LogEntry = {
     timestamp: number
     message: string
