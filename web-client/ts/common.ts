@@ -645,9 +645,11 @@ class Timer {
 
     private timer: number|null = null
 
-    start(callback: () => unknown) {
+    start(callback: () => unknown, delayMs?: number) {
         this.cancel()
-        this.timer = setTimeout(callback, this.delayMs) as unknown as number
+
+        let delay = (delayMs !== undefined) ? delayMs : this.delayMs
+        this.timer = setTimeout(callback, delay) as unknown as number
     }
 
     cancel() {

@@ -536,10 +536,10 @@ export class PrivateKey {
         // Signing is not usually a bottleneck so just using current thread:
         let keypair = tweetnacl.sign.keyPair.fromSeed(buf);        
 
-        return new PrivateKey(keypair)
+        return new PrivateKey(keypair, privateKey)
     }
 
-    private constructor(private keyPair: tweetnacl.SignKeyPair) {
+    private constructor(private keyPair: tweetnacl.SignKeyPair, readonly asBase58: string) {
         this.userID = UserID.fromBytes(keyPair.publicKey)
     }
 

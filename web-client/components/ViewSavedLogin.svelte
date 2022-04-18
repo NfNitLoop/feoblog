@@ -28,6 +28,7 @@
             <Button href="#/u/{savedLogin.userID}/feed">View Feed</Button>
             <Button href="#/u/{savedLogin.userID}/">View Posts</Button>
             <Button href="#/u/{savedLogin.userID}/profile">View Profile</Button>
+            <Button href="#/u/{savedLogin.userID}/post">New Post</Button>
             <div>
                 <Button disabled={first} on:click={() => dispatch("up")}>⬆️</Button>
                 <Button disabled={last} on:click={() => dispatch("down")}>⬇️</Button>
@@ -158,6 +159,7 @@ const timeSpans = [
 
 $: securityManager = new SecurityManager(appState, $appState)
 $: currentSecurity = securityManager.getSettings(savedLogin.userID)
+$: console.log("sec", savedLogin.userID, currentSecurity)
 
 $: saveTimeSpan = timeSpans[saveTimeSpanIndex].text
 

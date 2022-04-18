@@ -30,7 +30,8 @@ export interface SecuritySettings {
 
     hasEncryptedKey: boolean,
     hasUnencryptedKey: boolean,
-    hasUnlockedKey: boolean,
+
+    unlockedKeyTimeout: Date
 
     keyTimeoutSecs?: number
 
@@ -42,7 +43,7 @@ let passwordMeter = new PasswordMeter()
 
 // TODO: Move to app?  Might have a circular dependency here.
 export class SecurityManager {
-    
+
     // Stores unencrypted (but obfuscated) passwords permanently. ☠️☠️
     private insecureStore: ObfusatingStore;
 
@@ -187,20 +188,28 @@ export class SecurityManager {
         savedLogin.securityScore = check.score
         this.app.updateSavedLogin(savedLogin)
         this.updateApp()
-
-
     }
+
+    /** If this userID is configured to save a key temporarily, then do so. */
+    maybeSaveKey(userID: string, privateKey: PrivateKey) {
+        let settings = this.getSettings(userID)
+        if (settings.keyTimeoutSecs) {
+            this.tempStore.setItem(userID, privateKey.asBase58, settings.keyTimeoutSecs * 1000)
+        }
+        // Using this to notify of settings changes seems maybe a bit heavy-handed?
+        this.updateApp()
+    }  
 
     getSettings(userID: string): SecuritySettings {
         let login = this.app.getSavedLogin(userID)
         return {
             // If we haven't saved any info, then security is 100%:
-            score: login?.securityScore || 100,
+            score: login?.securityScore ?? 100,
 
             keyTimeoutSecs: login?.rememberKeySecs,
             hasEncryptedKey: this.hasEncryptedKey(userID),
+            unlockedKeyTimeout: this.unlockedKeyTimeout(userID),
             hasUnencryptedKey: this.hasUnencryptedKey(userID),
-            hasUnlockedKey: this.hasUnlockedKey(userID),
         }
     }
 
@@ -214,13 +223,30 @@ export class SecurityManager {
     }
 
     hasUnlockedKey(userID: string): boolean {
-        return this.tempStore.hasItem(userID) != null
+        return this.tempStore.hasItem(userID)
     }
 
-    private setInsecure(uid: string, privateKey: string) {
-        this.forgetKeys(uid)
-        this.insecureStore.setItem(uid, privateKey)
-        this.updateApp()
+    unlockedKeyTimeout(userID: string): Date {
+        return this.tempStore.keyTimeout(userID) || new Date(0)
+    }
+
+    /** Get an unlocked/unencrypted key if available. */
+    getKey(userID: string): PrivateKey|null {
+        let key = this.insecureStore.getItem(userID)
+        if (!key) { key = this.tempStore.getItem(userID) }
+        if (!key) { return null }
+        try {
+            return PrivateKey.fromBase58(key)            
+        } catch (e) {
+            console.error("Error parsing key", e)
+            return null
+        }
+    }
+
+    decryptKey(userID: string, password: string): PrivateKey|null {
+        let key = this.secureStore.getItem(password, userID)
+        if (!key) { return null }
+        return PrivateKey.fromBase58(key)
     }
 
     private forgetKeys(uid: string) {
@@ -444,6 +470,13 @@ export class TimedStorage {
         if (data == null) { return false }
         if (this.prune(key, data)) { return false }
         return true
+    }
+
+    keyTimeout(key: string): Date|null {
+        let data = this.storage.getItem(key)
+        if (data == null) { return null }
+        if (this.prune(key, data)) { return null }
+        return new Date(data.expiresAt)
     }
 
     private prune(key: string, data: TimedData): boolean {

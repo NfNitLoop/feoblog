@@ -21,7 +21,7 @@
         <CommentView
             item={commentItem}
             {userID}
-            signature="unknown"
+            signature=""
             linkMode="newWindow"
         />
     </div>
@@ -54,6 +54,12 @@ export let replyToSignature: Signature
 let currentView: "Edit"|"Preview" = "Edit"
 
 let text = ""
+// Any time replyToSignature changes, we need to clear the text:
+$: { replyToSignature; clear() }
+
+function clear() {
+    text = ""
+}
 
 $: userID = $appState.loggedInUser
 $: isLoggedIn = userID != null

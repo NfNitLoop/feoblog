@@ -21,7 +21,7 @@
     <!-- Preview: -->
     <ItemView
         userID={userID.toString()}
-        signature="unknown"
+        signature=""
         {item}
         linkMode="newWindow"
         previewMode

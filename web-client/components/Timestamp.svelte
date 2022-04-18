@@ -58,6 +58,7 @@ $: relDate = getRelativeDate(dateTime)
 
 // TODO: I'd like a little bit more detail if something was <7 days ago. 
 // Ex:  instead of "3 days ago" maybe  "3 days 7 hours ago"
+// See: https://github.com/moment/luxon/issues/1129
 function getRelativeDate(dateTime: DateTime|null): string {
     if (!dateTime) return "undefined"
 

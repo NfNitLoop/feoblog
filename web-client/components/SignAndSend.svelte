@@ -33,13 +33,22 @@
         -->
         <form>
             <input type="text" name="login" autocomplete="username" placeholder="here to satisfy password managers">
-            <SecretKeyInput userID={$appState.loggedInUser} bind:valid={validPrivateKey} bind:value={privateKeyString} />
-            <Button on:click={sign} disabled={!validPrivateKey}>Sign</Button>
+            {#if security.hasUnencryptedKey}
+                <!-- Display nothing about security. User has opted out. -->
+            {:else if keyIsUnlocked}
+                <div class="unimportant">Key relocks {$unlockedKey.endRelative}</div>
+            {:else if security.hasEncryptedKey}
+                <InputBox label="Password" inputType="password" bind:value={privateKeyString}/>
+            {:else}
+                <SecretKeyInput userID={$appState.loggedInUser} bind:valid={validPrivateKey} bind:value={privateKeyString} />
+            {/if}
+            <Button on:click={sign} disabled={!signEnabled}>Sign</Button>
         </form>
     {:else}
         <InputBox
             label="Signature"
             value={signature}
+            disabled={true}
          />
         <div class="buttons">
             <Button on:click={submit} disabled={inProgress}>Submit</Button>
@@ -59,10 +68,11 @@ import { PrivateKey, Signature } from "../ts/client";
 import Button from "./Button.svelte";
 import InputBox from "./InputBox.svelte"
 import TaskTrackerView from "./TaskTrackerView.svelte"
-import nacl from "tweetnacl";
 import { FileInfo, Mutex, TaskTracker } from "../ts/common";
 import { decodeBase58, decodeBase58Check, encodeBase58 } from "../ts/fbBase58";
 import SecretKeyInput from "./SecretKeyInput.svelte";
+import { SecurityManager } from "../ts/storage";
+import { CountDown } from "../ts/asyncStore";
 
 let appState: Writable<AppState> = getContext("appStateStore")
 export let item: Item
@@ -153,21 +163,50 @@ $: validSignature = function(): boolean {
     return isValid
 }()
 
+$: securityManager = new SecurityManager(appState, $appState)
+$: security = securityManager.getSettings(userID.asBase58)
+$: unlockedKey = new CountDown(security.unlockedKeyTimeout)
+$: keyIsUnlocked = $unlockedKey.remainingMs > 1000
+$: signEnabled = (
+    security.hasUnencryptedKey 
+    || keyIsUnlocked
+    || security.hasEncryptedKey
+    || validPrivateKey
+)
+
 
 // Create a signature, delete the password.
 function sign() {
-    if (!validPrivateKey) {
-        console.error("Shouldn't be able to call sign w/ invalid private key.")
-        return
-    }
-
     if (!itemBytes) throw `No bytes to sign.`
 
-    let privateKey = PrivateKey.fromBase58(privateKeyString)
+    let privateKey: PrivateKey
+    if (keyIsUnlocked || security.hasUnencryptedKey) {
+        let key = securityManager.getKey(userID.asBase58)
+        if (!key) {
+            // Uh-oh, maybe the token timed out. Refresh state:
+            console.warn("Refreshing view. Couldn't find unlocked key!?")
+            appState.update(it => it)
+            return
+        }
+        privateKey = key
+    } else if (security.hasEncryptedKey) {
+        let key = securityManager.decryptKey(userID.asBase58, privateKeyString)
+        if (!key) {
+            errors = ["Incorrect password."]
+            privateKeyString = ""
+            return
+        }
+        privateKey = key
+
+    } else {
+        privateKey = PrivateKey.fromBase58(privateKeyString)
+    }
+    securityManager.maybeSaveKey(userID.asBase58, privateKey)
+
     let binSignature = privateKey.signDetached(itemBytes)
     signature = encodeBase58(binSignature)
 
-    // Delete the privateKey, we don't want to save it any longer than
+    // Delete the privateKey, we don't want to save (here) it any longer than
     // necessary:
     privateKeyString = ""
 }
@@ -182,9 +221,14 @@ async function submit() {
         console.error("submit() while inProgress!? Shouldn't be possible")
         return
     }
-    sendMutex.run(async () => {
+    await sendMutex.run(async () => {
         await tracker.run("Sending", doSubmit)
     })
+
+    if (tracker.errorCount == 0 && navigateWhenDone) {
+        tracker.clear()
+    }
+
 }
 
 async function doSubmit(tracker: TaskTracker): Promise<void> {
@@ -253,7 +297,9 @@ input[name="login"] {
     background-color: #ff000014;
 }
 
-
+form {
+    margin: 0;
+}
 
 .errorBox::before {
     content: "⚠ Errors:";
@@ -272,6 +318,11 @@ input[name="login"] {
     margin: 1rem;
     font-weight: bold;
     display: block;
+}
+
+.unimportant {
+    font-size: 0.8em;
+    color: #888;
 }
 
 </style>

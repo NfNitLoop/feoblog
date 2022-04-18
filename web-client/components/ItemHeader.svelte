@@ -103,12 +103,12 @@ function refToLink(ref: ReplyRef): string {
 
 $: timestampLink = parsedSignature ? `#/u/${userID}/i/${signature}/` : undefined
 $: parsedSignature = function() {
+    if (!signature) { return null }
     try {
-        if (signature) return Signature.fromString(signature)
+        return Signature.fromString(signature)
     } catch (error) {
         console.error("Could not parse signature:", signature)
     }
-    return null
 }()
 
 $: feoBlogURL = !parsedSignature ? undefined : `/u/${userID}/i/${signature}/`
