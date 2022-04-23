@@ -67,14 +67,17 @@ body
 @media (min-width: 55em) {
 	.items {
 		flex-grow: 10;
-		min-width: 10em;
-		max-width: 55em;
+		width: 55em;
 		margin-left: auto;
 		margin-right: auto;
 	}
 }
 
 
+.item .body pre {
+	/** Need a better solution but at least allow this for now: */
+	resize: horizontal;
+}
 
 code {
 	font-family: Consolas, monospace;
@@ -94,18 +97,6 @@ code {
 .item {
 	margin: 1em;
 	max-width: 55rem;
-}
-
-/** Things like H1s like to add their own margins, but it doesn't make sense
-as the first item in the content. */
-.item > *:first-child
-{
-	margin-top: 0px;
-}
-
-.item > *:last-child
-{
-	margin-bottom: 0px;
 }
 
 .item .userInfo, .item .timestamp {
