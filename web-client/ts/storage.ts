@@ -19,7 +19,9 @@ export interface SecurityRating {
     // 0-100 (%)
     score: number
 
-    details: string[]
+    pros: string[]
+    cons: string[]
+    remember: string[]
 
     errors: string[]
 }
@@ -63,33 +65,47 @@ export class SecurityManager {
     }
 
     calculateLevel(opts: SecurityManagerOptions): SecurityRating {
-        let score = 100
-        let details: string[] = []
+        let pros: string[] = []
+        let cons: string[] = []
+        let remember: string[] = []
         let errors: string[] = []
+        let result = { score: 100, pros, cons, remember, errors }
 
         let securityImpact = (pct: number) => {
             let maxScore = 100 - pct
-            score = Math.min(score, maxScore)
+            result.score = Math.min(result.score, maxScore)
+        }
+
+        let error = (msg: string) => {
+            result.score = 0
+            result.errors.push(msg)
+            return result
         }
 
         let {privateKeyBase58Check, privateKeyPassword, rememberKeySecs} = opts
         let savePrivateKey = privateKeyBase58Check !== undefined
         let storeWithPassword = privateKeyPassword !== undefined
+
+        let savedLogin = this.app.getSavedLogin(opts.userID)
+        if (savedLogin == null) {
+            return error("That user ID is not among the saved logins.")
+        }
+
         if (privateKeyBase58Check !== undefined) {
 
             if (privateKeyBase58Check == "") {
-                return {score: 0, details: [], errors: ["Private Key must not be empty."]}
+                return error("Private Key must not be empty.")
             }
 
             let privateKey
             try {
                 privateKey = PrivateKey.fromBase58(privateKeyBase58Check)
             } catch (e) {
-                return {score: 0, details: [], errors: ["Invalid private key"]}
+                return error("Invalid private key")
             }
 
             if (privateKey.userID.asBase58 != opts.userID) {
-                return {score: 0, details: [], errors: ["Private key is not for this user ID"]}
+                return error("Private key is not for this user ID")
             }
         }
 
@@ -98,7 +114,7 @@ export class SecurityManager {
         if (savePrivateKey) {
             if (storeWithPassword) {
                 securityImpact(5)
-                details.push("You'll be able to enter your password instead of your private key.")
+                pros.push("You'll be able to enter your password instead of your private key.")
     
                 let result = passwordMeter.getResult(privateKeyPassword!)
                 let score = result.score
@@ -110,31 +126,40 @@ export class SecurityManager {
                 }
                 if (score < 120) {
                     securityImpact(60)
-                    details.push("☠️ Weak Password. If your browser is compromised, a weak password can be brute-forced, revealing both your password and your private key.")
-                } else if (score > 180) {
-                    details.push("✅ Strong password")
+                    cons.push("☠️ Weak Password. If your browser is compromised, a weak password can be brute-forced, revealing both your password and your private key.")
                 } else {
-                    securityImpact(10)
+                    cons.push("Even when encrypted with a strong password, storing your private key in the browser is less secure than not doing so.")
                 }
-                // details.push(`Password score: ${result.score} ${result.status}`)
-    
-    
+                if (score < 180) {
+                    securityImpact(10)
+                }    
+                if (score > 180) {
+                    pros.push("✅ Strong password")
+                }
             } else {
-                details.push("☠️ Without a password, storing your private key in the browser could allow it to be compromised.")
+                pros.push("You won't have to enter a password or key when using this browser.")
+                cons.push("☠️ Without a password, if your browser is compromised, your private key is easy for hackers to access.")
                 securityImpact(100)
             }
         } 
         
         if (!savePrivateKey && !saveTemporarily) {
-            details.push("✅ You'll enter your private key any time you need to save a post. This is the most secure option.")
+            pros.push("✅ This is the most secure option.")
+            pros.push("The private key is only available in the browser for fractions of a second while being used to sign a post, comment, or profile update.")
+            cons.push("You'll need to enter your private key any time you need to save a post. (But you can use a password manager.)")
         }
     
         if (saveTemporarily) {
-            details.push(`Each time you use your key, it will be stored temporarily to use again.`)
-            details.push(
-                `⚠️ During this time your key can be easily recovered if your browser is compromised.`
+            if (savePrivateKey) {
+                pros.push(`Each time you enter your password, your decrypted private key will be stored temporarily to use again.`)
+            } else {
+                pros.push(`Each time you enter your key, it will be stored temporarily to use again.`)
+            }
+            
+            cons.push(
+                `⚠️ While temporarily stored, your key can be easily recovered if your browser is compromised.`
             )
-            details.push("Your temporarily-stored key will always be cleared when the browser or tab is closed.")
+            pros.push("Your temporarily-stored key will always be cleared when the browser or tab is closed.")
     
             securityImpact(5)
             if (rememberKeySecs! > 15 * 60) {
@@ -145,18 +170,15 @@ export class SecurityManager {
             }
         }
     
-        details.push("Regardless of security options, your private key and password are never shared with the server.")
-        details.push("A server admin will never need to know your private key or password.")
+        remember.push("Your private key and password are never shared with the server.")
+        remember.push("Server admins and other users will never need to know your private key or password.")
         if (savePrivateKey) {
-            details.push("Remember: Despite saving it here, you must save your private key in a secure location, like a password manager.")
+            remember.push("⚠️ Despite saving it here, you must also save your private key in a secure location, like a password manager.")
         }
 
-        let savedLogin = this.app.getSavedLogin(opts.userID)
-        if (savedLogin == null) {
-            return {score: 0, details: [], errors: ["That user ID is not among the saved logins."] }
-        }
 
-        return { score, details, errors }
+
+        return result
     }
 
     applySettings(opts: SecurityManagerOptions) {

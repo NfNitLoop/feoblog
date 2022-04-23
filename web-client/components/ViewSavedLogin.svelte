@@ -42,7 +42,7 @@
         {:else}
         <setting-section>
             <h3>
-                New Security Level: {securityScore}%
+                New Security Level: {securityRating.score}%
             </h3>
                 
             <label><input type="checkbox" bind:checked={savePrivateKey}>Save my private key</label>
@@ -54,18 +54,19 @@
                     bind:valid={validPrivateKey} 
                     label=""
                 />
-                <label><input type="checkbox" bind:checked={saveWithPassword}>With a password:</label>
+                <label><input type="checkbox" bind:checked={saveWithPassword}>With a password</label>
                 {#if saveWithPassword}
                     <InputBox placeholder="Password" inputType="password" bind:value={keyPassword}/>
                 {/if}
             </div>
             {/if}
 
-
-            <label><input type="checkbox" bind:checked={saveTemporarily}>Temporarily remember my key after use</label>
-            {#if saveTemporarily}
-                <p>For up to {saveTimeSpan}</p>
-                <input type="range" min=0 max={timeSpans.length - 1} bind:value={saveTimeSpanIndex}/>
+            {#if tempEnabled}
+                <label><input type="checkbox" bind:checked={saveTemporarily}>Temporarily remember my key after use</label>
+                {#if saveTemporarily}
+                    <p>For up to {saveTimeSpan}</p>
+                    <input type="range" min=0 max={timeSpans.length - 1} bind:value={saveTimeSpanIndex}/>
+                {/if}
             {/if}
 
             {#if errors.length > 0}
@@ -75,13 +76,33 @@
                         <li>{error}</li>
                     {/each}
                 </ul>
-            {:else if securityDetails.length > 0}
-                <h3>Security Summary:</h3>
-                <ul>
-                {#each securityDetails as detail}
-                    <li>{detail}</li>
-                {/each}
-                </ul>
+            {:else}
+                <security-pane>
+                    <security-section>
+                        <h1>Pros:</h1>
+                        <ul>
+                        {#each securityRating.pros as detail}
+                            <li>{detail}</li>
+                        {/each}
+                        </ul>
+                    </security-section>
+                    <security-section>
+                        <h1>Cons:</h1>
+                        <ul>
+                            {#each securityRating.cons as detail}
+                                <li>{detail}</li>
+                            {/each}
+                            </ul>
+                    </security-section>
+                    <security-section>
+                        <h1>Remember:</h1>
+                        <ul>
+                            {#each securityRating.remember as detail}
+                                <li>{detail}</li>
+                            {/each}
+                            </ul>
+                    </security-section>
+                </security-pane>
             {/if}
 
             <action-bar>
@@ -107,7 +128,7 @@ import ProfileImage from "./ProfileImage.svelte";
 import { UserID } from "../ts/client";
 import OpenArrow from "./OpenArrow.svelte";
 import ColorPicker from "./ColorPicker.svelte";
-import { SecurityManager, SecurityManagerOptions } from "../ts/storage"
+import { SecurityManager, SecurityManagerOptions, SecurityRating } from "../ts/storage"
 import SecretKeyInput from "./SecretKeyInput.svelte";
 import InputBox from "./InputBox.svelte";
 
@@ -177,10 +198,13 @@ function reset() {
     saveTimeSpanIndex = 0
 }
 
-let securityDetails: string[] = []
+let securityRating: SecurityRating
 let errors: string[] = []
 
-let securityScore = 100
+// No point in saving a temporary password if you're not encrypting:
+$: tempEnabled = !(savePrivateKey && !saveWithPassword)
+$: if (!tempEnabled) saveTemporarily = false
+
 let securityOptions: SecurityManagerOptions
 $: securityOptions = {
     userID: savedLogin.userID,
@@ -190,21 +214,7 @@ $: securityOptions = {
 }
 $:{
     let result = securityManager.calculateLevel(securityOptions)
-    securityScore = result.score
-
-    let prefix = ""
-    if (securityScore < 50) {
-        prefix = "☠️"
-    } else if (securityScore < 80) {
-        prefix = "⚠️"
-    } else if (securityScore >= 95) {
-        prefix = "✅"
-    }
-
-    securityDetails = [
-        `${prefix} Overall security score: ${securityScore}%`,
-        ...result.details
-    ]
+    securityRating = result
     errors = result.errors   
 }
 
@@ -281,4 +291,27 @@ action-bar {
     
     gap: 0.5rem;
 }
+
+security-pane {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1em;
+    margin-top: 1em;
+}
+security-pane > * {
+    flex: 1;
+    min-width: 15em;
+}
+
+security-pane h1 {
+    margin-top: 0;
+    font-size: 1em;
+}
+
+security-pane ul {
+    padding-left: 1em;
+    margin-top: 0;
+}
+
+
 </style>
