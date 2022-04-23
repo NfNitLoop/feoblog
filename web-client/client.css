@@ -111,6 +111,22 @@ input:hover, input:focus, textarea:hover, textarea:focus {
     padding: 1rem;
     border-radius: 20px;
     flex-grow: 1;
+    min-height: 2em;
+}
+
+.item .body {
+    /** Rely on first/last child for vertical padding here: */
+    padding: 0 1rem;
+    /* Keep margins from escaping. See: https://developer.mozilla.org/en-US/docs/Web/Guide/CSS/Block_formatting_context */
+    display: flow-root;
+}
+
+.item .body > *:first-child {
+    margin-top: 1rem;
+}
+
+.item .body > *:last-child {
+    margin-bottom: 1rem;
 }
 
 
@@ -133,17 +149,7 @@ input:hover, input:focus, textarea:hover, textarea:focus {
 
 
 
-.item .body > *:first-child {
-    margin-top: 0px;
-    margin-left: 0px;
-    margin-right: 0px;
-}
 
-.item .body > *:last-child {
-    margin-left: 0px;
-    margin-bottom: 0px;
-    margin-right: 0px;
-}
 
 a:visited.userID, a:link.userID {
     color: black;
