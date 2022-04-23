@@ -526,5 +526,9 @@ heading-container.stuckAtTop.hideHeading {
 .breadcrumbs::-webkit-scrollbar, .navItems::-webkit-scrollbar {
     display: none;
 }
+/* Firefox: */
+.breadcrumbs, .navItems {
+    scrollbar-width: none;
+}
 
 </style>
