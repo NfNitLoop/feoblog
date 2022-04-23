@@ -37,63 +37,59 @@
             <ColorPicker bind:color={savedLogin.bgColor} on:change={changed}/>
         </action-bar>
 
+        {#if !editingSecurity}
+            <p><Button on:click={() => editingSecurity = true }>Edit</Button> Security Level: {currentSecurity.score}%</p>
+        {:else}
         <setting-section>
             <h3>
-                Security Level: {#if editingSecurity}{securityScore}{:else}{currentSecurity.score}{/if}%
-                {#if !editingSecurity}<Button on:click={() => editingSecurity = true }>Edit</Button>{/if}
+                New Security Level: {securityScore}%
             </h3>
-
-            {#if editingSecurity}
                 
-                <label><input type="checkbox" bind:checked={savePrivateKey}>Save my private key</label>
-                {#if savePrivateKey}
-                <div>
-                    <SecretKeyInput
-                        userID={UserID.fromString(savedLogin.userID)}
-                        bind:value={privateKeyString}
-                        bind:valid={validPrivateKey} 
-                        label=""
-                    />
-                    <label><input type="checkbox" bind:checked={saveWithPassword}>With a password:</label>
-                    {#if saveWithPassword}
-                        <InputBox placeholder="Password" inputType="password" bind:value={keyPassword}/>
-                    {/if}
-                </div>
+            <label><input type="checkbox" bind:checked={savePrivateKey}>Save my private key</label>
+            {#if savePrivateKey}
+            <div>
+                <SecretKeyInput
+                    userID={UserID.fromString(savedLogin.userID)}
+                    bind:value={privateKeyString}
+                    bind:valid={validPrivateKey} 
+                    label=""
+                />
+                <label><input type="checkbox" bind:checked={saveWithPassword}>With a password:</label>
+                {#if saveWithPassword}
+                    <InputBox placeholder="Password" inputType="password" bind:value={keyPassword}/>
                 {/if}
-
-
-                <label><input type="checkbox" bind:checked={saveTemporarily}>Temporarily remember my key after use</label>
-                {#if saveTemporarily}
-                    <p>For up to {saveTimeSpan}</p>
-                    <input type="range" min=0 max={timeSpans.length - 1} bind:value={saveTimeSpanIndex}/>
-                {/if}
-
-                {#if errors.length > 0}
-                    <h3>Errors:</h3>
-                    <ul>
-                        {#each errors as error}
-                            <li>{error}</li>
-                        {/each}
-                    </ul>
-                {:else if securityDetails.length > 0}
-                    <h3>Security Summary:</h3>
-                    <ul>
-                    {#each securityDetails as detail}
-                        <li>{detail}</li>
-                    {/each}
-                    </ul>
-                {/if}
-
-                <action-bar>
-                    <Button disabled={errors.length > 0} on:click={confirmSecuritySettings}>Confirm</Button>            
-                    <Button on:click={() => editingSecurity = false}>Cancel</Button>
-                </action-bar>
+            </div>
             {/if}
 
-            <!-- <input type="password" value="*****************"/>
-            <br><label>Save Password? <input type="checkbox"></label> -->
 
+            <label><input type="checkbox" bind:checked={saveTemporarily}>Temporarily remember my key after use</label>
+            {#if saveTemporarily}
+                <p>For up to {saveTimeSpan}</p>
+                <input type="range" min=0 max={timeSpans.length - 1} bind:value={saveTimeSpanIndex}/>
+            {/if}
+
+            {#if errors.length > 0}
+                <h3>Errors:</h3>
+                <ul>
+                    {#each errors as error}
+                        <li>{error}</li>
+                    {/each}
+                </ul>
+            {:else if securityDetails.length > 0}
+                <h3>Security Summary:</h3>
+                <ul>
+                {#each securityDetails as detail}
+                    <li>{detail}</li>
+                {/each}
+                </ul>
+            {/if}
+
+            <action-bar>
+                <Button disabled={errors.length > 0} on:click={confirmSecuritySettings}>Confirm</Button>            
+                <Button on:click={() => editingSecurity = false}>Cancel</Button>
+            </action-bar>
         </setting-section>
+        {/if}
 
     </div>
 </div>
