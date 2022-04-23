@@ -15,7 +15,9 @@
     {:else}
     <div class="item">
         <div class="body">
+            <p>
             No posts found for user <UserIDView {userID}/>
+            </p>
         </div>
     </div>
     {/each}

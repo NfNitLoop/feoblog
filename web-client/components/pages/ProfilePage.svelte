@@ -14,7 +14,7 @@
         <div class="error">userID is required</div>
     {:else}
         {#if !loaded.profile}
-            <div class="item"><div class="body error">This user has no profile</div></div>
+            <div class="item"><div class="body error"><p>This user has no profile</p></div></div>
         {:else}
         <ItemView 
             item={loaded.profile.item}

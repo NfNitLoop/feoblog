@@ -16,13 +16,13 @@
     {/if}
     -->
 {/each}
-<div class="item"><div class="body">
+<div class="item"><div class="body"><p>
     {#if noMoreBottom}
         No more items to display.
     {:else}
         Loading...
     {/if}
-</div></div>
+</p></div></div>
 <svelte:window bind:scrollY />
 
 <script lang="ts">
