@@ -159,7 +159,6 @@ const timeSpans = [
 
 $: securityManager = new SecurityManager(appState, $appState)
 $: currentSecurity = securityManager.getSettings(savedLogin.userID)
-$: console.log("sec", savedLogin.userID, currentSecurity)
 
 $: saveTimeSpan = timeSpans[saveTimeSpanIndex].text
 
