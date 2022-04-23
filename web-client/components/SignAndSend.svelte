@@ -95,14 +95,21 @@ $: itemBytes = item.serialize()
 $: userID = $appState.requireLoggedInUser()
 
 let validPrivateKey = false
+
+// I'm lazy, used for private string and password:
 let privateKeyString = ""
+
 let signature = ""
 
 // Additional errors we check before sending any Items:
+let incorrectPassword = false
 let ourErrors: string[] = []
-$: anyErrors = (errors.length > 0) || (ourErrors.length > 0) 
 $: ourErrors = function() {
     let errs: string[] = []
+
+    if (incorrectPassword) {
+        errs.push("Incorrect Password")
+    }
 
     if (!itemBytes || itemBytes.length == 0) {
         errs.push("No Item received to sign.")
@@ -137,6 +144,7 @@ $: ourErrors = function() {
 
 // Show our own checks last, in case they might be duplicates w/ those provided by the caller:
 $: displayErrors = errors.length > 0 ? errors : ourErrors
+$: anyErrors = displayErrors.length > 0
 
 
 
@@ -192,10 +200,11 @@ function sign() {
     } else if (security.hasEncryptedKey) {
         let key = securityManager.decryptKey(userID.asBase58, privateKeyString)
         if (!key) {
-            errors = ["Incorrect password."]
+            incorrectPassword = true
             privateKeyString = ""
             return
         }
+        incorrectPassword = false
         privateKey = key
 
     } else {
