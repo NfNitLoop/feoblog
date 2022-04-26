@@ -5,11 +5,13 @@
 //! Mostly, this makes data management trivial since it's all in one file.
 //! But if performance is an issue we can implement a different backend.
 
+// TODO: Consider running ANALYZE: https://www.sqlite.org/lang_analyze.html -- results in better default query plans.
+
 mod upgraders;
 
-use std::{io::{Read, Write}, ops::DerefMut, path::Path};
+use std::{io::{Read, Write}, ops::DerefMut, path::Path, collections::HashMap};
 
-use crate::{backend::UsageByUserRow, protos::Item};
+use crate::{backend::UsageByUserRow, protos::Item, util::AsHex};
 use actix_web::web::Bytes;
 use backend::{FileMeta, RowCallback, SHA512};
 use futures::Stream;
@@ -556,7 +558,7 @@ impl backend::Backend for Connection
                         FROM server_user
                         WHERE on_homepage = 1
                     )
-                    ORDER BY unix_utc_ms DESC
+                    ORDER BY unix_utc_ms DESC, i.signature DESC
                 "
             },
             TimeSpan::After(after) => {
@@ -577,7 +579,7 @@ impl backend::Backend for Connection
                         FROM server_user
                         WHERE on_homepage = 1
                     )
-                    ORDER BY unix_utc_ms ASC
+                    ORDER BY unix_utc_ms ASC, i.signature DESC
                 "
             },
         };
@@ -635,7 +637,7 @@ impl backend::Backend for Connection
                         unix_utc_ms < ?
                         AND user_id = ?
                         AND EXISTS(SELECT user_id FROM known_users WHERE user_id = i.user_id)
-                    ORDER BY unix_utc_ms DESC
+                    ORDER BY unix_utc_ms DESC, i.signature DESC
                 "
             },
             TimeSpan::After(after) => {
@@ -653,7 +655,7 @@ impl backend::Backend for Connection
                         unix_utc_ms > ?
                         AND user_id = ?
                         AND EXISTS(SELECT user_id FROM known_users WHERE user_id = i.user_id)
-                    ORDER BY unix_utc_ms ASC
+                    ORDER BY unix_utc_ms ASC, i.signature ASC
                 "          
             }
         };
@@ -706,7 +708,7 @@ impl backend::Backend for Connection
                 AND r.to_user_id = ?
                 AND r.to_signature = ?
                 AND EXISTS(SELECT user_id FROM known_users WHERE user_id = i.user_id)
-            ORDER BY unix_utc_ms DESC
+            ORDER BY unix_utc_ms DESC, i.signature DESC
         ")?;
 
         let mut rows = stmt.query(params![
@@ -743,72 +745,68 @@ impl backend::Backend for Connection
         callback: RowCallback<'a, ItemDisplayRow>,
     ) -> Result<(), Error> {
 
+  
+
+
         let timestamp;
-        let query = match time_span {
+        let ts_order;
+        let filter_ts;
+        match time_span {
             TimeSpan::Before(ts) => {
                 timestamp = ts;
-                "
-                    SELECT
-                        user_id
-                        , i.signature
-                        , unix_utc_ms
-                        , received_utc_ms
-                        , bytes
-                        , p.display_name
-                        , f.display_name AS follow_display_name
-                    FROM item AS i
-                    LEFT OUTER JOIN profile AS p USING (user_id)
-                    LEFT OUTER JOIN follow AS f ON (
-                        i.user_id = f.followed_user_id
-                        AND f.source_user_id = :user_id
-                    )
-                    WHERE unix_utc_ms < :timestamp
-                    AND (
-                        user_id IN (
-                            SELECT followed_user_id
-                            FROM follow
-                            WHERE source_user_id = :user_id
-                        )
-                        OR user_id = :user_id
-                    )
-                    ORDER BY unix_utc_ms DESC
-                "
+                filter_ts = "unix_utc_ms < :timestamp";
+                ts_order = "DESC";
             },
             TimeSpan::After(ts) => {
                 timestamp = ts;
-                "
-                    SELECT
-                        user_id
-                        , i.signature
-                        , unix_utc_ms
-                        , received_utc_ms
-                        , bytes
-                        , p.display_name
-                        , f.display_name AS follow_display_name
-                    FROM item AS i
-                    LEFT OUTER JOIN profile AS p USING (user_id)
-                    LEFT OUTER JOIN follow AS f ON (
-                        i.user_id = f.followed_user_id
-                        AND f.source_user_id = :user_id
-                    )
-                    WHERE unix_utc_ms > :timestamp
-                    AND (
-                        user_id IN (
-                            SELECT followed_user_id
-                            FROM follow
-                            WHERE source_user_id = :user_id
-                        )
-                        OR user_id = :user_id
-                    )
-                    ORDER BY unix_utc_ms ASC
-                "
+                filter_ts = "unix_utc_ms > :timestamp";
+                ts_order = "ASC";
             }
         };
 
-        let mut stmt = self.conn.prepare(query)?;
+        // Because we follow N users, and the indexes for (user_id, timestamp) are fast, make N separate queries
+        // against those indexes and merge them with a UNION ALL. This forces SQLite to walk & merge them like should
+        // scale well, vs... whatever it was trying to do.
+
+        let follows = get_follows(&self, user_id)?;
+        let subselects: Vec<String> = follows.keys().map(|uid| {
+            format!(
+                "
+                    SELECT * from iv 
+                    WHERE user_id = x'{uid}'
+                ",
+                uid=uid.bytes().as_hex(),
+            )
+        }).collect();
+
+        if subselects.is_empty() {
+            return Ok(());
+        }
+
+        let query = format!(
+            "
+                WITH iv AS (
+                    SELECT 
+                        user_id
+                        , signature
+                        , unix_utc_ms
+                        , received_utc_ms
+                        , bytes
+                    FROM item
+                    WHERE {filter_ts}
+                )
+                {subselects}
+                ORDER BY unix_utc_ms {ts_order}, signature {ts_order}
+            ", 
+            filter_ts=filter_ts,
+            ts_order=ts_order,
+            subselects=subselects.join("\n\nUNION ALL\n")
+        );
+
+        let mut stmt = self.conn.prepare(&query)?;
+
         let mut rows = stmt.query_named(&[
             (":timestamp", &timestamp.unix_utc_ms),
-            (":user_id", &user_id.bytes())
         ])?;
 
         let to_item_profile_row = |row: &Row<'_>| -> Result<ItemDisplayRow, Error> {
@@ -821,15 +819,9 @@ impl backend::Backend for Connection
                 item_bytes: row.get(4)?,
             };
 
-            let display_name: Option<String> = row.get(5)?;
-            let follow_display_name: Option<String> = row.get(6)?;
-            fn not_empty(it: &String) -> bool { !it.trim().is_empty() }
-
             Ok(ItemDisplayRow{
+                display_name: follows.get(&item.user).map(|info| info.display_name.clone()).flatten(),
                 item,
-                // Prefer displaying the name that this user has assigned to the follow.
-                // TODO: This seems maybe business-logic-y? Should we move it out of Backend?
-                display_name: follow_display_name.filter(not_empty).or(display_name).filter(not_empty),
             })
         };
 
@@ -1541,4 +1533,60 @@ fn save_attachment_rows(conn: &rusqlite::Connection, rows: Vec<AttachmentRow>) -
     }
 
     Ok(())
+}
+
+/// Get all users that `user_id` follows (and themselves).
+//
+// note: gets ALL follows, could be abused/DoS. (TODO: Protect against unreasonable amount of follows?)
+fn get_follows(conn: &Connection, user_id: &UserID) -> Result<HashMap<UserID, FollowInfo>, Error> {
+    let mut map = HashMap::new();
+
+    let mut stmt = conn.conn.prepare("
+        SELECT
+            f.followed_user_id AS user_id
+            , f.display_name AS follow_display_name
+            , p.display_name
+        FROM follow AS f
+        LEFT OUTER JOIN profile AS p ON (f.followed_user_id = p.user_id)
+        WHERE f.source_user_id = :user_id
+
+        UNION ALL
+        SELECT 
+            p.user_id
+            , p.display_name AS follow_display_name
+            , p.display_name 
+        FROM profile AS p
+        WHERE p.user_id = :user_id
+    ")?;
+
+    let mut rows = stmt.query_named(&[
+        (":user_id", &user_id.bytes()),
+    ])?;
+
+    fn to_info(row: &Row<'_>) -> Result<FollowInfo, Error> {
+        let display_name: Option<String> = row.get("display_name")?;
+        let follow_display_name: Option<String> = row.get("follow_display_name")?;
+        fn not_empty(it: &String) -> bool { !it.trim().is_empty() }
+
+        Ok(FollowInfo {
+            user_id: UserID::from_vec(row.get("user_id")?)?,
+
+            // Prefer displaying the name that this user has assigned to the follow.
+            // TODO: This seems maybe business-logic-y? Should we move it out of Backend?
+            display_name: follow_display_name.filter(not_empty).or(display_name).filter(not_empty),
+        })
+    }
+
+    while let Some(row) = rows.next()? {
+        let info = to_info(row)?;
+        map.insert(info.user_id.clone(), info);
+    }
+
+    Ok(map)
+}
+
+struct FollowInfo {
+    user_id: UserID,
+    // The display name specified by this user, or (fallback) the user they followed.
+    display_name: Option<String>
 }

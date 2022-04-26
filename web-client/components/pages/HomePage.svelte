@@ -1,10 +1,11 @@
 <!-- Displays the homepage feed in the client. -->
+<PageHeading />
+
 {#each items as entry, index (entry.signature)}
     <ItemView 
         userID={entry.userID.toString()}
         signature={entry.signature.toString()}
         item={entry.item}
-        {appState}
     />
 {:else}
     {#if !moreItems}
@@ -26,6 +27,8 @@
 <VisibilityCheck on:itemVisible={lazyLoader.displayMoreItems} bind:visible={endIsVisible}/>
 
 <script lang="ts">
+import { getContext } from "svelte";
+
 import type { Writable } from "svelte/store";
 
 import type { AppState } from "../../ts/app";
@@ -33,9 +36,10 @@ import type { DisplayItem } from "../../ts/client"
 import { LazyItemLoader } from "../../ts/client";
 
 import ItemView from "../ItemView.svelte"
+import PageHeading from "../PageHeading.svelte";
 import VisibilityCheck from "../VisibilityCheck.svelte";
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 
 let items: DisplayItem[] = []
 let endIsVisible: boolean
@@ -44,7 +48,6 @@ let endIsVisible: boolean
 // Assume there are more items to lazily load until we find otherwise:
 let moreItems = true
 
-// 
 
 $: lazyLoader = createLazyLoader()
 function createLazyLoader() {
@@ -56,7 +59,7 @@ function createLazyLoader() {
         client: $appState.client,
         continueLoading: () => endIsVisible,
         endReached: () => { moreItems = false },
-        displayItem: (di) => {
+        displayItem: async (di) => {
             // Neither comments nor profile updates belong on the homepage.
             if (di.item.post) {
                 items = [...items, di]

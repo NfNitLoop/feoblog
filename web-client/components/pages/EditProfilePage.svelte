@@ -18,12 +18,10 @@
         </div>
     {:else if !loaded.profile}
         <EditorWithPreview
-            {appState}
             mode="profile"
         />
     {:else}
         <EditorWithPreview 
-            {appState}
             mode="profile"
             initialItem={loaded.profile.item}
         />
@@ -36,6 +34,8 @@
 
 
 <script lang="ts">
+import { getContext } from "svelte";
+
 import type { Writable } from "svelte/store";
 
 import type { AppState } from "../../ts/app";
@@ -43,7 +43,7 @@ import type { ProfileResult, UserID } from "../../ts/client";
 import Button from "../Button.svelte";
 import EditorWithPreview from "../EditorWithPreview.svelte"
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 
 $: userID = $appState.loggedInUser
 

@@ -1,7 +1,8 @@
+<PageHeading />
+
 <div class="dualPaneEditor">
     {#if mode === "profile"}
         <EditProfile 
-            {appState} 
             {initialItem}
             bind:validationErrors
             bind:item
@@ -19,9 +20,8 @@
     
     <!-- Preview: -->
     <ItemView
-        {appState}
         userID={userID.toString()}
-        signature="unknown"
+        signature=""
         {item}
         linkMode="newWindow"
         previewMode
@@ -33,7 +33,6 @@
     <div class="item">
         <div class="body">
             <SignAndSend
-                {appState}
                 {item}
                 attachments={fileAttachments}
                 onSendSuccess={clear}
@@ -46,21 +45,22 @@
 
 </div>
 
-
 <script lang="ts">
 import type { Writable } from "svelte/store"
 import { Item } from "../protos/feoblog"
 
 
-import type { UserID as ClientUserID } from "../ts/client"
+import type { UserID as ClientUserID, UserID } from "../ts/client"
 import type { AppState } from '../ts/app';
 import ItemView from './ItemView.svelte'
 import EditProfile from './EditProfile.svelte';
 import EditPost from './EditPost.svelte';
 import SignAndSend from "./SignAndSend.svelte";
 import type { FileInfo } from "../ts/common";
+import { getContext } from "svelte";
+import PageHeading from "./PageHeading.svelte";
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 
 // What kind of thing are we editing?
 // I imagine I'll want to make a "reply" type here too.
@@ -74,6 +74,7 @@ let fileAttachments: FileInfo[] = []
 
 let userID: ClientUserID
 $: userID = $appState.requireLoggedInUser()
+
 
 // Validation Errors from EditProfile/EditPost:
 let validationErrors: string[] = []

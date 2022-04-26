@@ -1,47 +1,28 @@
-
-<div class="nav-layout-container">
-    <div class="nav-container">
-        <div class="nav">
-            {#if !$appState.loggedIn}
-                <NavLink href="#/home">Home</NavLink>
-                <NavLink href="#/login">Log in</NavLink>
-            {:else}
-                <div>{$appState.userName || "(unknown user)"}</div>
-                <NavLink href="#/u/{$appState.loggedInUser}/feed">My Feed</NavLink>
-                <NavLink href="#/u/{$appState.loggedInUser}/profile">My Profile</NavLink>
-                <NavLink href="#/u/{$appState.loggedInUser}/">My Posts</NavLink>
-                <NavLink href="#/post">New Post</NavLink>
-                <NavLink href="#/sync">Sync</NavLink>
-                <NavLink href="#/login">Change User</NavLink>
-                <NavLink href="#/home">Home</NavLink>
-            {/if}
-        </div>
-
-    </div>
-
-    <div class="items">
-        <!-- See: https://github.com/ItalyPaleAle/svelte-spa-router/issues/234 -->
-        {#key $location}
-            <Router {routes}/>
-        {/key}
-    </div>
-
+<div class="items">
+    <Router />
 </div>
 
+
 <script context="module" lang="ts">
-    import type { RouteDefinition } from "svelte-spa-router"
-    import { default as Router, location }  from "svelte-spa-router"
-    
     import NotFoundPage from "./NotFoundPage.svelte"
     import * as app from "../ts/app"
 </script>
 
 <script lang="ts">
-import {wrap} from "svelte-spa-router/wrap"
 import { writable } from "svelte/store";
 import { setContext } from "svelte";
 import RootPage from "./pages/RootPage.svelte";
-import NavLink from "./NavLink.svelte";
+import {routes, Router, active, query} from "svelte-hash-router"
+import HomePage from "./pages/HomePage.svelte";
+import FeedPage from "./pages/FeedPage.svelte";
+import UserPage from "./pages/UserPage.svelte";
+import ProfilePage from "./pages/ProfilePage.svelte";
+import ItemPage from "./pages/ItemPage.svelte";
+import Login from "./pages/Login.svelte";
+import PostPage from "./pages/PostPage.svelte";
+import EditProfilePage from "./pages/EditProfilePage.svelte";
+import SyncPage from "./pages/SyncPage.svelte";
+import CreateIDPage from "./pages/login/CreateIDPage.svelte";
 
 // This is a writable() store so that we can notify the app
 // that appState has been modified. Svelte doesn't/can't propagate updates
@@ -51,48 +32,32 @@ import NavLink from "./NavLink.svelte";
 let appState = writable(new app.AppState())
 setContext("appStateStore", appState)
 
+routes.set({
+    "/": RootPage,
+    "/home": HomePage,
+    "/u/:userID/": UserPage,
+    "/u/:userID/feed": FeedPage,
 
-let routes = function() {
-    let routes: RouteDefinition = {
-        "/": RootPage,
-        "/home": appPage("./pages/HomePage.svelte"),
-        "/u/:userID/": appPage("./pages/UserPage.svelte"),
-        "/u/:userID/feed": appPage("./pages/FeedPage.svelte"),
-        "/u/:userID/profile": appPage("./pages/ProfilePage.svelte"),
-        "/u/:userID/i/:signature/": appPage("./pages/ItemPage.svelte"),
-        "/login": appPage('./pages/Login.svelte'),
-    }
+    "/u/:userID/post": PostPage,
+    "/u/:userID/profile/edit": EditProfilePage,
+    "/u/:userID/sync": SyncPage,
 
-    // I tried dynamically updating `routes` based on $appState.loggedIn, 
-    // but it seems like <Router> might not update its routes when they change.
-    // We'll just unconditionally include these routes. We hide them from nav
-    // when they're not applicable.
-    Object.assign(routes, {
-        "/post": appPage("./pages/PostPage.svelte"),
-        "/my_profile": appPage("./pages/EditProfilePage.svelte"),
-        "/sync": appPage("./pages/SyncPage.svelte")
-    })
-
-    // Must be last:
-    routes["*"] = NotFoundPage
-    return routes
-}()
+    "/u/:userID/profile": ProfilePage,
+    "/u/:userID/i/:signature/": ItemPage,
 
 
-// Dynamically load a page of the app, and also pass through a reference to appState.
-function appPage(templatePath: string) {
+    "/login": Login,
+    "/login/create-id": CreateIDPage,
 
-    // Snowpack now creates .svelte.js files:
-    templatePath = templatePath.replace(/[.]svelte$/, ".svelte.js")
+    // These are deprecated old paths.
+    // TODO: Figure out a succinct way to do redirects?
+    "/post": PostPage,
+    "/my_profile": EditProfilePage,
+    "/sync": SyncPage,
 
-    return wrap({
-        asyncComponent: () => import(templatePath),
-        // TODO: Do away with manually passing appState props, and use the context instead.
-        props: {
-            "appState": appState,
-        }
-    })
-}
+    "*": NotFoundPage,
+})
+
 
 $: {
     let color = $appState.userBGColor
@@ -103,6 +68,8 @@ $: {
         html.style.backgroundColor = color
     }
 }
+
+
 
 </script>
 

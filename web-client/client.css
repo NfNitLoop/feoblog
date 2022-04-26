@@ -14,20 +14,6 @@ body {
     color: black;
 }
 
-@media (min-width: 70em) {
-    .dualPaneEditor {
-        display: inline-grid;
-        width: 100%;
-        /* an .item has max-width 55em. +1em grid gap */
-        max-width: 111em;
-        grid-template-columns: 1fr 1fr;
-        grid-gap: 1em;
-        padding: 1em;
-    }
-    .dualPaneEditor > * {
-        margin: 0px;
-    }
-}
 
 input[type="text"], input[type="password"], textarea {
     width: 100%;
@@ -125,6 +111,22 @@ input:hover, input:focus, textarea:hover, textarea:focus {
     padding: 1rem;
     border-radius: 20px;
     flex-grow: 1;
+    min-height: 2em;
+}
+
+.item .body {
+    /** Rely on first/last child for vertical padding here: */
+    padding: 0 1rem;
+    /* Keep margins from escaping. See: https://developer.mozilla.org/en-US/docs/Web/Guide/CSS/Block_formatting_context */
+    display: flow-root;
+}
+
+.item .body > *:first-child {
+    margin-top: 1rem;
+}
+
+.item .body > *:last-child {
+    margin-bottom: 1rem;
 }
 
 
@@ -147,17 +149,7 @@ input:hover, input:focus, textarea:hover, textarea:focus {
 
 
 
-.item .body > *:first-child {
-    margin-top: 0px;
-    margin-left: 0px;
-    margin-right: 0px;
-}
 
-.item .body > *:last-child {
-    margin-left: 0px;
-    margin-bottom: 0px;
-    margin-right: 0px;
-}
 
 a:visited.userID, a:link.userID {
     color: black;

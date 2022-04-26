@@ -32,20 +32,23 @@
             fields.
         -->
         <form>
-            <input type="text" name="login" placeholder="here to satisfy password managers">
-            <InputBox 
-                inputType="password"
-                label="Private Key"
-                placeholder=""
-                bind:value={privateKey}
-                bind:errorMessage={privateKeyError}
-            />
-            <Button on:click={sign} disabled={!privateKey || anyErrors || !validPrivateKey}>Sign</Button>
+            <input type="text" name="login" autocomplete="username" placeholder="here to satisfy password managers">
+            {#if security.hasUnencryptedKey}
+                <!-- Display nothing about security. User has opted out. -->
+            {:else if keyIsUnlocked}
+                <div class="unimportant">Key relocks {$unlockedKey.endRelative}</div>
+            {:else if security.hasEncryptedKey}
+                <InputBox label="Password" inputType="password" bind:value={privateKeyString}/>
+            {:else}
+                <SecretKeyInput userID={$appState.loggedInUser} bind:valid={validPrivateKey} bind:value={privateKeyString} />
+            {/if}
+            <Button on:click={sign} disabled={!signEnabled}>Sign</Button>
         </form>
     {:else}
         <InputBox
             label="Signature"
             value={signature}
+            disabled={true}
          />
         <div class="buttons">
             <Button on:click={submit} disabled={inProgress}>Submit</Button>
@@ -56,21 +59,22 @@
 
 
 <script lang="ts">
-import { push as navigateTo } from "svelte-spa-router"
+import { getContext } from "svelte";
 import { slide } from "svelte/transition"
 import type { Writable } from "svelte/store";
 import type { Item, File as PFile } from "../protos/feoblog";
 import type { AppState } from "../ts/app";
-import { Signature } from "../ts/client";
+import { PrivateKey, Signature } from "../ts/client";
 import Button from "./Button.svelte";
 import InputBox from "./InputBox.svelte"
 import TaskTrackerView from "./TaskTrackerView.svelte"
-import bs58 from "bs58";
-import bs58check from "bs58check"
-import nacl from "tweetnacl";
 import { FileInfo, Mutex, TaskTracker } from "../ts/common";
+import { decodeBase58, decodeBase58Check, encodeBase58 } from "../ts/fbBase58";
+import SecretKeyInput from "./SecretKeyInput.svelte";
+import { SecurityManager } from "../ts/storage";
+import { CountDown } from "../ts/asyncStore";
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 export let item: Item
 
 // Errors sent to us from outside, which can prevent sign & send.
@@ -90,14 +94,22 @@ $: itemBytes = item.serialize()
 
 $: userID = $appState.requireLoggedInUser()
 
-let privateKey = ""
+let validPrivateKey = false
+
+// I'm lazy, used for private string and password:
+let privateKeyString = ""
+
 let signature = ""
 
 // Additional errors we check before sending any Items:
+let incorrectPassword = false
 let ourErrors: string[] = []
-$: anyErrors = (errors.length > 0) || (ourErrors.length > 0) 
 $: ourErrors = function() {
     let errs: string[] = []
+
+    if (incorrectPassword) {
+        errs.push("Incorrect Password")
+    }
 
     if (!itemBytes || itemBytes.length == 0) {
         errs.push("No Item received to sign.")
@@ -132,6 +144,7 @@ $: ourErrors = function() {
 
 // Show our own checks last, in case they might be duplicates w/ those provided by the caller:
 $: displayErrors = errors.length > 0 ? errors : ourErrors
+$: anyErrors = displayErrors.length > 0
 
 
 
@@ -158,63 +171,53 @@ $: validSignature = function(): boolean {
     return isValid
 }()
 
-// Error to display about the private key:
-$: privateKeyError = function() {
-    if (privateKey.length == 0) {
-        return "";
-    }
-    
-    let buf: Uint8Array;
-    try {
-        buf = bs58.decode(privateKey)
-    } catch (error) {
-        return "Not valid base58"
-    }
-
-    // Secret is 32 bytes, + 4 for checked base58.
-    if (buf.length < 36) {
-        return "Password is too short."
-    }
-    if (buf.length > 36) {
-        return "Password is too long."
-    }
-
-    try {
-        buf = bs58check.decode(privateKey)
-    } catch (e) {
-        return "Invalid Password"
-    }
-
-    
-    let keypair = nacl.sign.keyPair.fromSeed(buf);
-    
-    let pubKey = bs58.encode(keypair.publicKey)
-    if (pubKey != userID.toString()) {
-        return "Private key does not match user ID."
-    }
-
-    return ""    
-}()
-$: validPrivateKey = !privateKeyError
+$: securityManager = new SecurityManager(appState, $appState)
+$: security = securityManager.getSettings(userID.asBase58)
+$: unlockedKey = new CountDown(security.unlockedKeyTimeout)
+$: keyIsUnlocked = $unlockedKey.remainingMs > 1000
+$: signEnabled = (
+    security.hasUnencryptedKey 
+    || keyIsUnlocked
+    || security.hasEncryptedKey
+    || validPrivateKey
+)
 
 
 // Create a signature, delete the password.
 function sign() {
-    if (privateKeyError) {
-        console.error("Shouldn't be able to call sign w/ invalid private key.")
-        return
-    }
-
     if (!itemBytes) throw `No bytes to sign.`
 
-    let buf = bs58check.decode(privateKey)
-    let keypair = nacl.sign.keyPair.fromSeed(buf);
-    let binSignature = nacl.sign.detached(itemBytes, keypair.secretKey)
-    signature = bs58.encode(binSignature)
+    let privateKey: PrivateKey
+    if (keyIsUnlocked || security.hasUnencryptedKey) {
+        let key = securityManager.getKey(userID.asBase58)
+        if (!key) {
+            // Uh-oh, maybe the token timed out. Refresh state:
+            console.warn("Refreshing view. Couldn't find unlocked key!?")
+            appState.update(it => it)
+            return
+        }
+        privateKey = key
+    } else if (security.hasEncryptedKey) {
+        let key = securityManager.decryptKey(userID.asBase58, privateKeyString)
+        if (!key) {
+            incorrectPassword = true
+            privateKeyString = ""
+            return
+        }
+        incorrectPassword = false
+        privateKey = key
 
-    // Delete the privateKey, we don't want to save it any longer than
+    } else {
+        privateKey = PrivateKey.fromBase58(privateKeyString)
+    }
+    securityManager.maybeSaveKey(userID.asBase58, privateKey)
+
+    let binSignature = privateKey.signDetached(itemBytes)
+    signature = encodeBase58(binSignature)
+
+    // Delete the privateKey, we don't want to save (here) it any longer than
     // necessary:
-    privateKey = ""
+    privateKeyString = ""
 }
 
 let inProgress = false
@@ -227,9 +230,14 @@ async function submit() {
         console.error("submit() while inProgress!? Shouldn't be possible")
         return
     }
-    sendMutex.run(async () => {
+    await sendMutex.run(async () => {
         await tracker.run("Sending", doSubmit)
     })
+
+    if (tracker.errorCount == 0 && navigateWhenDone) {
+        tracker.clear()
+    }
+
 }
 
 async function doSubmit(tracker: TaskTracker): Promise<void> {
@@ -279,7 +287,7 @@ async function doSubmit(tracker: TaskTracker): Promise<void> {
     }
 
     if (navigateWhenDone) {
-        navigateTo(navigateDestination)
+        window.location.hash = navigateDestination
     }
 }
 
@@ -298,7 +306,9 @@ input[name="login"] {
     background-color: #ff000014;
 }
 
-
+form {
+    margin: 0;
+}
 
 .errorBox::before {
     content: "⚠ Errors:";
@@ -317,6 +327,11 @@ input[name="login"] {
     margin: 1rem;
     font-weight: bold;
     display: block;
+}
+
+.unimportant {
+    font-size: 0.8em;
+    color: #888;
 }
 
 </style>

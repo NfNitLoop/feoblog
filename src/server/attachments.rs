@@ -202,7 +202,7 @@ pub(crate) async fn put_file(
 /// SO, here we read the whole payload, even though we don't care what
 /// they sent. This seems ripe for DoS but it just seems to be the way
 /// browsers and HTTP clients work? 😢
-async fn drain(mut payload: Payload) {
+pub(crate) async fn drain(mut payload: Payload) {
     while payload.next().await.is_some() {}
 }
 

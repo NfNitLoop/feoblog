@@ -1,64 +1,70 @@
 <!--
     Shows posts by a single user.
+    TODO: Implement infinite scroll like on the feed page.
 -->
 
-<PageHeading>
-    <h1>Posts by <UserIDView {userID}/></h1>
-</PageHeading>
+{#if userID}
+    <PageHeading />
 
-{#each items as entry, index (entry.signature)}
+    {#each items as entry, index (entry.signature)}
     <ItemView 
-        userID={entry.userID.toString()}
-        signature={entry.signature.toString()}
-        item={entry.item}
-        {appState}
+    userID={entry.userID.toString()}
+    signature={entry.signature.toString()}
+    item={entry.item}
     />
-{:else}
+    {:else}
     <div class="item">
         <div class="body">
-            No posts found for user <UserIDView {appState} {userID}/>
+            <p>
+            No posts found for user <UserIDView {userID}/>
+            </p>
         </div>
     </div>
-{/each}
+    {/each}
 
-<VisibilityCheck on:itemVisible={lazyLoader.displayMoreItems} bind:visible={endIsVisible}/>
+    <VisibilityCheck on:itemVisible={() => lazyLoader?.displayMoreItems?.()} bind:visible={endIsVisible}/>
+{:else}
+<h1>Error: UserID is required</h1>
+{/if}
 
 <script lang="ts">
 import type { Writable } from "svelte/store";
-
 import type { AppState } from "../../ts/app";
 import type { DisplayItem } from "../../ts/client"
-import { UserID, LazyItemLoader } from "../../ts/client";
 
+import { getContext } from "svelte";
+import { params } from "svelte-hash-router"
+
+import { UserID, LazyItemLoader } from "../../ts/client";
 import ItemView from "../ItemView.svelte"
 import VisibilityCheck from "../VisibilityCheck.svelte";
 import UserIDView from "../UserIDView.svelte"
-import PageHeading from "../PageHeading.svelte";
+import PageHeading, { Breadcrumbs, NavItem } from "../PageHeading.svelte";
+import ProfileImage from "../ProfileImage.svelte";
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 
 let items: DisplayItem[] = []
 let endIsVisible: boolean
 
 let loadingItems = true
 
-export let params: {
-    userID: string
-}
-$: userID = UserID.fromString(params.userID)
+
+$: userID = UserID.tryFromString($params.userID)
 
 
 $: lazyLoader = createLazyLoader(userID)
-function createLazyLoader(userID: UserID) {
+function createLazyLoader(userID: UserID|null) {
     items = []
     if (lazyLoader) { lazyLoader.stop() }
+    if (!userID) { return }
 
     return new LazyItemLoader({
         client: $appState.client,
         itemEntries: $appState.client.getUserItems(userID),
         continueLoading: () => endIsVisible,
         endReached: () => { loadingItems = false },
-        displayItem: (di) => {
+        displayItem: async (di) => {
             if (di.item.profile) {
                 // Don't display profile updates here.
                 return

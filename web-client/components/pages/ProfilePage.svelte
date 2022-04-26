@@ -3,32 +3,25 @@
     Loads their existing profile first.
 -->
 
+<PageHeading />
+
 {#await loadedProfile}
     <div class="item"><div class="body">Loading...</div></div>
 {:then loaded} 
     {#if loaded.error}
         <div class="item"><div class="body error">{loaded.error}</div></div>
+    {:else if !userID}
+        <div class="error">userID is required</div>
     {:else}
         {#if !loaded.profile}
-            <div class="item"><div class="body error">This user has no profile</div></div>
+            <div class="item"><div class="body error"><p>This user has no profile</p></div></div>
         {:else}
         <ItemView 
-            {appState}
             item={loaded.profile.item}
             userID={userID.toString()}
             signature={loaded.profile.signature.toString()}
         />
         {/if}
-
-        <div class="item">
-            <div class="body">
-                {#if userID.toString() == $appState.loggedInUser?.toString()} 
-                        <Button href={`#/my_profile`}>Edit</Button>
-                {/if}
-                <Button href={`#/u/${userID}/`}>View Posts</Button>
-            </div>
-        </div>
-
     {/if}
 {:catch e} 
     <div class="item"><div class="body error">
@@ -39,19 +32,49 @@
 
 <script lang="ts">
 import type { Writable } from "svelte/store";
-
 import type { AppState } from "../../ts/app";
+
+import { getContext } from "svelte";
+import { params } from "svelte-hash-router"
+
 import { ProfileResult, UserID } from "../../ts/client";
 import Button from "../Button.svelte";
 import ItemView from "../ItemView.svelte";
+import PageHeading from "../PageHeading.svelte";
+import type { NavItem } from "../PageHeading.svelte"
+import type { Breadcrumbs } from "../PageHeading.svelte"
 
-export let appState: Writable<AppState>
-export let params: {
-    userID: string
+let appState: Writable<AppState> = getContext("appStateStore")
+
+$: userID = UserID.tryFromString($params.userID)
+
+$: breadcrumbs = getBreadcrumbs(userID)
+function getBreadcrumbs(userID: UserID|null): Breadcrumbs {
+    if (!userID) {
+        return {crumbs: [
+            {text: "Invalid UserID"}
+        ]}
+    }
+
+    return {crumbs: [
+        {userID},
+        {text: "Profile"},
+    ]}
 }
 
+$: navItems = getNavItems(userID)
+function getNavItems(userID: UserID|null): NavItem[] {
+    if (!userID) { return [] }
 
-$: userID = UserID.fromString(params.userID)
+    let loggedIn = userID.toString() == $appState.loggedInUser?.toString()
+    if (loggedIn) {
+        return [
+            {text: "Edit", href: $appState.navigator.editProfile().hash }
+        ]
+    }
+
+    return []
+}
 
 
 let loadedProfile: Promise<LoadedProfile>

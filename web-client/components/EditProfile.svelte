@@ -41,12 +41,12 @@ import type { AppState } from "../ts/app";
 import type { Writable } from "svelte/store";
 import { UserID as ClientUserID } from "../ts/client";
 import { parseUserID, validateServerURL } from "../ts/common";
-import { tick } from "svelte";
-import bs58 from "bs58";
+import { getContext, tick } from "svelte";
 import InputBox from "./InputBox.svelte";
 import { DateTime } from "luxon";
+import { decodeBase58 } from "../ts/fbBase58";
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 // Exported so that EditorWithPreview can preview, serialize, & send it for us.
 export let item: Item
 
@@ -204,11 +204,7 @@ $: item = function(): Item {
     follows.forEach(entry => {
         let userIDBytes = new Uint8Array()
         try {
-            let buf: Buffer = bs58.decode(entry.userID)
-            // While a Buffer in theory extends a Uint8Array, the google-protobuf library
-            // checks the constuctor of the object to make sure it's actually a Uint8Array.
-            // See: https://github.com/protocolbuffers/protobuf/issues/1319
-            userIDBytes = new Uint8Array(buf)
+            userIDBytes = decodeBase58(entry.userID)
         } catch (_ignored) {}
 
         profile.follows.push(new Follow({

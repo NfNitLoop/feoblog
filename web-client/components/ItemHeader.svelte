@@ -4,14 +4,15 @@
 <div class="header">
     <ProfileImage {userID} />
     <div class="text">
-        <UserIdView {userID} {appState}/>
+        <UserIdView {userID} />
         {#if showReplyTo && item.comment != null}
-            <span>replied to</span>
+            <a href={refToLink(item.comment.reply_to)}>
+            replied to
             <UserIdView 
                 userID={UserID.fromBytes(item.comment.reply_to.user_id.bytes)}
-                href={refToLink(item.comment.reply_to)}
-                {appState}
+                shouldLink={false}
             />
+            </a>
         {:else if item.profile} 
             <span>updated their profile</span>
         {/if}
@@ -57,6 +58,7 @@ export type ViewMode = "normal"|"markdown"|"data"
 </script>
 
 <script lang="ts">
+import { getContext } from "svelte";
 import type { Writable } from "svelte/store";
 import { slide } from "svelte/transition"
 import type { Item, ReplyRef } from "../protos/feoblog";
@@ -70,8 +72,9 @@ import OpenArrow from "./OpenArrow.svelte";
 import CopyBox from "./CopyBox.svelte";
 import Button from "./Button.svelte";
 
+let appState: Writable<AppState> = getContext("appStateStore")
+
 // required:
-export let appState: Writable<AppState>
 export let userID: UserID
 export let signature: string|undefined // could be invalid/missing during preview
 export let item: Item
@@ -100,12 +103,12 @@ function refToLink(ref: ReplyRef): string {
 
 $: timestampLink = parsedSignature ? `#/u/${userID}/i/${signature}/` : undefined
 $: parsedSignature = function() {
+    if (!signature) { return null }
     try {
-        if (signature) return Signature.fromString(signature)
+        return Signature.fromString(signature)
     } catch (error) {
         console.error("Could not parse signature:", signature)
     }
-    return null
 }()
 
 $: feoBlogURL = !parsedSignature ? undefined : `/u/${userID}/i/${signature}/`

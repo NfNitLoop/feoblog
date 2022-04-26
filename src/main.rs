@@ -5,7 +5,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::backend::{Factory, PruneOpts, ServerUser, UsageByUserRow, UserID, sqlite};
+use crate::{backend::{Factory, PruneOpts, ServerUser, UsageByUserRow, UserID, sqlite}, util::AsHex};
 use anyhow::{Error, bail};
 use sizedisplay::SizeDisplay;
 use structopt::StructOpt;
@@ -15,6 +15,7 @@ mod backend;
 mod markdown;
 mod protos;
 mod server;
+mod util;
 
 
 fn main() -> Result<(), Error> {
@@ -324,9 +325,7 @@ impl DbUsageCommand {
     
         let id_col = if self.hex {
             Column::new(|f, r: &Row| {
-                for byte in r.user_id.bytes() {
-                    write!(f, "{:02x}", byte)?;
-                }
+                write!(f, "{}", r.user_id.bytes().as_hex())?;
                 Ok(())
             }).header("User ID (hex)").min_width(64)
         } else {

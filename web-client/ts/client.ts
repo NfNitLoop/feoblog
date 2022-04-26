@@ -1,8 +1,9 @@
-import { Item, ItemList, ItemListEntry, Post } from "../protos/feoblog"
-import bs58 from "bs58"
+import { Item, ItemList, ItemListEntry, ItemType, Post } from "../protos/feoblog"
 import * as nacl from "./naclWorker/nacl"
+import tweetnacl from "tweetnacl"
 import { bytesToHex, ConsoleLogger, Logger, prefetch } from "./common";
 import { tick } from "svelte";
+import { decodeBase58, decodeBase58Check, encodeBase58 } from "./fbBase58";
 
 // Before sending files larger than this, we should check whether they exist:
 const SMALL_FILE_THRESHOLD = 1024 * 128
@@ -247,11 +248,18 @@ export class Client {
         }
     }
 
-    async * getUserFeedItems(userID: UserID): AsyncGenerator<ItemListEntry> {
-        let before: number|undefined = undefined
+    async * getUserFeedItems(userID: UserID, params?: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
+        let isBefore = typeof(params?.after) != "number"
+        let offset = {...params}
+
         while (true) {
 
-            let list: ItemList = await this.getItemList(`/u/${userID}/feed/proto3`, {before})
+            let list: ItemList = await this.getItemList(`/u/${userID}/feed/proto3`, offset)
+            if (!isBefore) {
+                /// We want to iterate in chronological order for this case, but the server always
+                /// gives reverse order.  Fix it:
+                list.items.reverse()
+            }
 
             if (list.items.length == 0) {
                 // There are no more items.
@@ -264,7 +272,11 @@ export class Client {
                 return
             }
     
-            before = list.items[list.items.length - 1].timestamp_ms_utc
+            if (isBefore) {
+                offset.before = list.items[list.items.length - 1].timestamp_ms_utc
+            } else {
+                offset.after = list.items[list.items.length - 1].timestamp_ms_utc
+            }
         }
     }
 
@@ -340,6 +352,15 @@ export class Client {
     }
 }
 
+// Should not specify both before and after.
+export interface ItemOffsetParams {
+    /** timestamp in ms utc before which we want to query for items */
+    before?: number
+
+    /** timestamp in ms utc after which we want to query for items */
+    after?: number
+}
+
 export type AttachmentMeta = {
     // The attachment already exists at the target location.
     exists: boolean,
@@ -369,13 +390,8 @@ export class Config {
 }
 
 export class UserID {
-    readonly bytes: Uint8Array
-    // These almost always get turned into strings
-    // Just save one to save from repeated allocations:
-    private asString: string
-
     toString(): string {
-        return bs58.encode(this.bytes)
+        return this.asBase58
     }
 
     // A hex representation of the bytes:
@@ -384,19 +400,32 @@ export class UserID {
     }
 
     static fromString(userID: string): UserID {
+        let valType = typeof(userID)
+        if (valType !== "string") {
+            throw new Error(`invalid userID string of type ${valType}`)
+        }
         if (userID.length == 0) {
             throw "UserID must not be empty."
         }
     
         let buf: Uint8Array;
         try {
-            buf = bs58.decode(userID)
+            buf = decodeBase58(userID)
         } catch (error) {
             throw "UserID not valid base58"
         }
     
         UserID.validateBytes(buf)
         return new UserID(buf, userID)
+    }
+
+
+    static tryFromString(userID: string): UserID|null {
+        try {
+            return UserID.fromString(userID)
+        } catch (error) {
+            return null
+        }
     }
 
     private static validateBytes(bytes: Uint8Array) {
@@ -415,20 +444,17 @@ export class UserID {
 
     static fromBytes(bytes: Uint8Array): UserID {
         UserID.validateBytes(bytes)
-        return new UserID(bytes, bs58.encode(bytes))
+        return new UserID(bytes, encodeBase58(bytes))
     }
 
-    private constructor(bytes: Uint8Array, asString: string) {
-        this.bytes = bytes
-        this.asString = asString
-    }
+    private constructor(readonly bytes: Uint8Array, readonly asBase58: string) { }
 }
 
 export class Signature {
     readonly bytes: Uint8Array
 
     toString(): string {
-        return bs58.encode(this.bytes)
+        return encodeBase58(this.bytes)
     }
 
     // Check that a signature is valid.
@@ -440,19 +466,27 @@ export class Signature {
         return nacl.sign_detached_verify_sync(bytes, this.bytes, userID.bytes)
     }
 
-    static fromString(userID: string): Signature {
-        if (userID.length == 0) {
+    static fromString(signature: string): Signature {
+        if (signature.length == 0) {
             throw "Signature must not be empty."
         }
     
         let buf: Uint8Array;
         try {
-            buf = bs58.decode(userID)
+            buf = decodeBase58(signature)
         } catch (error) {
             throw "Signature not valid base58"
         }
     
         return Signature.fromBytes(buf)
+    }
+
+    static tryFromString(userID: string): Signature|null {
+        try {
+            return Signature.fromString(userID)
+        } catch {
+            return null
+        }
     }
 
     static fromBytes(bytes: Uint8Array): Signature {
@@ -470,6 +504,49 @@ export class Signature {
     private constructor(bytes: Uint8Array) {
         this.bytes = bytes
     }
+}
+
+export class PrivateKey {
+    readonly userID: UserID;
+
+    static fromBase58(privateKey: string) {
+
+        // Error to display about the private key:
+        let buf: Uint8Array;
+        try {
+            buf = decodeBase58(privateKey)
+        } catch (error) {
+            throw "Not valid base58"
+        }
+
+        // Secret is 32 bytes, + 4 for checked base58.
+        if (buf.length < 36) {
+            throw "Key is too short."
+        }
+        if (buf.length > 36) {
+            throw "Key is too long."
+        }
+
+        try {
+            buf = decodeBase58Check(privateKey)
+        } catch (e) {
+            throw "Invalid Key"
+        }
+
+        // Signing is not usually a bottleneck so just using current thread:
+        let keypair = tweetnacl.sign.keyPair.fromSeed(buf);        
+
+        return new PrivateKey(keypair, privateKey)
+    }
+
+    private constructor(private keyPair: tweetnacl.SignKeyPair, readonly asBase58: string) {
+        this.userID = UserID.fromBytes(keyPair.publicKey)
+    }
+
+    signDetached(message: Uint8Array) {
+        return tweetnacl.sign.detached(message, this.keyPair.secretKey)
+    }
+           
 }
 
 const USER_ID_BYTES = 32;
@@ -501,7 +578,7 @@ export type LazyItemLoaderOptions = {
     continueLoading: () => boolean,
 
     // A function we'll call when a new item is available to display:
-    displayItem: (nextItem: DisplayItem) => void,
+    displayItem: (nextItem: DisplayItem) => Promise<void>,
 
     // A function we'll call when we've reached the end of the available items.
     endReached: () => void,
@@ -529,17 +606,19 @@ export class LazyItemLoader {
 
     private client: Client
     private continueLoading: () => boolean
-    private displayItemCallback: (nextItem: DisplayItem) => void
+    private displayItemCallback: (nextItem: DisplayItem) => Promise<void>
     private lazyDisplayItems: AsyncGenerator<DisplayItem|null>
     private endReached: () => void
     private log: Logger
-    private itemFilter: ItemFilter;
+    private itemFilter: ItemFilter
+
+    #hasMore = true
+    get hasMore() { return this.#hasMore && !this.stopped }
     
     // We've been stopped, and will never yield more items. Can drop in-progress items.
-    private stopped = false;
+    private stopped = false
 
-    // We'll bump this up each time the user bumps into the bottom of the screen.
-    private minItemsToDisplay = 3
+    private minItemsToDisplay = 10
 
     // Are we currently in the middle of displaying more items?
     private displayingMoreItems = false
@@ -547,6 +626,7 @@ export class LazyItemLoader {
     // Call this whenever the UI needs for us to display more items.
     // We'll continue displaying items until !continueLoading (at least).
     displayMoreItems = async () => {
+        if (!this.hasMore) { return }
         if (this.displayingMoreItems) {
             // The user could scroll to the end of the page while we're still loading and displaying more items.
             // No need to fire off another async process:
@@ -565,7 +645,7 @@ export class LazyItemLoader {
         const displayItem = this.displayItemCallback
         this.log.debug("displayMoreItems, continueLoading", continueLoading())
 
-        let minToDisplay = this.minItemsToDisplay++
+        let minToDisplay = this.minItemsToDisplay
 
         while(minToDisplay > 0 || continueLoading()) {
 
@@ -576,6 +656,7 @@ export class LazyItemLoader {
             }
 
             if (n.done) {
+                this.#hasMore = false
                 this.endReached()
                 return
             }
@@ -586,19 +667,23 @@ export class LazyItemLoader {
             }
 
 
-            displayItem(n.value)
+            await displayItem(n.value)
             minToDisplay--
 
+            // TODO: Deprecate continueLoading() and remove this.
             // Wait for Svelte to apply state changes.
             // MAY cause continueLoading to toggle off, but at least in Firefox that
             // doesn't always seem to have happened ASAP.
             // I don't mind loading a few more items than necessary, though.
-            await tick()
+            await tick()  
         }
     }
 
     private fetchDisplayItem = async (entry: ItemListEntry): Promise<DisplayItem|null> => {
         const filter = this.itemFilter
+
+        if (!filter.byItemType(entry.item_type)) return null
+
         if (!filter.byTimestampMS(entry.timestamp_ms_utc)) return null
 
         let userID = UserID.fromBytes(entry.user_id.bytes)
@@ -607,7 +692,6 @@ export class LazyItemLoader {
         let signature = Signature.fromBytes(entry.signature.bytes)
         if (!filter.bySignature(signature)) return null
 
-        // TODO: Filter by item type.
 
         let item: Item 
         let bytes: Uint8Array|null
@@ -647,9 +731,8 @@ export class LazyItemLoader {
 /**
  * Allows filtering items as we fetch them with a lazy loader.
  * Methods should return `true` to keep a particular Item.
- * userID, signature, and timestamp filters are called *before*
- * fetching the Item from the server, so are the most efficient.
  * 
+ * Note: The base ItemFilter returns true for everything.
  */
 export class ItemFilter {
 
@@ -661,10 +744,12 @@ export class ItemFilter {
         return new MatchAllFilter(filters)
     }
 
-    // The base implementation returns True for everything.
+    byItemType(item_type: ItemType): boolean { return true }
     byUserID(userID: UserID): boolean { return true }
     bySignature(signature: Signature): boolean { return true }
     byTimestampMS(timestampMS: number): boolean { return true }
+
+    /** The slowest filter, called after the item has been loaded from the server. */
     byItem(item: Item): boolean { return true}
 }
 
@@ -707,9 +792,29 @@ export class SkipUsers extends ItemFilter {
 
 }
 
+export class ExcludeItemTypes extends ItemFilter {
+    #excludedTypes: ItemType[]
+
+    constructor(itemTypes: ItemType[]) {
+        super()
+        this.#excludedTypes = itemTypes
+    }
+
+    byItemType(itemType: ItemType): boolean {
+        return !this.#excludedTypes.some(t => t == itemType)
+    }
+}
+
 class MatchAllFilter implements ItemFilter {
 
     constructor(private filters: ItemFilter[]) {}
+
+    byItemType(itemType: ItemType): boolean {
+        for (const filter of this.filters) {
+            if (!filter.byItemType(itemType)) return false
+        }
+        return true
+    }
 
     byUserID(userID: UserID): boolean {
         for (const filter of this.filters) {

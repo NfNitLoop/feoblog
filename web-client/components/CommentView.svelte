@@ -3,7 +3,7 @@
     Does NOT include a <div class="item"> around it.
 -->
 <div use:fixLinks={{mode: linkMode}}>
-    <ItemHeader {appState} {showReplyTo} {item} {signature} {userID} bind:viewMode />
+    <ItemHeader {showReplyTo} {item} {signature} {userID} bind:viewMode />
     <div class="body">
         {#if viewMode == "normal"}
             {@html markdownToHtml(item.comment.text, {stripImages: true, relativeBase: `/u/${userID}/i/${signature}/`})}
@@ -29,8 +29,9 @@ import {markdownToHtml, fixLinks} from "../ts/common"
 
 import ItemHeader from "./ItemHeader.svelte"
 import type {ViewMode} from "./ItemHeader.svelte"
+import { getContext } from "svelte";
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 export let item: Item
 export let showReplyTo = true
 

@@ -10,7 +10,7 @@ use protobuf::Message;
 
 use crate::{backend::{ItemDisplayRow, ItemRow, Signature, Timestamp, UserID}, protos::{Item, ItemList, ItemListEntry, ItemType, Item_oneof_item_type, ProtoValid}, server::{MAX_ITEM_SIZE, PLAINTEXT}};
 
-use super::{AppData, Error, pagination::{Pagination, Paginator}};
+use super::{AppData, Error, pagination::{Pagination, Paginator}, attachments::drain};
 
 
 // Get the protobuf ItemList for items on the homepage.
@@ -202,6 +202,9 @@ pub(crate) async fn put_item(
 
     // If the content already exists, do nothing.
     if backend.user_item_exists(&user, &signature)? {
+        // *sigh* this bug again. Should I handle this in middleware?
+        drain(body).await;
+        
         return Ok(
             HttpResponse::Accepted()
             .content_type(PLAINTEXT)

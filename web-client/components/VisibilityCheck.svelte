@@ -2,13 +2,15 @@
     Component that just checks whether it's visibile on the page.
     emits event: itemVisible, when the item becomes visible
 -->
-<div bind:this={element}></div>
+<div class:hasHeight class:noHeight bind:this={element}></div>
 
 <script lang="ts">
 import { createEventDispatcher, onDestroy, onMount } from "svelte";
 
 // Always starts false so that we emit at least one itemVisible event if the item is visible.
 export let visible: boolean = false
+export let hasHeight = true
+$: noHeight = !hasHeight
 
 let element: HTMLElement
 let observer = new IntersectionObserver(observerCallback)
@@ -36,14 +38,24 @@ function observerCallback(entries: IntersectionObserverEntry[], observer: Inters
 
     if (nowVisible) {
         dispatch("itemVisible")
+    } else {
+        dispatch("itemNotVisible")
     }
 }
 
 </script>
 
 <style>
-div {
+div { 
+    padding: 0;
+}
+
+.hasHeight {
     /* Need some height, or the element can scroll out of view.*/
     min-height: 200px;
+}
+
+.noHeight {
+    height: 0;
 }
 </style>

@@ -1,142 +1,317 @@
-<script lang="ts">
-/*
- * Shows a saved login, allows editing and switching IDs
- *
- * emits events:
- * change({savedLogin: SavedLogin}) when values here are changed (and valid)
- * logIn({savedLogin: SavedLogin}) when the user clicks the "Log In" button.
- * logOut({savedLogin: SavedLogin}) when the user clicks the "Log Out" button.
- */
+<!--
+    Shows a saved login, allows editing and switching IDs
+    emits events:
 
-import type { SavedLogin } from "../ts/app";
-import { createEventDispatcher } from "svelte";
+    change - when values here are changed (and valid)
+    checked - user checked this box
+    unchecked - user unchecked this box.
+    remove - remove button clicked
+   
+-->
+
+<div class="item" class:collapsed transition:slide|local>
+    <div class="header">
+        <input type="checkbox" bind:this={checkbox} bind:checked on:click={checkClicked}>
+        <ProfileImage userID={UserID.fromString(savedLogin.userID)} slot="headerLeft"/>
+        <div class="mid">
+            <input type="text" 
+                bind:value={savedLogin.displayName} 
+                placeholder="(unknown display name)"
+                on:change={changed}
+            >
+            <br><span class="userID">id: {savedLogin.userID}</span>    
+        </div>
+        <OpenArrow bind:isOpen/>
+    </div>
+    <div class="body">
+        <action-bar>
+            <Button href="#/u/{savedLogin.userID}/feed">View Feed</Button>
+            <Button href="#/u/{savedLogin.userID}/">View Posts</Button>
+            <Button href="#/u/{savedLogin.userID}/profile">View Profile</Button>
+            <Button href="#/u/{savedLogin.userID}/post">New Post</Button>
+            <div>
+                <Button disabled={first} on:click={() => dispatch("up")}>⬆️</Button>
+                <Button disabled={last} on:click={() => dispatch("down")}>⬇️</Button>
+            </div>
+            <Button on:click={removeMe}>Remove</Button>
+            <ColorPicker bind:color={savedLogin.bgColor} on:change={changed}/>
+        </action-bar>
+
+        {#if !editingSecurity}
+            <p><Button on:click={() => editingSecurity = true }>Edit</Button> Security Level: {currentSecurity.score}%</p>
+        {:else}
+        <setting-section>
+            <h3>
+                New Security Level: {securityRating.score}%
+            </h3>
+                
+            <label><input type="checkbox" bind:checked={savePrivateKey}>Save my private key</label>
+            {#if savePrivateKey}
+            <div>
+                <SecretKeyInput
+                    userID={UserID.fromString(savedLogin.userID)}
+                    bind:value={privateKeyString}
+                    bind:valid={validPrivateKey} 
+                    label=""
+                />
+                <label><input type="checkbox" bind:checked={saveWithPassword}>With a password</label>
+                {#if saveWithPassword}
+                    <InputBox placeholder="Password" inputType="password" bind:value={keyPassword}/>
+                {/if}
+            </div>
+            {/if}
+
+            {#if tempEnabled}
+                <label><input type="checkbox" bind:checked={saveTemporarily}>Temporarily remember my key after use</label>
+                {#if saveTemporarily}
+                    <p>For up to {saveTimeSpan}</p>
+                    <input type="range" min=0 max={timeSpans.length - 1} bind:value={saveTimeSpanIndex}/>
+                {/if}
+            {/if}
+
+            {#if errors.length > 0}
+                <h3>Errors:</h3>
+                <ul>
+                    {#each errors as error}
+                        <li>{error}</li>
+                    {/each}
+                </ul>
+            {:else}
+                <security-pane>
+                    <security-section>
+                        <h1>Pros:</h1>
+                        <ul>
+                        {#each securityRating.pros as detail}
+                            <li>{detail}</li>
+                        {/each}
+                        </ul>
+                    </security-section>
+                    <security-section>
+                        <h1>Cons:</h1>
+                        <ul>
+                            {#each securityRating.cons as detail}
+                                <li>{detail}</li>
+                            {/each}
+                            </ul>
+                    </security-section>
+                    <security-section>
+                        <h1>Remember:</h1>
+                        <ul>
+                            {#each securityRating.remember as detail}
+                                <li>{detail}</li>
+                            {/each}
+                            </ul>
+                    </security-section>
+                </security-pane>
+            {/if}
+
+            <action-bar>
+                <Button disabled={errors.length > 0} on:click={confirmSecuritySettings}>Confirm</Button>            
+                <Button on:click={() => editingSecurity = false}>Cancel</Button>
+            </action-bar>
+        </setting-section>
+        {/if}
+
+    </div>
+</div>
+
+
+<script lang="ts">
+
+import { slide } from "svelte/transition"
+import type { Writable } from "svelte/store"
+
+import type { AppState, SavedLogin } from "../ts/app";
+import { createEventDispatcher, getContext } from "svelte";
 import Button from "./Button.svelte"
 import ProfileImage from "./ProfileImage.svelte";
 import { UserID } from "../ts/client";
+import OpenArrow from "./OpenArrow.svelte";
+import ColorPicker from "./ColorPicker.svelte";
+import { SecurityManager, SecurityManagerOptions, SecurityRating } from "../ts/storage"
+import SecretKeyInput from "./SecretKeyInput.svelte";
+import InputBox from "./InputBox.svelte";
 
 export let savedLogin: SavedLogin
-export let isLoggedIn = false
+export let checked = false
+export let first = false
+export let last = false
 
-// derived from savedLogin, so that we never modify it directly:
-export let displayName = savedLogin.displayName || ""
-export let userID = savedLogin.userID
-export let bgColor = savedLogin.bgColor || ""
+export let isOpen = checked
 
-$: itemStyle = function(){
-    if (isLoggedIn) {
-        return ""
-    }
-    let color = bgColor
-    if (!validColor(color)) {
-        color = "rgba(0,0,0,0)"
-    }
-    return `border: 5px solid ${color};`
-}()
+let appState: Writable<AppState> = getContext("appStateStore")
 
-function validColor(color: string): boolean {
-    return (
-        /^#[0-9a-f]{3}$/i.test(color) 
-        || /^#[0-9a-f]{6}$/i.test(color) 
-    )   
-}
+let checkbox: HTMLInputElement
 
 let dispatch = createEventDispatcher()
 
-function logIn() {
-    dispatch("logIn", eventData())
+let editingSecurity = false
+
+let privateKeyString = ""
+let validPrivateKey = false
+
+let savePrivateKey = false
+let saveWithPassword = true
+let keyPassword = ""
+
+// Every time we uncheck savePrivateKey or saveWithPassword, unset the corresponding (potentially sensitive!) data:
+$: if (!editingSecurity || !savePrivateKey) privateKeyString = ""
+$: if (!editingSecurity || !savePrivateKey || !saveWithPassword) keyPassword = ""
+
+let saveTemporarily = false
+// Human readable timespan:
+let saveTimeSpan = ""
+let saveTimeSpanIndex = 0
+
+
+const timeSpans = [
+    // {secs: 60, text: "1 minute"},
+    {secs: 60 * 5, text: "5 minutes"},
+    {secs: 60 * 15, text: "15 minutes"},
+    {secs: 60 * 60, text: "1 hour"},
+    {secs: 60 * 60 * 4, text: "4 hours"},
+    {secs: 60 * 60 * 24, text: "24 hours"},
+    {secs: 60 * 60 * 24 * 7, text: "7 days"},
+] as const
+
+$: securityManager = new SecurityManager(appState, $appState)
+$: currentSecurity = securityManager.getSettings(savedLogin.userID)
+
+$: saveTimeSpan = timeSpans[saveTimeSpanIndex].text
+
+$: collapsed = !isOpen
+
+
+
+function confirmSecuritySettings() {
+    securityManager.applySettings(securityOptions)
+    reset()
 }
 
-function remove() {
-    dispatch("remove", eventData())
+function reset() {
+    editingSecurity = false
+    savePrivateKey = false
+    saveWithPassword = true
+    keyPassword = ""
+    privateKeyString = ""
+    saveTemporarily = false
+    saveTimeSpanIndex = 0
 }
 
-function onChange(...ignored: any) {
-    if (bgColor && !validColor(bgColor)) return
-    dispatch("change", eventData())
+let securityRating: SecurityRating
+let errors: string[] = []
+
+// No point in saving a temporary password if you're not encrypting:
+$: tempEnabled = !(savePrivateKey && !saveWithPassword)
+$: if (!tempEnabled) saveTemporarily = false
+
+let securityOptions: SecurityManagerOptions
+$: securityOptions = {
+    userID: savedLogin.userID,
+    privateKeyBase58Check: savePrivateKey ? privateKeyString : undefined,
+    privateKeyPassword: saveWithPassword ? keyPassword : undefined,
+    rememberKeySecs: saveTemporarily ? timeSpans[saveTimeSpanIndex].secs : undefined,
+}
+$:{
+    let result = securityManager.calculateLevel(securityOptions)
+    securityRating = result
+    errors = result.errors   
 }
 
-function eventData(): EventData {
-    return {
-        savedLogin: {
-            userID,
-            displayName,
-            bgColor,
-        }
+function changed() {
+    dispatch("change")
+}
+
+function checkClicked() {
+    let newValue = !checked
+    let action = newValue ? "checked" : "unchecked"
+    if (newValue) {
+        isOpen = true
     }
+    dispatch(action)
 }
 
-$: { displayName; bgColor; onChange() }
-
-
-class EventData {
-    savedLogin: SavedLogin
+function removeMe() {
+    dispatch("remove")
 }
+
 </script>
 
 
-<div class="savedLogin" >
-<div class="item">
-<div class="body" style={itemStyle}>
-    <div class="imageBox" on:click={logIn}>
-        <ProfileImage userID={UserID.fromString(userID)} size={100}/>
-    </div>
-    <table>
-        {#if isLoggedIn}
-        <tr>
-            <th colspan=2>Logged in as:</th>
-        </tr>
-        {/if}
-        <tr>
-            <td>Name:</td>
-            <td><input type="text" bind:value={displayName} placeholder="(unknown display name)"></td>
-        </tr>
-        <tr>
-            <td>User ID:</td>
-            <td><span class="userID">{userID}</span></td>
-        </tr>
-        <tr>
-            <td>Color:</td>
-            <td><input class="color" type="color" bind:value={bgColor}></td>
-        </tr>
-        <tr>
-            <td></td>
-            <td>
-                {#if !isLoggedIn}<Button on:click={logIn}>Log In</Button>{/if}
-                <Button on:click={remove} requiresConfirmation>Remove</Button>
-            </td>
-        </tr>
-    </table>
-</div>
-</div>
-</div>
-
 <style>
-input {
-    border: 1px solid rgba(0, 0, 0, 0);
-    font-family: inherit;
-    font-size: inherit;
-}
-input:hover, input:focus {
-    border: 1px solid black;
+.userID {
+    font-family: monospace;
 }
 
-th {
-    text-align: left;
+.header input {
+    background: inherit;
+    border: 0px;
 }
 
-.userID, .color {
-    font-family: Consolas, monospace;
+.header .mid {
+    flex-grow: 1;
 }
 
-.body {
+
+.item .header {
+    padding: 0.5rem 1.0rem;
+}
+
+.item.collapsed .body {
+    display: none
+}
+.item.collapsed .header {
+    border-radius: 20px;
+}
+
+
+setting-section {
+    display: block;
+    background-color: #eee;
+    padding: 1em;
+    margin-top: 1em;
+}
+setting-section > *:first-child {
+    margin-top: 0;
+}
+
+input[type="range"] {
+    border: 0px;
+}
+
+setting-section label {
+    display: block;
+    /* padding-left: 2em; */
+}
+
+action-bar {
     display: flex;
-    flex-direction: row;
-    align-items: center;
+    width: 100%;
+    justify-content: space-between;
+    
+    gap: 0.5rem;
 }
 
-.body .imageBox {
-    margin-right: 1em;
-    cursor: pointer;
+security-pane {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1em;
+    margin-top: 1em;
 }
+security-pane > * {
+    flex: 1;
+    min-width: 15em;
+}
+
+security-pane h1 {
+    margin-top: 0;
+    font-size: 1em;
+}
+
+security-pane ul {
+    padding-left: 1em;
+    margin-top: 0;
+}
+
 
 </style>

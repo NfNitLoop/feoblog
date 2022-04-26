@@ -177,7 +177,7 @@ pub struct FileMeta {
 pub type RowCallback<'a, T> = &'a mut dyn FnMut(T) -> Result<bool, Error>; 
 
 /// A UserID is a nacl public key. (32 bytes)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UserID {
     pub_key: sign::PublicKey,
 }
@@ -227,7 +227,7 @@ impl Display for UserID {
 }
 
 /// Bytes representing a detached NaCl signature. (64 bytes)
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Signature {
     signature: sign::Signature,
 }
@@ -346,6 +346,8 @@ pub struct ItemRow {
 pub struct ItemDisplayRow {
     pub item: ItemRow,
 
+    // TODO: Make an Arc<String> to avoid heap allocs?
+    // Or just make filling this in optional, since that's only used by the old HTML UI.
     /// The display name for the author of the item, if available.
     pub display_name: Option<String>
 }
@@ -471,6 +473,7 @@ impl Display for SHA512 {
     }
 }
 
+// TODO: Add signature to allow for pagination w/ full ordering:
 /// A(n unbounded) range of time we're requesting data for.
 #[derive(Debug)]
 pub enum TimeSpan {

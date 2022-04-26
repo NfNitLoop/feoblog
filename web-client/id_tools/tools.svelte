@@ -17,28 +17,25 @@ table th {
     text-align: right
 }
 
-.userID, .privateKey {
+.userID {
     font-family: Consolas, monospace;
 }
-.privateKey {
-    font-weight: bold;
-    color: red;
-}
+
 
 </style>
 
 <script lang="ts">
+import { decodeBase58 } from "../ts/fbBase58";
+
+import { Buffer } from "buffer"
 
 
-import bs58 from "bs58"
-import buffer from "buffer"
-let Buffer = buffer.Buffer
 
 
 let userID = ""
 
 $: userIDHex = function(){
-    let bytes: Buffer = bs58.decode(userID)
+    let bytes = Buffer.from(decodeBase58(userID))
     return bytes.toString("hex")
 }()
 

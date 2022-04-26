@@ -1,10 +1,11 @@
 // Common classes/functions for FeoBlog UI.
 
-import bs58 from "bs58"
 import * as commonmark from "commonmark"
 import { DateTime } from "luxon";
+import { tick } from "svelte";
 import type { Writable } from "svelte/store";
 import nacl from "tweetnacl";
+import { decodeBase58 } from "./fbBase58";
 
 const USER_ID_BYTES = 32;
 const PASSWORD_BYTES = USER_ID_BYTES + 4 // 4 bytes b58 checksum.
@@ -20,7 +21,7 @@ export function parseUserID(userID: string): Uint8Array {
 
     let buf: Uint8Array;
     try {
-        buf = bs58.decode(userID)
+        buf = decodeBase58(userID)
     } catch (error) {
         throw "Not valid base58"
     }
@@ -30,7 +31,7 @@ export function parseUserID(userID: string): Uint8Array {
     }
 
     if (buf.length == PASSWORD_BYTES) {
-        throw "UserID too long. (This may be a paswword!?)"
+        throw "UserID too long. (This may be a password!?)"
     }
 
     if (buf.length > USER_ID_BYTES) {
@@ -232,7 +233,7 @@ type FixLinksParams = {
 // Svelte link fixer: 
 // use:fixLinks={{mode:"ignore"}} to ignore all link clicks.
 // use:fixLinks={{mode:"newWindow"}} to open all link clicks in new windows.
-// use:fixLinks to just fix links to keep them inside the svelte-spa-router.
+// use:fixLinks to just fix links to keep them inside the single-page application.
 export function fixLinks(node: HTMLElement, params?: FixLinksParams): {} {
 
     let activeParams = params
@@ -265,6 +266,45 @@ export function fixLinks(node: HTMLElement, params?: FixLinksParams): {} {
         },
         destroy() {
             node.removeEventListener("click", onClick, useCapture)
+        }
+    }
+}
+
+interface ObservableParams {
+    enteredPage?: () => void,
+    leftPage?: () => void,
+}
+
+export function observable(node: HTMLElement, params?: ObservableParams) {
+    if (!params?.enteredPage && !params?.leftPage) { return {} }
+
+    let visible = false; // start false so we always fire an initial enteredPage
+
+    let setVisibility = (nowVisible: boolean) => {
+        if (visible === nowVisible) {
+            return // Nothing to do.
+        }
+
+        visible = nowVisible
+        if (nowVisible) {
+            params?.enteredPage?.()
+        } else {
+            params?.leftPage?.()
+        }
+    }
+
+    let observer = new IntersectionObserver((entries: IntersectionObserverEntry[]) => {
+        // We only observe this one element, so this should always be here:
+        let entry = entries[0]
+        setVisibility(entry.isIntersecting)
+    })
+    observer.observe(node)
+
+    return {
+        destroy() {
+            // One last notification that this element is no longer on the page:
+            setVisibility(false)
+            observer.disconnect()
         }
     }
 }
@@ -595,6 +635,32 @@ class Timer {
     }
 }
 
+/**
+ * Improved timer.
+ * * Has a nice .cancel() method.
+ * * Will get canceled if you try to start() a new task to replace it.
+ */
+ export class CancelTimer {
+    delayMs = 5000
+
+    private timer: number|null = null
+
+    start(callback: () => unknown, delayMs?: number) {
+        this.cancel()
+
+        let delay = (delayMs !== undefined) ? delayMs : this.delayMs
+        this.timer = setTimeout(callback, delay) as unknown as number
+    }
+
+    cancel() {
+        if (this.timer) {
+            clearTimeout(this.timer)
+        }
+        this.timer = null
+    }
+}
+
+
 type LogEntry = {
     timestamp: number
     message: string
@@ -776,4 +842,115 @@ export class Mutex {
             this.setLocked(false)
         }
     }
+}
+
+export interface InfiniteScrollParams {
+    /** How many items we want to render, max. */
+    maxItems?: number,
+    /** How many items to trim when we hit maxItems. */
+    trimBy?: number,
+}
+
+/**
+ * Implements an infinite scrolling window.
+ * You can pushBottom(T) or pushTop(T) to add items to the top or bottom of the list.
+ * If the list goes over maxItems long, the other side will be trimmed.
+ * 
+ */
+export class InfiniteScroll<T> {
+    private maxItems: number
+    private trimBy: number;
+    #items: T[] = []
+
+    logger = new ConsoleLogger()
+
+    #subscriptions: ((ts: T[]) => void)[] = []
+
+    constructor(params?: InfiniteScrollParams) {
+        this.maxItems = params?.maxItems ?? 200
+        this.trimBy = params?.trimBy ?? 50
+    }
+
+    async pushBottom(item: T): Promise<void> {
+        this.logger.debug("pushBottom")
+        this.logger.debug("Before:", window.scrollY, document.body.scrollHeight)
+        await this.push("bottom", item)
+        this.logger.debug("After:", window.scrollY, document.body.scrollHeight)
+    }
+
+    async pushTop(item: T): Promise<void> {
+        this.logger.debug("pushTop")
+        await this.push("top", item)
+    }
+
+    clear() {
+        this.logger.log("InfiniteScroll.clear()")
+        this.#items = []
+        this.notify()
+    }
+
+    // TODO: Global lock for this?
+    private async push(where: "bottom"|"top", item: T): Promise<void> {
+        let items = this.#items
+
+        // simple (& hopefully common) case:
+        if (where == "bottom" && this.#items.length < this.maxItems) {
+            this.#items.push(item)
+            this.notify()
+            return
+        }
+
+        // We're either trimming, or inserting at the top, so we'll need to save
+        // scroll position:
+        let windowY = window.scrollY
+        let windowHeight = document.body.scrollHeight
+
+
+        if (items.length >= this.maxItems) {
+            this.logger.debug("InfiniteScroll trimming", where)
+            // We need to trim.
+            if (where == "bottom") {
+                items = items.slice(this.trimBy)
+            } else {
+                items = items.slice(0, -this.trimBy)
+            }
+        } 
+        
+        if (where == "bottom") {
+            this.#items = [...items, item]
+        } else {
+            this.#items = [item, ...items]
+        }
+
+        this.notify()
+
+
+        await tick()
+        let deltaY = document.body.scrollHeight - windowHeight
+        let newWindowY = windowY + deltaY
+        this.logger.debug("InfiniteScroll scrolling from", windowY, "to", newWindowY)
+        window.scrollTo(window.scrollX, newWindowY)
+    }
+
+    // Implement Svelte's Store contract:
+    subscribe(subscription: (value: T[]) => void): (() => void) {
+        subscription(this.#items)
+        this.#subscriptions.push(subscription)
+
+        return () => {
+            this.#subscriptions = this.#subscriptions.filter(s => s != subscription)
+        }
+    }
+
+    private notify() {
+        for (const sub of this.#subscriptions) {
+            sub(this.#items)
+        }
+    }
+}
+
+export async function delayMs(timeout: number): Promise<void> {
+    await new Promise((res) => {
+        setTimeout(() => { res(null) }, 500)
+    })
 }

@@ -17,7 +17,6 @@
  */
 
 import { createEventDispatcher } from "svelte";
-import { push as navigateTo } from "svelte-spa-router"
 
 export let disabled = false
 // Does this button require a second click?
@@ -60,7 +59,7 @@ function clicked(event: MouseEvent) {
 
     if (href) {
         if (href.startsWith("#")) {
-            navigateTo(href)
+            window.location.hash = href
         } else {
             window.open(href)
         }
@@ -83,7 +82,7 @@ function onMouseLeave() {
 }
 
 .button {
-    border-radius: 3px;
+    border-radius: 6px;
     margin: 2px;
     padding: 0.2em 8px;
     display: inline-block;

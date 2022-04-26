@@ -16,28 +16,29 @@ export let userID: UserID
 // Whether we should resolve an ID into its displayName
 export let resolve = true
 
-// TODO: Remove this param and always use getContext.
-export let appState: Writable<AppState> = getContext("appStateStore")
+let appState: Writable<AppState> = getContext("appStateStore")
 
 export let displayName: string = ""
 export let href: string|undefined = undefined
 export let shouldLink = true
 
-$: defaultHref = `#/u/${userID}/profile`
+$: defaultHref = $appState.navigator.userPosts(userID).hash
 $: link = href || defaultHref
 
 // The display name is actually the public key until we fetch the real name:
 let isPubKey = true
 
 $: {
-    userID || appState
+    userID || $appState
     fetchDisplayName()
 }
 
 async function fetchDisplayName() {
     // Placeholder value while we fetch things:
-    if (!displayName) displayName = userID.toString()
-    isPubKey = true
+    if (!displayName) {
+        displayName = userID.toString()
+        isPubKey = true
+    }
 
     if (!resolve) return
 

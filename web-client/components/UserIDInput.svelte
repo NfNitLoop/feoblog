@@ -1,11 +1,9 @@
-<!--
-    TODO: Use InputBox?
--->
 <InputBox
     {label} {placeholder} {disabled}
     validationCallback={checkValue}
     bind:errorMessage
     bind:value    
+    bind:hasFocus
 />
 
 <script lang="ts">
@@ -18,6 +16,7 @@ export let value = ""
 export let disabled = false
 export let label = "UserID"
 export let valid = false
+export let hasFocus = false
 
 let errorMessage = ""
 $: valid = errorMessage === "" && value !== ""

@@ -1,10 +1,13 @@
 <!--
     The "friend feed", which shows posts by users a given user follows.    
 -->
+{#if !userID}
+<div class="error">
+    Invalid UserID
+</div>
+{:else}
 <div class="feed">
     <PageHeading>
-        <h1>Feed for <UserIDView {userID}/></h1>
-
         <div slot="settings">
             <div class="searchBox">
                 <InputBox bind:value={search} placeholder="Search"/>
@@ -24,96 +27,51 @@
         </div>
     </PageHeading>
 
-    {#each items as entry (entry) }
-    <ItemView 
-        userID={entry.userID.toString()}
-        signature={entry.signature.toString()}
-        item={entry.item}
-        {appState}
+    <ItemsScroll
+        {createItemLoader}
+        {scrollPos}
+        itemFilter={filter}
     />
-    {/each}
-    <div class="item"><div class="body">
-        {#if !moreItems}
-            No more items to display.
-        {:else if search.trim()}
-            Searching...
-        {:else}
-            Loading...
-        {/if}
-    </div></div>
-    <VisibilityCheck on:itemVisible={lazyLoader.displayMoreItems} bind:visible={endIsVisible}/>
-</div><!-- feed -->
 
+</div><!-- feed -->
+{/if}
 
 <script lang="ts">
+import type { AppState } from "../../ts/app";
+import type { ItemOffsetParams } from "../../ts/client"
 import type { Writable } from "svelte/store";
 
-import type { AppState } from "../../ts/app";
-import type { DisplayItem } from "../../ts/client"
-import { FindMatchingString, SkipUsers } from "../../ts/client"
-import { UserID, LazyItemLoader, ItemFilter } from "../../ts/client";
+import { getContext } from "svelte";
+import { params, query } from "svelte-hash-router"
 
-import ItemView from "../ItemView.svelte"
-import VisibilityCheck from "../VisibilityCheck.svelte"
+import { FindMatchingString, SkipUsers, ExcludeItemTypes} from "../../ts/client"
+import { UserID, ItemFilter } from "../../ts/client";
+
 import PageHeading from "../PageHeading.svelte"
 import UserIDView from "../UserIDView.svelte"
 import InputBox from "../InputBox.svelte";
+import ItemsScroll from "../ItemsScroll.svelte";
+import { ItemType } from "../../protos/feoblog";
 
-export let appState: Writable<AppState>
+let appState: Writable<AppState> = getContext("appStateStore")
 
-let items: DisplayItem[] = []
-let endIsVisible: boolean
-
-// Assume there are more items to lazily load until we find otherwise:
-let moreItems = true
-
-export let params: {
-    userID: string
-}
 
 let search = ""
 
-$: userID = UserID.fromString(params.userID)
+$: userID = UserID.tryFromString($params.userID)
+$: scrollPos = parseScrollPosition($query.ts)
 
-let userDisplayName = "..."
-$: updateDisplayName(userID)
-
-async function updateDisplayName(userID: UserID) {
-    userDisplayName = "..."
-    let name = await $appState.getPreferredName(userID)
-    userDisplayName = name || userID.toString()
-}
-
-$: lazyLoader = createLazyLoader(userID, filter)
-
-function createLazyLoader(userID: UserID, itemFilter: ItemFilter) {
-    if (lazyLoader) { lazyLoader.stop() }
-    moreItems = true
-
-    items = []
-    const ll = new LazyItemLoader({
-        client: $appState.client,
-        itemEntries: $appState.client.getUserFeedItems(userID),
-        endReached: () => { moreItems = false },
-
-        // TODO: Fold displayItem into itemFilter.
-        displayItem: (di) => {
-            if (di.item.profile) {
-                // Don't display profile updates here.
-                return
-            }
-            items = [...items, di]
-        },
-        itemFilter,
-        continueLoading: () => endIsVisible
-    })
-
-    ll.displayMoreItems()
-    return ll
+function createItemLoader(params: ItemOffsetParams) {
+    if (!userID) return null
+    return $appState.client.getUserFeedItems(userID, params)
 }
 
 $: filter = function() { 
-    let filters: ItemFilter[] = []
+    let filters: ItemFilter[] = [
+        // TODO: Filter out comments and/or posts?
+        // TODO: Show profile updates. (Once we've got a profile delta viewer)
+        new ExcludeItemTypes([ItemType.PROFILE])
+    ]
 
     // Search by string.
     // Currently searches all of markdown.
@@ -128,7 +86,6 @@ $: filter = function() {
     }
 
     // TODO: Filter for items with attachments?
-    // TODO: Filter out comments?
 
     return ItemFilter.matchAll(filters)
 }()
@@ -142,10 +99,12 @@ let followedUsers: FollowedUser[] = []
 let skippedUsers = new Set<string>()
 $: updateFollowedUsers(userID)
 
-async function updateFollowedUsers(userID: UserID) {
+async function updateFollowedUsers(userID: UserID|null) {
 
     followedUsers = []
     skippedUsers = new Set()
+
+    if (!userID) { return }
 
     let client = $appState.client
     let profile
@@ -193,6 +152,19 @@ async function updateFollowedUsers(userID: UserID) {
     followedUsers = newFollows
 }
 
+function parseScrollPosition(ts: string): number {
+    let value = new Date().valueOf() 
+    try { 
+        let pos = parseInt(ts) 
+        if (!isNaN(pos)) {
+            
+            value = pos  
+        } 
+    }
+    catch { }
+    return value
+}
+
 function toggleSkippedUser(uid: string) {
     if (skippedUsers.has(uid)) {
         skippedUsers.delete(uid)
@@ -205,15 +177,11 @@ function toggleSkippedUser(uid: string) {
 </script>
 
 <style>
-
 .follows {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
 }
-
-
-
 
 .follow {
     white-space: nowrap;
