@@ -72,7 +72,9 @@ jobs:
         working-directory: ${{ steps.download.outputs.download-path}}/FeoBlog-ubuntu-18.04
         run: zip -9 release.zip feoblog
 
-      # TODO: Windows, once that's fixed.
+      - name: Create Windows artifact
+        working-directory: ${{ steps.download.outputs.download-path}}/FeoBlog-windows-latest
+        run: zip -9 release.zip feoblog.exe
 
       # github.ref gives us something like refs/tags/v1.2.3, but we just want v1.2.3
       - name: Get tag name
@@ -115,5 +117,15 @@ jobs:
           upload_url: ${{ steps.release.outputs.upload_url }}
           asset_path: ${{ steps.download.outputs.download-path}}/FeoBlog-ubuntu-18.04/release.zip
           asset_name: feoblog-linux-${{ steps.tag-name.outputs.result }}.zip
+          asset_content_type: application/zip
+      
+      - name: Attach Windows Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.release.outputs.upload_url }}
+          asset_path: ${{ steps.download.outputs.download-path}}/FeoBlog-windows-latest/release.zip
+          asset_name: feoblog-windows-${{ steps.tag-name.outputs.result }}.zip
           asset_content_type: application/zip
 
