@@ -27,7 +27,6 @@ function doEsBuild(opts = {}) {
             sveltePlugin({
                 preprocess: sveltePreprocess(),
             }),
-            copy({ from: "images/", to: "images/", }),
             copy({ from: "index.html", to: "index.html" }),
             copy({ from: "style.css", to: "style.css" }),
             copy({ from: "client.css", to: "client.css" }),
