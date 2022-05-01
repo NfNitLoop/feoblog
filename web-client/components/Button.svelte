@@ -2,12 +2,6 @@
     <div class="button" class:disabled class:confirmationMode on:mouseup={clicked} on:mouseleave={onMouseLeave}>
         <slot/>
     </div>
-    
-    {#if requiresConfirmation}
-    <div class="confirmation" class:confirmationMode>
-        Confirm <slot/>
-    </div>
-    {/if}
 </div>
 
 <script lang="ts">
@@ -19,8 +13,6 @@
 import { createEventDispatcher } from "svelte";
 
 export let disabled = false
-// Does this button require a second click?
-export let requiresConfirmation = false
 
 // Optionally specify an href to make this act like a link.
 // If it starts with #, then it's an internal link and we navigate there.
@@ -41,20 +33,6 @@ function clicked(event: MouseEvent) {
     // Only click on left clicks!
     if (event.button !== 0) {
         return
-    }
-
-    if (requiresConfirmation) {
-        if (!confirmationMode) {
-            confirmationMode = true
-            firstClick = event.timeStamp
-            return
-        }
-        // This is not our first click, check if the click was slow enough:
-        let delta = event.timeStamp - firstClick
-        if (delta < minClickDeltaMs) {
-            // This click was too soon, could be accidental.
-            return
-        }
     }
 
     if (href) {
@@ -116,28 +94,6 @@ function onMouseLeave() {
 /* Required so that we can use position: absolute on the confirmation box. */
 .buttonPosition {
     position: relative;
-}
-
-.confirmation {
-    display: none;
-
-    border-radius: 3px;
-    margin: 2px;
-    padding: 3px 8px;
-    box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.5);
-    user-select: none;
-    background-color: #fff;
-    pointer-events: none;
-    position: absolute;
-    /* Align the bottom of this button w/ the top of the enclosing div. */
-    bottom: 100%;
-}
-
-.confirmation.confirmationMode {
-    display: block;
-    animation-name: swoopUp;
-    animation-duration: 300ms;
-    animation-fill-mode: forwards;
 }
 
 @keyframes swoopUp {

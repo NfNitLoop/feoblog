@@ -11,7 +11,7 @@
     />
 
     <div class="buttons">
-        <Button on:click={() => dispatcher("delete")} requiresConfirmation>Unfollow</Button>
+        <Button on:click={() => dispatcher("delete")}>Unfollow</Button>
     </div>
 </div>
 
