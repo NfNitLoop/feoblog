@@ -95,6 +95,11 @@ async function addUserID() {
     appState.update((state) => {
         if (displayName) { login.displayName = displayName}
         state.updateSavedLogin(login)
+
+        if (!state.loggedIn) {
+            state.logIn(login)
+        }
+
         return state
     })
 

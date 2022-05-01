@@ -9,11 +9,12 @@
     {#if loaded.error}
         <div class="item error">{loaded.error}</div>
     {:else if !loaded.profile && !createNewOK}
+        <PageHeading/>
         <div class="item">
             <div class="body">
                 <p>Could not find an existing profile.</p>
                 <Button on:click={createNew}>Create New Profile</Button>
-                <Button href="#/sync">Sync from another server</Button>
+                <Button href="#/u/{userID}/sync">Sync from another server</Button>
             </div>
         </div>
     {:else if !loaded.profile}
@@ -42,6 +43,7 @@ import type { AppState } from "../../ts/app";
 import type { ProfileResult, UserID } from "../../ts/client";
 import Button from "../Button.svelte";
 import EditorWithPreview from "../EditorWithPreview.svelte"
+import PageHeading from "../PageHeading.svelte";
 
 let appState: Writable<AppState> = getContext("appStateStore")
 

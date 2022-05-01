@@ -49,6 +49,12 @@ export class AppState
     private get activeLogin(): SavedLogin|null {
         if (this._loggedInUser == null) { return null }
         let matches = this._savedLogins.filter((sl) => sl.userID == this._loggedInUser!.toString())
+        if (matches.length == 0) {
+            console.debug("Someone forgot to unset the logged-in user when it was removed")
+            this._loggedInUser = null;
+            this.saveLoggedIn()
+            return null;
+        }
         if (matches.length != 1) {
             console.warn("Excpected to find 1 profile for active login but found", matches.length)
         }
@@ -84,14 +90,14 @@ export class AppState
 
 
 
-    // Save a new login (as the first item), OR, move it to the top if it already exists.
+    // "Log in" as an identity.  It gets added to the bottom if it wasn't yet present.
     logIn(newLogin: SavedLogin) {
         let foundIndex = this._savedLogins.findIndex(
             (it) => it.userID == newLogin.userID
         )
         
         if (foundIndex < 0) {
-            this._savedLogins.unshift(newLogin)
+            this._savedLogins.push(newLogin)
         }
 
         this.writeSavedLogins()
@@ -237,6 +243,7 @@ class ProfileService
     }
 
     set userID(userID: UserID|null) {
+        if (this._userID?.asBase58 == userID?.asBase58) { return }
         this._userID = userID
         this.userCache = this.getUserCache(userID)
     }
