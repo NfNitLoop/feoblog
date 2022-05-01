@@ -19,7 +19,7 @@
                 placeholder="(unknown display name)"
                 on:change={changed}
             >
-            <br><span class="userID">id: {savedLogin.userID}</span>    
+            <div class="userID">id: {savedLogin.userID}</div>    
         </div>
         <OpenArrow bind:isOpen/>
     </div>
@@ -29,7 +29,7 @@
             <Button href="#/u/{savedLogin.userID}/">View Posts</Button>
             <Button href="#/u/{savedLogin.userID}/profile">View Profile</Button>
             <Button href="#/u/{savedLogin.userID}/post">New Post</Button>
-            <div>
+            <div class="upDown">
                 <Button disabled={first} on:click={() => dispatch("up")}>⬆️</Button>
                 <Button disabled={last} on:click={() => dispatch("down")}>⬇️</Button>
             </div>
@@ -249,9 +249,26 @@ function removeMe() {
 }
 
 .header .mid {
-    flex-grow: 1;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    /** Without a (min-)width, flex-shrink doesn't work: */
+    min-width: 10em;
 }
 
+.header .mid > * {
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.upDown {
+    white-space: nowrap;
+}
+
+input[type="text"] {
+    padding: 0px;
+}
 
 .item .header {
     padding: 0.5rem 1.0rem;
@@ -288,8 +305,8 @@ action-bar {
     display: flex;
     width: 100%;
     justify-content: space-between;
-    
     gap: 0.5rem;
+    flex-wrap: wrap;
 }
 
 security-pane {

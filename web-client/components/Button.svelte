@@ -22,9 +22,6 @@ export let href = ""
 // This button requires confirmation, and is currently asking for confirmation
 let confirmationMode = false
 
-const minClickDeltaMs = 300
-let firstClick = 0
-
 let dispatcher = createEventDispatcher()
 
 function clicked(event: MouseEvent) {
@@ -68,6 +65,7 @@ function onMouseLeave() {
     user-select: none;
     cursor: pointer;
     background-color: #fff;
+    white-space: nowrap;
 }
 .button:hover {
     box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.5);
