@@ -1,6 +1,8 @@
 <PageHeading />
 
-<div class="dualPaneEditor">
+<TabBar {tabs} bind:activeTab/>
+
+{#if activeTab == "Edit"}
     {#if mode === "profile"}
         <EditProfile 
             {initialItem}
@@ -17,7 +19,7 @@
             bind:this={editPost}
         />
     {/if}
-    
+{:else}
     <!-- Preview: -->
     <ItemView
         userID={userID.toString()}
@@ -27,23 +29,23 @@
         previewMode
         previewFiles={fileAttachments}
     />
+{/if}
 
-    <!-- force transition:slide|local to be local -->
-    {#if true}
-    <div class="item">
-        <div class="body">
-            <SignAndSend
-                {item}
-                attachments={fileAttachments}
-                onSendSuccess={clear}
-                errors={validationErrors}
-                warnings={warnings}
-            />    
-        </div>
+<!-- force transition:slide|local to be local -->
+{#if true}
+<div class="item">
+    <div class="body">
+        <SignAndSend
+            {item}
+            attachments={fileAttachments}
+            onSendSuccess={clear}
+            errors={validationErrors}
+            warnings={warnings}
+        />    
     </div>
-    {/if}
-
 </div>
+{/if}
+
 
 <script lang="ts">
 import type { Writable } from "svelte/store"
@@ -59,6 +61,7 @@ import SignAndSend from "./SignAndSend.svelte";
 import type { FileInfo } from "../ts/common";
 import { getContext } from "svelte";
 import PageHeading from "./PageHeading.svelte";
+import TabBar from "./TabBar.svelte";
 
 let appState: Writable<AppState> = getContext("appStateStore")
 
@@ -66,6 +69,9 @@ let appState: Writable<AppState> = getContext("appStateStore")
 // I imagine I'll want to make a "reply" type here too.
 // There will probably be a separate, inline editor for "comment" types since they'll be simpler.
 export let mode: "post"|"profile" = "post"
+
+let tabs = ["Edit", "Preview"]
+let activeTab = "Edit"
 
 // Can provide an initial item for editing.
 export let initialItem: Item|undefined = undefined

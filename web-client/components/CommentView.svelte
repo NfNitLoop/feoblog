@@ -8,10 +8,10 @@
         {#if viewMode == "normal"}
             {@html markdownToHtml(item.comment.text, {stripImages: true, relativeBase: `/u/${userID}/i/${signature}/`})}
         {:else if viewMode == "markdown"}
-            Markdown source:
+            <p>Markdown source:</p>
             <code><pre>{item.comment.text}</pre></code>
         {:else} 
-            JSON representation of Protobuf Item:
+            <p>JSON representation of Protobuf Item:</p>
             <code><pre>{JSON.stringify(item.toObject(), null, 4)}</pre></code>
         {/if}
 

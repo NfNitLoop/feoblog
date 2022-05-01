@@ -220,16 +220,17 @@ function leftPage() {
     {:else if loadedItem.post}
         <ItemHeader item={loadedItem} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
         <div class="body">
-            {#if loadedItem.post.title}
-                <h1 class="title">{ loadedItem.post.title }</h1>
-            {/if}        
             {#if viewMode == "normal"}
+                {#if loadedItem.post.title}
+                    <h1 class="title">{ loadedItem.post.title }</h1>
+                {/if}
+
                 {@html markdownToHtml(loadedItem.post.body || "", {withPreview: previewFiles, relativeBase: `/u/${userID}/i/${signature}/`})}
             {:else if viewMode == "markdown"}
-                Markdown source:
+                <p>Markdown source:</p>
                 <code><pre>{loadedItem.post.body}</pre></code>
             {:else} 
-                JSON representation of Protobuf Item:
+                <p>JSON representation of Protobuf Item:</p>
                 <code><pre>{JSON.stringify(loadedItem.toObject(), null, 4)}</pre></code>
             {/if}
 
@@ -243,10 +244,10 @@ function leftPage() {
             {#if viewMode == "normal"}
                 {@html markdownToHtml(loadedItem.profile.about, {relativeBase: `/u/${userID}/i/${signature}`})}
             {:else if viewMode == "markdown"}
-                Markdown source:
+                <p>Markdown source:</p>
                 <code><pre>{loadedItem.profile.about}</pre></code>
             {:else} 
-                JSON representation of Protobuf Item:
+                <p>JSON representation of Protobuf Item:</p>
                 <code><pre>{JSON.stringify(loadedItem.toObject(), null, 4)}</pre></code>
             {/if}
 
