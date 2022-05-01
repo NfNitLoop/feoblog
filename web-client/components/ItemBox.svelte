@@ -1,5 +1,8 @@
 <!-- Simplify some of the headaches of dealing with this cruft. :p -->
-<!-- bleh.  Slots don't work like I want them to.  Can't style them here. -->
+<!-- 
+    bleh.  Slots don't work like I want them to.  Can't style them here.
+    Oh! Right! You can if you use :global(), I think!
+ -->
 <div class="item">
     <!-- {#if $$slots.header}
         <slot name="header"></slot>
