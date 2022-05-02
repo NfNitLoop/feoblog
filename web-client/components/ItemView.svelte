@@ -12,8 +12,6 @@ export interface PageEvent {
     element: HTMLElement|null
 }
 
-const lock = new Mutex()
-
 </script>
 
 <script lang="ts">
@@ -21,7 +19,7 @@ const lock = new Mutex()
 import type { Writable } from "svelte/store"
 
 import { UserID} from "../ts/client"
-import { markdownToHtml, fixLinks, FileInfo, observable, Mutex} from "../ts/common"
+import { markdownToHtml, fixLinks, FileInfo, observable, scrollState} from "../ts/common"
 import type { Item } from "../protos/feoblog"
 import type { AppState } from "../ts/app"
 import UserIdView from "./UserIDView.svelte"
@@ -158,25 +156,36 @@ function enteredPage() {
     dispatcher("enteredPage", pageEventDetail())
 
     if (shrinkImages) {
-        lock.run(restoreImages)
+        console.debug("enderedPage:", signature.substring(0, 10))
+        scrollState.withQuietLock(restoreImages)
     }
 }
 
+console.log(`ItemView: loaded ${signature.substring(0, 10)} shrink: ${shrinkImages}`)
+
 // Note: Should be run within a global lock, to prevent document offset math from having
 // race conditions.
-async function restoreImages() {
-    let beforeLength = document.body.scrollHeight
+async function restoreImages(): Promise<boolean> {
+    if (!itemElement) {
+        console.warn("restoreImages, but no itemElement!?")
+        return false
+    }
+
+    if (shrinkImages == false) {
+        console.warn("shrinkImages already false!?")
+    }
+
+    console.log("restoreImages", signature.substring(0, 10))
     shrinkImages = false
     await tick()
-    let afterLength = document.body.scrollHeight
-    let deltaY = afterLength - beforeLength
+   
+    let bounds = itemElement.getBoundingClientRect()
+    if (bounds.top > 100) {
+        // The item is already fully on screen or below the fold. No need to adjust height
+        return false
+    }
 
-    // TODO: Both scrollBy and scrollTo behave strangely when scrolling with the
-    // mouse wheel in Chrome. It's as if they scrolled too much. Does this have to
-    // do with some scroll smoothing going on w/ the mouse wheel?  Doesn't happen
-    // when using the scrollbar. 
-    // window.scrollBy(0, deltaY)
-    window.scrollTo(window.scrollX, window.scrollY + deltaY)
+    return true
 }
 
 function leftPage() {

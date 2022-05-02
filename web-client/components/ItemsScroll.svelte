@@ -37,7 +37,7 @@ import type { Writable } from "svelte/store";
 import type { AppState } from "../ts/app";
 import { getContext, onDestroy } from "svelte";
 
-const LOGGER = new ConsoleLogger()
+const LOGGER = new ConsoleLogger().withDebug()
 
 export let scrollPos: number
 export let createItemLoader: (offset: ItemOffsetParams) => AsyncGenerator<ItemListEntry>|null
@@ -110,9 +110,12 @@ let visibleElements: PageEvent[] = []
 function itemEnteredScreen(event: CustomEvent<PageEvent>) {
     visibleElements = [...visibleElements, event.detail]
 
+    console.debug("Item entered page", event.detail.signature.substring(0, 10))
+
     let ts = event.detail.item?.timestamp_ms_utc
     if (ts && (!shrinkWatermark || ts > shrinkWatermark)) {
         shrinkWatermark = ts
+        console.debug("new shrinkWatermark", shrinkWatermark)
     }
 }
 
@@ -220,12 +223,29 @@ onDestroy(() => {
 })
 
 
+// TODO: SHould be (timestamp, signature) for a full ordering. 
 // The top timestamp that's ever been visible.
 // Things before this have shrunken images to avoid scroll issues.
 let shrinkWatermark: number|undefined = undefined
 
 function shrinkImages(entry: DisplayItem): boolean {
-    return !!shrinkWatermark && (entry.item.timestamp_ms_utc > shrinkWatermark)
+    // For the very first item, don't wait for an itemEnteredScreen event
+    // If it doesn't happen from scrolling down, scrolling up will not get a shrinkImage=true, which will
+    // cause scrolling issues.
+    let ts = entry.item.timestamp_ms_utc
+    if (!shrinkWatermark) {
+        console.log("Setting initial watermark", ts)
+        shrinkWatermark = ts
+        return false
+    }
+
+    let shrink = ts > shrinkWatermark
+
+    if (shrink) {
+        console.debug(entry.signature.asBase58.substring(0, 10), "shrinkImages", shrink)
+    }
+
+    return shrink
 }
 
 
@@ -235,7 +255,6 @@ let scrollY: number
 $: onVerticalScroll(scrollY)
 
 function onVerticalScroll(newY: number) {
-    // LOGGER.debug("scrollY", newY)
     let oldScrollY = previousScrollY
     previousScrollY = newY
 
@@ -249,22 +268,26 @@ function onVerticalScroll(newY: number) {
     // Note: Check bottom first because it's the preferred scroll direction:
     let bottomY = newY + winHeight
     if (bottomY >= docHeight && bottomY > oldScrollY) {
+        LOGGER.debug("bumpedBottom")
         bumpedBottom()
         return
     }
 
     if (bottomY + nearHeight >= docHeight) {
+        LOGGER.debug("nearBottom")
         nearBottom()
         return
     }
 
-
-    if (oldScrollY > 0 && newY == 0) {
+    // With momentum-based scrolling in Safari, oldScroll might've been < 0!  
+    if (oldScrollY != 0 && newY == 0) {
+        LOGGER.debug("bumpedTop")
         bumpedTop()
         return
     }
 
     if (newY < nearHeight) {
+        // LOGGER.debug("nearTop")
         nearTop()
         return
     }
@@ -297,7 +320,8 @@ function nearTop() {
         if (!topTs) { return }
         topLoader = reInitLoader(topLoader, {after: topTs})
         if (shrinkWatermark) {
-            shrinkWatermark = undefined
+            // TODO: WHy did I think I needed to do this?
+            // shrinkWatermark = undefined
         }
     }
 

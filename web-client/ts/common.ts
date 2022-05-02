@@ -851,6 +851,189 @@ export interface InfiniteScrollParams {
     trimBy?: number,
 }
 
+
+
+/**
+ * Used for managing scroll events.
+ */
+ class ScrollState {
+    constructor() {
+        this.listen()
+        // Longest I saw in ios safari smooth scrolling was 86ms.
+        this.timer.delayMs = 200
+    }
+
+    private static onScroll: null|((e: Event) => void) = null
+    private static onTouch: null|((e: Event) => void) = null
+
+    private static touchStartEvents = ["touchstart", "touchmove", "touchforcechange"]
+    private static touchEndEvents = ["touchend", "touchcancel"]
+    private static touchEvents = [...ScrollState.touchStartEvents, ...ScrollState.touchEndEvents]
+
+    private callbacks: (() => Promise<void>)[] = []
+    private timer = new CancelTimer()
+    private isScrolling = false
+    private _isTouching = false
+
+    // Bleh: a lot of work to track whether the user is touching the screen.
+    // However, touch events get canceled if you flick the screen for momentum-based scrolling, even if
+    // you catch the scroll and start touching the screen again before scrolling finishes.
+    private get isTouching() { return this._isTouching }
+    private set isTouching(value) { 
+        if (value != this._isTouching) {
+            // console.log("isTouching", value)
+            this._isTouching = value
+        }
+    }
+
+    /**
+     * Scrolling activity is locked. Others should ignore onscroll events during this time.
+     */
+    private _isLocked = false
+    get isLocked(): boolean { return this._isLocked }
+
+
+    private listen() {
+        if (ScrollState.onScroll) {
+            // Only one ScrollState should be listening at a time. If a previous one leaked, clear it:
+            window.removeEventListener("scroll", ScrollState.onScroll)
+        }
+
+        ScrollState.onScroll = (e) => this.windowScrolled(e)
+        window.addEventListener("scroll", ScrollState.onScroll)
+
+        if (ScrollState.onTouch) {
+            for (const e of ScrollState.touchEvents) {
+                window.removeEventListener(e, ScrollState.onTouch)
+            }
+        }
+
+        ScrollState.onTouch = (e: Event) => this.touchEvent(e)
+
+        for (const e of ScrollState.touchEvents) {
+            window.addEventListener(e, ScrollState.onTouch)
+        }
+    }
+
+    private touchEvent(e: Event) {
+        if (this._isLocked) { return }
+
+        if (ScrollState.touchStartEvents.includes(e.type)) {
+            this.isTouching = true
+            return
+        }
+
+        if (ScrollState.touchEndEvents.includes(e.type)) {
+            this.isTouching = false
+            this.runQueue()
+            return
+        }
+
+        console.warn("Unexpected event type:", e.type, e)
+    }
+
+
+    private windowScrolled(e: Event) {
+        if (this._isLocked) {
+            // Yeah, we know scroll events might happen here. Shouldn't re-trigger onQuiet callbacks.
+            return
+        }
+
+        this.isScrolling = true
+        this.timer.start(() => {this.scrollFinished()})
+    }
+
+    private scrollFinished() {
+        this.isScrolling = false
+        this.runQueue()
+    }
+
+    /**
+     * Perform some action once scrolling has come to a stop.
+     * Acts as an exclusive lock so that other events can't happen in the meantime.
+     * If your callback returns true, it means content was added above the viewport
+     * and we should scroll to adjust.
+     */
+    withQuietLock(callback: () => Promise<boolean>): Promise<boolean> {
+        let res: (value: boolean) => void
+        let rej: (reason?: any) => void
+        let promise = new Promise<boolean>((resolve, reject) => {
+            res = resolve
+            rej = reject
+        })
+
+        let myCallback = async () => {
+            try {
+                res(await this.handleCallback(callback))
+            } catch (e) {
+                rej(e)
+            }
+        }
+
+        this.callbacks.push(myCallback)
+        this.runQueue() // note: NO await
+
+        return promise
+    }
+
+    private async handleCallback(cb: () => Promise<boolean>): Promise<boolean> {
+        // Must base scroll deltas off of the beforeScroll, because changing content length will also change scroll position.
+        let beforeScroll = window.scrollY
+        let beforeLength = document.body.scrollHeight
+
+        let shouldScroll = await cb()
+
+        let afterLength = document.body.scrollHeight
+        let lengthDelta = afterLength - beforeLength
+        console.debug(`before ${beforeLength} after: ${afterLength} delta: ${lengthDelta} shouldScroll: ${shouldScroll}`)
+
+        if (shouldScroll) {
+            window.scrollTo(window.scrollX, beforeScroll + lengthDelta)
+        }
+
+        // await waitMs(2000)
+
+        return shouldScroll
+    }
+
+    private async runQueue() {
+        // already running:
+        if (this._isLocked) { return }
+        // Still waiting:
+        if (this.isScrolling) { return }
+        if (this.isTouching) { return }
+        // Nothing to do:
+        if (this.callbacks.length === 0) { return }
+
+        // console.debug("--- Running callbacks", this.callbacks.length)
+
+        this._isLocked = true
+        try {
+            while (this.callbacks.length > 0) {
+                let callback = this.callbacks.shift()!
+                await callback()
+            }
+        } catch (e) {
+            console.error("Exception in Mutex.runQueue()!?  Should be impossible.", e)
+        } finally {
+            this._isLocked = false
+        }
+        // console.debug("Done running callbacks")
+    }
+}
+
+export const scrollState = new ScrollState()
+
+function waitMs(ms: number): Promise<void> {
+    let res: (value: void) => void
+    let promise = new Promise<void>((resolve) => {
+        res = resolve
+    })
+    setTimeout(res!, ms)
+
+    return promise
+}
+
 /**
  * Implements an infinite scrolling window.
  * You can pushBottom(T) or pushTop(T) to add items to the top or bottom of the list.
@@ -900,37 +1083,38 @@ export class InfiniteScroll<T> {
             return
         }
 
-        // We're either trimming, or inserting at the top, so we'll need to save
-        // scroll position:
-        let windowY = window.scrollY
-        let windowHeight = document.body.scrollHeight
-
-
         if (items.length >= this.maxItems) {
-            this.logger.debug("InfiniteScroll trimming", where)
-            // We need to trim.
-            if (where == "bottom") {
-                items = items.slice(this.trimBy)
-            } else {
-                items = items.slice(0, -this.trimBy)
-            }
+            this.logger.debug(`Adding to ${where} triggered a trim`)
+             // Trimming will change the length of the document. Need to do that separately from adding:
+             await scrollState.withQuietLock(async () => {
+                // console.debug("Trimming", where)
+                let trimTop = where == "bottom"
+                if (trimTop) {
+                    items = items.slice(this.trimBy)
+                } else {
+                    items = items.slice(0, -this.trimBy)
+                }
+                this.#items = items
+                this.notify()
+                await tick()
+                return trimTop
+            })
         } 
-        
-        if (where == "bottom") {
-            this.#items = [...items, item]
-        } else {
-            this.#items = [item, ...items]
-        }
 
-        this.notify()
-
-
-        await tick()
-        let deltaY = document.body.scrollHeight - windowHeight
-        let newWindowY = windowY + deltaY
-        this.logger.debug("InfiniteScroll scrolling from", windowY, "to", newWindowY)
-        window.scrollTo(window.scrollX, newWindowY)
+        await scrollState.withQuietLock(async () => {
+            let needsUpdate = false
+            if (where == "bottom") {
+                this.#items = [...items, item]
+            } else {
+                this.#items = [item, ...items]
+                needsUpdate = true
+            }
+            this.notify()
+            await tick()
+            return needsUpdate
+        })
     }
+
 
     // Implement Svelte's Store contract:
     subscribe(subscription: (value: T[]) => void): (() => void) {

@@ -454,7 +454,7 @@ export class Signature {
     readonly bytes: Uint8Array
 
     toString(): string {
-        return encodeBase58(this.bytes)
+        return this.asBase58
     }
 
     // Check that a signature is valid.
@@ -498,10 +498,10 @@ export class Signature {
             throw new Error("Signature too long.")
         }
     
-        return new Signature(bytes)
+        return new Signature(bytes, encodeBase58(bytes))
     }
 
-    private constructor(bytes: Uint8Array) {
+    private constructor(bytes: Uint8Array, readonly asBase58: string) {
         this.bytes = bytes
     }
 }
