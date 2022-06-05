@@ -5,9 +5,9 @@
 -->
 <svelte:window on:scroll={onScroll} />
 
-<heading-container class:stuckAtTop class:hideHeading class:sticky>
+<heading-container class:stuckAtTop class:showHeading>
 
-<div class="pageHeading" class:stuckAtTop class:shrink bind:this={headingElement}>
+<div class="pageHeading" class:stuckAtTop>
 
     <div class="top">
         <div class="breadcrumbs">
@@ -55,6 +55,11 @@
 </div>
 </heading-container>
 
+
+<!-- Used to determine when a relatively positioned header would be off-screen. -->
+<div bind:this={headingEndElement}></div>
+
+
 <script lang="ts">
 import { getContext, onDestroy, onMount } from "svelte"
 import { slide } from "svelte/transition"
@@ -73,12 +78,17 @@ let breadcrumbs: Breadcrumb[] = []
 
 
 let appState: Writable<AppState> = getContext("appStateStore")
-let headingElement: HTMLElement;
 
-let sticky = true
-let hideHeading = false
+let headingEndElement: HTMLElement;
+
+// Show the heading even if it's off-screen.
+let forceShow = false
+
+// "stuck" here meaning the css sticky mode is enabled. (roughly)
 let stuckAtTop = false
-let shrink = false
+
+$: showHeading = stuckAtTop && forceShow
+
 
 let observer = new IntersectionObserver(observerCallback, {threshold: [1]})
 let intersectionRatio = 1;
@@ -92,7 +102,7 @@ function observerCallback(entries: IntersectionObserverEntry[], observer: Inters
 }
 
 onMount(() => {
-    observer.observe(headingElement)
+    observer.observe(headingEndElement)
 })
 onDestroy(() => {
     observer.disconnect()
@@ -118,17 +128,14 @@ function onScroll(event: UIEvent) {
     
     let delta = scrollYDelta.update()
 
-    if (delta < -10) {
-        hideHeading = false
-    } else if (delta > 100) {
-        // Cap the delta so switching directions works:
-        scrollYDelta.delta = 100
-
-        hideHeading = true
+    // Small scroll deltas (usually <1, always <2) seem to be the browser settling after document length has changed:
+    if (delta < 10) {
+        forceShow = true
+    } else if (delta > 10) {
+        forceShow = false
     }
-
-    shrink = window.scrollY > headingElement.offsetHeight
 }
+
 
 // TODO: Move this up to IndexPage along side the Router config?
 // TODO: Can I use the Navigator class here for URLs?
@@ -428,16 +435,23 @@ export interface NavItem {
 
 heading-container {
     display: block;
+    position: sticky;
+    /* Using calc here breaks animation: */
+    /* top: calc(0 - var(--heading-max-height)); */
+    /* Should be >= the max-height of pageHeading */
+    top: -51vh;
+
 
     overflow-y: visible;
     /* Required so that transform'd items don't bleed through. Weird. */
     z-index: 1;
-    transition: all 300ms;
+    transition: all 200ms;
+
 }
 
-heading-container.sticky {
-	position: sticky;
-    top: -1px;
+
+heading-container.showHeading {
+    top: 0;
 }
 
 .pageHeading {
@@ -459,17 +473,6 @@ heading-container.sticky {
     border-radius: 0 0 20px 20px;
 }
 
-/**
-    Shrinking the text & padding can change the overlap detection, which causes infinite loops/redraws.
-    So, we delay it a bit longer:
-*/
-.pageHeading.stuckAtTop.shrink {
-    padding: 0.5rem 1.3rem;
-
-}
-.pageHeading.stuckAtTop.shrink :global(h1) {
-    font-size: 1rem;
-}
 
 .settings {
     padding-top: 1rem;
@@ -486,9 +489,6 @@ heading-container.sticky {
     }
 }
 
-heading-container.stuckAtTop.hideHeading {
-    top: -51vh;
-}
 
 .top {
     display: flex;
