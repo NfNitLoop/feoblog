@@ -985,9 +985,9 @@ export interface InfiniteScrollParams {
 
         let afterLength = document.body.scrollHeight
         let lengthDelta = afterLength - beforeLength
-        console.debug(`before ${beforeLength} after: ${afterLength} delta: ${lengthDelta} shouldScroll: ${shouldScroll}`)
 
         if (shouldScroll) {
+            console.debug(`before ${beforeLength} after: ${afterLength} delta: ${lengthDelta} shouldScroll: ${shouldScroll}`)
             window.scrollTo(window.scrollX, beforeScroll + lengthDelta)
         }
 
@@ -1014,7 +1014,7 @@ export interface InfiniteScrollParams {
                 await callback()
             }
         } catch (e) {
-            console.error("Exception in Mutex.runQueue()!?  Should be impossible.", e)
+            console.error("Exception in ScrollState.runQueue()!?  Should be impossible.", e)
         } finally {
             this._isLocked = false
         }
@@ -1072,7 +1072,6 @@ export class InfiniteScroll<T> {
         this.notify()
     }
 
-    // TODO: Global lock for this?
     private async push(where: "bottom"|"top", item: T): Promise<void> {
         let items = this.#items
 

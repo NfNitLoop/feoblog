@@ -1,5 +1,7 @@
 <!--
     "infinite" scrolling for a collection of items.
+
+    TODO: (see: HEAD^^) un-shrink images after they've loaded, instead of waiting until a page scrolls into view.
 -->
 {#each $items as entry (entry) }
     <ItemView 
