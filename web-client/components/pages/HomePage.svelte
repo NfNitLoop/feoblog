@@ -1,4 +1,5 @@
 <!-- Displays the homepage feed in the client. -->
+
 <PageHeading />
 
 {#each items as entry, index (entry.signature)}
@@ -11,14 +12,14 @@
     {#if !moreItems}
     <div class="item"><div class="body">
         {#if $appState.loggedInUser }
-            Nothing to see here yet. Do you want to <a href="#/post">write a post</a>?
+            <p>Nothing to see here yet. Do you want to <a href="#/post">write a post</a>?</p>
 
             <p>If you see your posts on <a href="#/u/{$appState.loggedInUser}/feed">your feed</a> but not here, 
             make sure you flag your userID with <code>--homepage</code> like this:</p>
 
             <code><pre>blog user add {$appState.loggedInUser} --homepage</pre></code>
         {:else}
-            Nothing to see here yet. Do you want to <a href="#/login">log in</a> and write a post?
+            <p>Nothing to see here yet. Do you want to <a href="#/login">log in</a> and write a post?</p>
         {/if}
     </div></div>
     {/if}

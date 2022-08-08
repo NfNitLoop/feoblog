@@ -4,11 +4,13 @@ import sveltePreprocess from "svelte-preprocess";
 import copy from 'esbuild-copy-plugin';
 import inlineWorkerPlugin from 'esbuild-plugin-inline-worker';
 
-import { exec } from "child_process";
+import { execSync } from "child_process";
 
 main()
 function main() {
 
+    // We usually don't need to constantly rebuild the protobuf code, so do that here
+    // in case we're going to --watch:
     protoToTypeScript()
 
     let watch = process.argv.includes("--watch")
@@ -56,7 +58,7 @@ function protoToTypeScript() {
 
     console.log("Running", cmd);
 
-    exec(cmd, (error, stdout, stderr) => {
+    execSync(cmd, (error, stdout, stderr) => {
         if (error) {
             console.log("Error building proto file: ", e);
            throw error;

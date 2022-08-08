@@ -17,8 +17,8 @@
     </div>
 {:else}
 <ItemBox>
-    <p>
-    FeoBlog allows you to save multiple identities which you can easily switch between. Why have one blog when you can have as many as you want! :)
+    <p>FeoBlog allows you to save multiple identities which you can easily switch between. Why have one blog when you
+        can have as many as you want! <tt>:)</tt>
     </p>
 </ItemBox>        
 {/each}
