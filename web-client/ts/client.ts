@@ -218,15 +218,6 @@ export class Client {
         return {item, signature, bytes}
     }
 
-    // Load the latest profile from any server that hosts profiles for this user.
-    async getLatestProfile(userID: UserID|string): Promise<ProfileResult|null> {
-        let result = await this.getProfile(userID)
-        if (result === null) { return result }
-
-        // TODO: Walk the profile servers and find the most-recently-updated one.
-        return result
-    }
-
     async * getHomepageItems(): AsyncGenerator<ItemListEntry> {
         let before: number|undefined = undefined
         while (true) {

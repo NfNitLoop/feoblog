@@ -109,7 +109,7 @@ async function updateFollowedUsers(userID: UserID|null) {
     let client = $appState.client
     let profile
     try {
-        profile = await client.getLatestProfile(userID)
+        profile = await client.getProfile(userID)
     } catch (error) {
         console.error(`Error fetching profile for ${userID}`)
         return

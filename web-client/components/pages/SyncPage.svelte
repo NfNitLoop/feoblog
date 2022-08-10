@@ -67,7 +67,7 @@ import { slide } from "svelte/transition"
 import type { ItemListEntry, Profile } from "../../protos/feoblog";
 import { Item } from "../../protos/feoblog"
 import type { AppState } from "../../ts/app"
-import type { AttachmentMeta } from "../../ts/client"
+import type { AttachmentMeta, ProfileResult } from "../../ts/client"
 import { Client, Signature, UserID } from "../../ts/client"
 import { bytesToHex, prefetch, readableSize, TaskTracker, validateServerURL } from "../../ts/common";
 import Button from "../Button.svelte"
@@ -76,6 +76,12 @@ import OpenArrow from "../OpenArrow.svelte"
 import InputBox from "../InputBox.svelte"
 import TaskTrackerView from "../TaskTrackerView.svelte";
 import PageHeading from "../PageHeading.svelte";
+import { entryByTimestampSigDesc, SyncOptions, SyncUserArgs, syncUserProfile } from "../../ts/sync";
+
+// TODO: Backfill!
+// TODO: A button to stop a sync.
+// TODO: Stop the sync when you go to another tab.
+// TODO: If logged-in user has no profile, just preempt asking for URL for a sync (and disable sync w/o it)
 
 let appState: Writable<AppState> = getContext("appStateStore")
 
@@ -111,37 +117,51 @@ let taskTracker = new TaskTracker()
 
 
 function syncMyFeed() {
-    taskTracker.run("Syncing my feed", syncMyFeedTask)
+
+    const opts: SyncOptions = {
+        localClient: $appState.client,
+        sourceServerUrl: serverURL,
+
+        recentItems: 50, // TODO: Configurable by user.
+        // TODO: backfill: { ... }
+    }
+
+
+    taskTracker.run("Syncing my feed", (tracker) => syncMyFeedTask(tracker, opts))
 }
 
-async function syncMyFeedTask(tracker: TaskTracker) {
-    let local = $appState.client
+// TODO: Refactor things below here to be in their own file. ------------------------------------------------------
+
+
+
+async function syncMyFeedTask(tracker: TaskTracker, opts: SyncOptions) {
+    let local = opts.localClient
 
     // If there's a single source server provided, only sync from that.
-    let sourceServer = serverURL
+    let sourceServer = opts.sourceServerUrl
 
     let myProfileItem: Item|undefined
     let myProfile: Profile|undefined
-    let myServers = new Set<string>()
+    let syncServers = new Set<string>()
 
     if (sourceServer) {
-        myServers.add(sourceServer)
+        syncServers.add(sourceServer)
     } else {
         let result = await local.getProfile(userID)
         if (!result) {
-            tracker.error("Current user has no profile, and no server specified. Can't sync anything.")
+            tracker.error("Current user has no profile. Can't determine sync sources. You must specify one.")
             return
         }
         myProfileItem = result.item
         myProfile = result.item.profile
-        myServers = serversFromProfile(myProfile, tracker)
+        syncServers = serversFromProfile(myProfile, tracker)
     }
 
-    if (myServers.size === 0) {
+    if (syncServers.size === 0) {
         tracker.warn("No servers specified for current user. Can't sync current user's items.")   
     } else {
         await tracker.runSubtask("Current user's items", (tracker) => {
-            return syncUserItems({tracker, local, userID, servers: myServers})
+            return syncUserItems({tracker, local, userID, opts, servers: syncServers})
         })
 
         // Re-load current user's profile, which may have been updated as a result of the sync
@@ -152,7 +172,7 @@ async function syncMyFeedTask(tracker: TaskTracker) {
                 $appState.userProfileChanged()
             }
             if (!sourceServer) {
-                myServers = serversFromProfile(myProfile)
+                syncServers = serversFromProfile(myProfile)
             }
         }
     }
@@ -167,21 +187,38 @@ async function syncMyFeedTask(tracker: TaskTracker) {
             // Sync items from each of my follows.
             try {
                 let uid = UserID.fromBytes(follow.user.bytes)
+                let followedProfileResult = await local.getProfile(uid)
 
-                let followServers = myServers
-                if (!sourceServer) {
-                    let result = await local.getProfile(uid)
-                    if (result) {
-                        // Check our own servers first, to lessen load on others.
-                        // Also handles the case when our follows for some reason didn't specify a server.
-                        followServers = union(myServers, serversFromProfile(result.item.profile))
+                let followServers = syncServers
+                if (sourceServer) {
+                    // If user specified "sourceServer", only sync from there. (syncServers, above)
+                } else {
+                    // If the user has a profile, add its declared servers to potential sources:
+                    if (followedProfileResult) {
+                        followServers = union(syncServers, serversFromProfile(followedProfileResult.item.profile))
                     }
                 }
 
-                await tracker.runSubtask(`Items for "${follow.display_name}"`, (tracker) => {
+                await tracker.runSubtask(`Items for "${follow.display_name}"`, async (tracker) => {
                     tracker.log(`User ID: ${uid}`)
-                    return syncUserItems({tracker, local, userID: uid, servers: followServers})
+                    let result = await syncUserItems({tracker, local, userID: uid, opts, servers: followServers})
+
+                    let syncedProfile = false; // TODO: figure out if syncUserItems above got this already.
+
+                    if (!followedProfileResult && !syncedProfile) {
+                        await tracker.runSubtask(`No local profile, trying to sync one from remotes`, async (tracker) => {
+                            return await syncUserProfile({
+                                tracker,
+                                local,
+                                userID: uid,
+                                opts,
+                                localProfile: followedProfileResult,
+                                servers: followServers,
+                            })
+                        })
+                    }
                 })
+
             } catch (e) {
                 // Syncing one user's items shouldn't fail others:
                 tracker.error(e)
@@ -515,16 +552,9 @@ function union<T>(...sets: Set<T>[]): Set<T> {
     return out
 }
 
-type SyncOptions = {
-    tracker: TaskTracker
-    local: Client
-    userID: UserID
 
-    // Remote servers to sync from
-    servers: Set<string>
-}
 
-async function syncUserItems({tracker, local, userID, servers}: SyncOptions): Promise<void> {
+async function syncUserItems({tracker, local, userID, servers, opts}: SyncUserArgs): Promise<void> {
 
     if (servers.size === 0) {
         tracker.warn(`No servers found to sync ${userID}`)
@@ -536,10 +566,9 @@ async function syncUserItems({tracker, local, userID, servers}: SyncOptions): Pr
     let bytesCopied = 0
 
     await tracker.runSubtask(`Syncing from ${[...servers].join(", ")}`, async (tracker) => {
-        let itemsToSync = missingItems({tracker, local, userID, servers})
+        let itemsToSync = missingItems({tracker, local, userID, opts, servers})
 
         let results = prefetch(itemsToSync, 4, syncUserItem);
-
         for await (let result of results) {
             syncCount += result.itemsCopied
             attachmentsCopied += result.attachmentsCopied
@@ -559,6 +588,7 @@ async function syncUserItems({tracker, local, userID, servers}: SyncOptions): Pr
     }
 }
 
+// TODO: Deprecate this to something tht lazy-loads:
 async function loadItemEntries(client: Client, userID: UserID): Promise<Map<string, EntryInfo>> {
     // Note: must use string keys so JS == works properly.
     let entries = new Map<string, EntryInfo>()
@@ -728,11 +758,17 @@ function serversFromProfile(profile: Profile|undefined|null, tracker = new TaskT
 
 // Get a list of items that exist on remote servers but not the local one.
 
-async function * missingItems({ tracker, local, userID,  servers}: SyncOptions ): AsyncGenerator<SyncUserItemParams> {
+async function * missingItems({ tracker, local, userID,  servers, opts}: SyncUserArgs ): AsyncGenerator<SyncUserItemParams> {
     let localItems = new ServerUserItems(local, userID, tracker);
     let remotes: ServerUserItems[] = [...servers].map((s) => new ServerUserItems(s, userID, tracker))
 
-    while (!localItems.hadError) {
+    let itemsOnLocal = 0
+    let itemsToFetch = opts.recentItems
+    if (opts.backfill) {
+        // TODO: Extra checking for backfills. 
+    }
+
+    while (!localItems.hadError && itemsOnLocal < itemsToFetch) {
         await Promise.all([
             localItems.fetchNext(),
             ...remotes.map(r => r.fetchNext())
@@ -749,14 +785,14 @@ async function * missingItems({ tracker, local, userID,  servers}: SyncOptions )
         ]
         let nextItems = headItems.filter((v) => !!v) as ItemListEntry[]
 
-        nextItems.sort(entryByTimestamp);
+        nextItems.sort(entryByTimestampSigDesc);
         let first = nextItems[0]
 
-        // Eventually, implement and check some early-end conditions here.
 
         if (localItems.popIfEquals(first)) {
             // Have this locally. No need to sync it.
             remotes.forEach((r) => r.popIfEquals(first))
+            itemsOnLocal += 1
             continue
         }
 
@@ -781,38 +817,14 @@ async function * missingItems({ tracker, local, userID,  servers}: SyncOptions )
             to: local, 
             tracker,
         }
+
+        // The purpose of the above "yeield" is for the caller to sync the item. We assume if we got here that it
+        // succeeded.
+        itemsOnLocal += 1
     }
 }
 
 
-// Sort by (timestamp, signature) descending.
-function entryByTimestamp(e1: ItemListEntry, e2: ItemListEntry): number {
-    let cmp = e2.timestamp_ms_utc - e1.timestamp_ms_utc
-    if (cmp != 0) return cmp
-
-    let e1b = e1.signature?.bytes
-    let e2b = e2.signature?.bytes
-    if (!e1b) {
-        console.error("ItemListEntry missing signature bytes:", e1);
-        return 0;
-    }
-    if (!e2b) {
-        console.error("ItemListEntry missing signature bytes:", e2);
-        return 0;
-    }
-
-    if (e2b.length != e1b.length) {
-        console.error("Can not compare signatures of different length", e1b, e2b)
-        return 0;
-    }
-
-    for (let i = 0; i < e1b.length; i++) {
-        cmp = e2b[i] - e1b[i]
-        if (cmp != 0) return cmp
-    }
-
-    return 0
-}
 
 function randomElement<T>(list: T[]): T {
     if (list.length == 1) {
@@ -833,6 +845,13 @@ class ServerUserItems {
     
     isDone = false
     hadError = false
+    #numFetched = 0
+
+    // Number of items fetched so far.
+    get numFetched() : number {
+        return this.#numFetched 
+    }
+    
         
     constructor(server: string|Client, userID: UserID, public tracker: TaskTracker) {
         if (typeof server == "string") {
@@ -871,7 +890,7 @@ class ServerUserItems {
         if (this.isDone) return false
         let head = this.headItem?.value
         if (!head) return false
-        return entryByTimestamp(head, entry) == 0
+        return entryByTimestampSigDesc(head, entry) == 0
     }
 
     private warnOutOfOrder() {
@@ -881,7 +900,7 @@ class ServerUserItems {
         if (!previous) { return }
         if (!current) { return }
 
-        let cmp = entryByTimestamp(previous, current)
+        let cmp = entryByTimestampSigDesc(previous, current)
         // Check for reverse chronological order. We expect "previous" to get chosen first.
         // if not, something's off:
         if (cmp >= 0) {

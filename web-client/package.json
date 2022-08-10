@@ -43,6 +43,6 @@
     "svelte": "^3.32.1",
     "svelte-check": "^1.1.25",
     "svelte-preprocess": "^4.10.4",
-    "typescript": "^4"
+    "typescript": "^4.7"
   }
 }

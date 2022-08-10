@@ -68,9 +68,7 @@ async function loadProfile(userID: UserID|null): Promise<LoadedProfile> {
         error: "Must be logged in."
     }
 
-    // TODO: Exhaustive search for latest profile.
-    // Warn if we only got a profile from a non-exhaustive search.
-    let result = await $appState.client.getLatestProfile(userID)
+    let result = await $appState.client.getProfile(userID)
 
     if (result) return {
         profile: result
