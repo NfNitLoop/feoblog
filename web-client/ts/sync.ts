@@ -24,19 +24,17 @@ export interface SyncOptions {
     sourceServerUrl?: string
 
     // Stop syncing after we already have this many recent items (of any type)
-    // Can set to Number.POSITIVE_INFINITY to sync everything.
-    recentItems: number
+    recentItems?: number
+
+    // Stop syncing after we've synced back to this UTC_MS timestamp:
+    toDateUtcMs?: number
 
     // If present, do a backfill:
     backfill?: BackfillOptions
 }
 
 export interface BackfillOptions {
-    // TODO
-    // Backfill only back to this date.
-    toDateUtcMs?: number
-
-    // TODO
+    // TODO: implement.
     // If present, only allocate this many bytes for backfilling attachments.
     // Set to 0 to disable backfilling attachments.
     maxAttachmentBytesTotal?: number
@@ -251,10 +249,11 @@ export async function syncMyFeedTask(tracker: TaskTracker, userID: UserID, opts:
         }
     })
 
-    if (opts.backfill?.maxAttachmentBytesTotal ?? 0 > 0)
+    if (opts.backfill !== undefined)
     {
         // TODO: Make aware of maxAttachmentBytesTotal
-        await tracker.runSubtask("Syncing file attachments", async (tracker) => {
+        // ex: let maxBytes = opts.backfill.maxAttachmentBytesTotal ?? Number.POSITIVE_INFINITY
+        await tracker.runSubtask("Backfilling file attachments", async (tracker) => {
             await syncFeedAttachments({
                 sourceServer,
                 tracker,
@@ -329,7 +328,7 @@ async function syncFeedAttachments({sourceServer, tracker, to, userID, profile}:
 
 
         try {
-            await tracker.runSubtask(`User "${follow.display_name}"`, (tracker) => {
+            bytesCopied += await tracker.runSubtask(`User "${follow.display_name}"`, (tracker) => {
                 tracker.log(`User ID: ${uid}`)
                 return syncUserAttachments({tracker, fromServers: followServers, to, userID: uid})
             })
@@ -389,10 +388,9 @@ async function syncUserAttachments({tracker, userID, fromServers, to}: SyncUserA
                 tracker
             })
         }
-        
-
-
     }
+
+    tracker.log(`Copied: ${readableSize(bytesCopied)}`)
 
     return bytesCopied
 }
@@ -785,16 +783,13 @@ export function serversFromProfile(profile: Profile|undefined|null, tracker = ne
 }
 
 // Get a list of items that exist on remote servers but not the local one.
-
 async function * missingItems({ tracker, local, userID,  servers, opts}: SyncUserArgs ): AsyncGenerator<SyncUserItemParams> {
     let localItems = new ServerUserItems(local, userID, tracker);
     let remotes: ServerUserItems[] = [...servers].map((s) => new ServerUserItems(s, userID, tracker))
 
     let itemsOnLocal = 0
-    let itemsToFetch = opts.recentItems
-    if (opts.backfill) {
-        // TODO: Extra checking for backfills. 
-    }
+    let itemsToFetch = opts.recentItems ?? Number.POSITIVE_INFINITY
+    let oldestFetchDate = opts.toDateUtcMs ?? Number.NEGATIVE_INFINITY
 
     while (!localItems.hadError && itemsOnLocal < itemsToFetch) {
         await Promise.all([
@@ -815,6 +810,10 @@ async function * missingItems({ tracker, local, userID,  servers, opts}: SyncUse
 
         nextItems.sort(entryByTimestampSigDesc);
         let first = nextItems[0]
+
+        if (first.timestamp_ms_utc < oldestFetchDate) {
+            break
+        }
 
 
         if (localItems.popIfEquals(first)) {
@@ -846,7 +845,7 @@ async function * missingItems({ tracker, local, userID,  servers, opts}: SyncUse
             tracker,
         }
 
-        // The purpose of the above "yeield" is for the caller to sync the item. We assume if we got here that it
+        // The purpose of the above "yield" is for the caller to sync the item. We assume if we got here that it
         // succeeded.
         itemsOnLocal += 1
     }
