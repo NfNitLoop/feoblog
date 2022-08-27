@@ -19,7 +19,7 @@ export interface PageEvent {
 import type { Writable } from "svelte/store"
 
 import { UserID} from "../ts/client"
-import { markdownToHtml, fixLinks, FileInfo, observable, scrollState} from "../ts/common"
+import { markdownToHtml, fixLinks, FileInfo, observable, scrollState, ConsoleLogger} from "../ts/common"
 import type { Item } from "../protos/feoblog"
 import type { AppState } from "../ts/app"
 import UserIdView from "./UserIDView.svelte"
@@ -75,6 +75,8 @@ let dispatcher = createEventDispatcher()
 
 let itemElement: HTMLElement|null = null
 
+const logger = new ConsoleLogger({prefix: "<ItemView>"}) //.withDebug()
+
 $: getItem(userID, signature, item)
 async function getItem(userID: string, signature: string, initialItem: Item|null|undefined) {
     if (initialItem !== undefined) {
@@ -87,7 +89,7 @@ async function getItem(userID: string, signature: string, initialItem: Item|null
         loadedItem = result
     } catch (e) {
         loadError = `Error loading item: ${e}`
-        console.error(e)
+        logger.error(e)
     }
 
     dispatcher("itemLoaded", loadedItem)
@@ -106,7 +108,7 @@ $: validFollows = function(){
                 displayName: follow.display_name.trim() || id.toString(),
             })
         } catch (e) {
-            console.warn(`Error parsing follow for ${userID}`, e)
+            logger.warn(`Error parsing follow for ${userID}`, e)
         }
     }
     return valid
@@ -156,26 +158,26 @@ function enteredPage() {
     dispatcher("enteredPage", pageEventDetail())
 
     if (shrinkImages) {
-        console.debug("enderedPage:", signature.substring(0, 10))
+        logger.debug("enderedPage:", signature.substring(0, 10))
         scrollState.withQuietLock(restoreImages)
     }
 }
 
-console.log(`ItemView: loaded ${signature.substring(0, 10)} shrink: ${shrinkImages}`)
+logger.debug("loaded", signature.substring(0, 10), "shrink:", shrinkImages)
 
 // Note: Should be run within a global lock, to prevent document offset math from having
 // race conditions.
 async function restoreImages(): Promise<boolean> {
     if (!itemElement) {
-        console.warn("restoreImages, but no itemElement!?")
+        logger.warn("restoreImages, but no itemElement!?")
         return false
     }
 
     if (shrinkImages == false) {
-        console.warn("shrinkImages already false!?")
+        logger.warn("shrinkImages already false!?")
     }
 
-    console.log("restoreImages", signature.substring(0, 10))
+    logger.log("restoreImages", signature.substring(0, 10))
     shrinkImages = false
     await tick()
    

@@ -373,35 +373,53 @@ function assertExists<T>(value: T|undefined): T {
 
 // A small subset of the Console interface
 export interface Logger {
-    debug(...data: any[]): void;
-    error(...data: any[]): void;
-    info(...data: any[]): void;
-    log(...data: any[]): void;
-    warn(...data: any[]): void;
+    debug(...data: unknown[]): void;
+    error(...data: unknown[]): void;
+    info(...data: unknown[]): void;
+    log(...data: unknown[]): void;
+    warn(...data: unknown[]): void;
+}
+
+export interface LoggerOptions {
+    prefix?: string
 }
 
 export class ConsoleLogger implements Logger {
 
-    error(...data: any[]): void {
-        console.error(...data)
+    #prefix?: string
+
+    constructor(opts?: LoggerOptions) {
+        this.#prefix = opts?.prefix
+    }
+
+    error(...data: unknown[]): void {
+        console.error(...this.#prefixedData(data))
 
     }
-    warn(...data: any[]): void {
-        console.warn(...data)
+    warn(...data: unknown[]): void {
+        console.warn(...this.#prefixedData(data))
     }
 
     // without this, only warn & error show:
     private debugEnabled = false
 
-    debug(...data: any[]): void {
-        if (this.debugEnabled) console.debug(...data)
+    debug(...data: unknown[]): void {
+        if (this.debugEnabled) console.debug(...this.#prefixedData(data))
     }
-    info(...data: any[]): void {
-        if (this.debugEnabled) console.info(...data)
+    info(...data: unknown[]): void {
+        if (this.debugEnabled) console.info(...this.#prefixedData(data))
     }
-    log(...data: any[]): void {
+    log(...data: unknown[]): void {
         // I tend to treat this like a debug statement, so:
-        if (this.debugEnabled) console.log(...data)
+        if (this.debugEnabled) console.log(...this.#prefixedData(data))
+    }
+
+    #prefixedData(data: unknown[]): unknown[] {
+        if (this.#prefix) {
+            return [this.#prefix, ...data]
+        }
+
+        return data
     }
 
     withDebug(): ConsoleLogger {
@@ -466,7 +484,10 @@ export class TaskTracker
         let timer = new Timer()
         try {
             let out: T = await asyncTask(this)
+
+            // TODO: I've forgotten. Why is this here?
             await Promise.all(this.subtasks)
+            
             return out
         } catch (e) {
             if (!(e instanceof TaskTrackerException)) {
@@ -875,13 +896,15 @@ export interface InfiniteScrollParams {
     private isScrolling = false
     private _isTouching = false
 
+    #log = new ConsoleLogger({prefix: "ScrollState"}) //.withDebug()
+
     // Bleh: a lot of work to track whether the user is touching the screen.
     // However, touch events get canceled if you flick the screen for momentum-based scrolling, even if
     // you catch the scroll and start touching the screen again before scrolling finishes.
     private get isTouching() { return this._isTouching }
     private set isTouching(value) { 
         if (value != this._isTouching) {
-            // console.log("isTouching", value)
+            this.#log.debug("isTouching", value)
             this._isTouching = value
         }
     }
@@ -929,7 +952,7 @@ export interface InfiniteScrollParams {
             return
         }
 
-        console.warn("Unexpected event type:", e.type, e)
+        this.#log.warn("Unexpected event type:", e.type, e)
     }
 
 
@@ -939,11 +962,15 @@ export interface InfiniteScrollParams {
             return
         }
 
+        if (!this.isScrolling) {
+            this.#log.debug("stared scrolling")
+        }
         this.isScrolling = true
         this.timer.start(() => {this.scrollFinished()})
     }
 
     private scrollFinished() {
+        this.#log.debug("scrollFinished()")
         this.isScrolling = false
         this.runQueue()
     }
@@ -976,7 +1003,16 @@ export interface InfiniteScrollParams {
         return promise
     }
 
+    // Hmm, currently I think we don't use ScrollState to add things to the bottom of the page.
+    // In theory, something might try to add to the bottom of the page while we're running withQuietLock(), which
+    // would throw off the document length delta calculation.
+    // TODO: We should add a "soft lock"(?) that allows adding things at the bottom of the page without waiting
+    // for a quiet period, but that we can make sure isn't happening at the same time as the promises we run
+    // during withQuietLock().
+    // Orrrr see if there's just a simpler solution to this problem. 😅
+
     private async handleCallback(cb: () => Promise<boolean>): Promise<boolean> {
+        this.#log.debug("handleCallback() ...")
         // Must base scroll deltas off of the beforeScroll, because changing content length will also change scroll position.
         let beforeScroll = window.scrollY
         let beforeLength = document.body.scrollHeight
@@ -987,11 +1023,9 @@ export interface InfiniteScrollParams {
         let lengthDelta = afterLength - beforeLength
 
         if (shouldScroll) {
-            console.debug(`before ${beforeLength} after: ${afterLength} delta: ${lengthDelta} shouldScroll: ${shouldScroll}`)
+            this.#log.debug(`before ${beforeLength} after: ${afterLength} delta: ${lengthDelta} shouldScroll: ${shouldScroll}`)
             window.scrollTo(window.scrollX, beforeScroll + lengthDelta)
         }
-
-        // await waitMs(2000)
 
         return shouldScroll
     }
@@ -1005,7 +1039,7 @@ export interface InfiniteScrollParams {
         // Nothing to do:
         if (this.callbacks.length === 0) { return }
 
-        // console.debug("--- Running callbacks", this.callbacks.length)
+        this.#log.debug("Running", this.callbacks.length, "callbacks")
 
         this._isLocked = true
         try {
@@ -1014,25 +1048,16 @@ export interface InfiniteScrollParams {
                 await callback()
             }
         } catch (e) {
-            console.error("Exception in ScrollState.runQueue()!?  Should be impossible.", e)
+            this.#log.error("Exception in runQueue()!?  Should be impossible.", e)
         } finally {
             this._isLocked = false
         }
-        // console.debug("Done running callbacks")
+        this.#log.debug("Done running callbacks")
     }
 }
 
+// A global singleton, so locks are shared.
 export const scrollState = new ScrollState()
-
-function waitMs(ms: number): Promise<void> {
-    let res: (value: void) => void
-    let promise = new Promise<void>((resolve) => {
-        res = resolve
-    })
-    setTimeout(res!, ms)
-
-    return promise
-}
 
 /**
  * Implements an infinite scrolling window.
@@ -1045,7 +1070,7 @@ export class InfiniteScroll<T> {
     private trimBy: number;
     #items: T[] = []
 
-    logger = new ConsoleLogger()
+    #log = new ConsoleLogger({prefix: "InfiniteScroll"}) //.withDebug()
 
     #subscriptions: ((ts: T[]) => void)[] = []
 
@@ -1055,19 +1080,19 @@ export class InfiniteScroll<T> {
     }
 
     async pushBottom(item: T): Promise<void> {
-        this.logger.debug("pushBottom")
-        this.logger.debug("Before:", window.scrollY, document.body.scrollHeight)
+        this.#log.debug("pushBottom")
+        this.#log.debug("Before:", window.scrollY, document.body.scrollHeight)
         await this.push("bottom", item)
-        this.logger.debug("After:", window.scrollY, document.body.scrollHeight)
+        this.#log.debug("After:", window.scrollY, document.body.scrollHeight)
     }
 
     async pushTop(item: T): Promise<void> {
-        this.logger.debug("pushTop")
+        this.#log.debug("pushTop")
         await this.push("top", item)
     }
 
     clear() {
-        this.logger.log("InfiniteScroll.clear()")
+        this.#log.debug("clear()")
         this.#items = []
         this.notify()
     }
@@ -1083,7 +1108,7 @@ export class InfiniteScroll<T> {
         }
 
         if (items.length >= this.maxItems) {
-            this.logger.debug(`Adding to ${where} triggered a trim`)
+            this.#log.debug(`Adding to`, where, `triggered a trim`)
              // Trimming will change the length of the document. Need to do that separately from adding:
              await scrollState.withQuietLock(async () => {
                 // console.debug("Trimming", where)
@@ -1134,6 +1159,6 @@ export class InfiniteScroll<T> {
 
 export async function delayMs(timeout: number): Promise<void> {
     await new Promise((res) => {
-        setTimeout(() => { res(null) }, 500)
+        setTimeout(() => { res(null) }, timeout)
     })
 }

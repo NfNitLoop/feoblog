@@ -51,25 +51,40 @@ import PageHeading from "../PageHeading.svelte"
 import UserIDView from "../UserIDView.svelte"
 import InputBox from "../InputBox.svelte";
 import ItemsScroll from "../ItemsScroll.svelte";
-import { ItemType } from "../../protos/feoblog";
+import { ItemListEntry, ItemType, Signature } from "../../protos/feoblog";
+import { ConsoleLogger } from "../../ts/common";
 
 let appState: Writable<AppState> = getContext("appStateStore")
-
-
 let search = ""
 
+const logger = new ConsoleLogger({prefix: "<FeedPage>"}) // .withDebug()
+
+
 $: userID = UserID.tryFromString($params.userID)
+
+// Hmm, should this be auto-updating if we're passing it to ItemScroll? 
+// Ah, $query only gets updated when the URL is initially loaded or manually changed,
+// not when we update history w/ the current scrollPos. Weird edge case but handy.
 $: scrollPos = parseScrollPosition($query.ts)
 
-function createItemLoader(params: ItemOffsetParams) {
+function createItemLoader(params: ItemOffsetParams): AsyncGenerator<ItemListEntry>|null {
     if (!userID) return null
-    return $appState.client.getUserFeedItems(userID, params)
+    let lazyItems = $appState.client.getUserFeedItems(userID, params)
+
+    // async function * loggingLazyItems(): AsyncGenerator<ItemListEntry> {
+    //     for await (let entry of lazyItems) {
+    //         logger.debug("got entry at ts", entry.timestamp_ms_utc)
+    //         yield entry
+    //     }
+    // }
+
+    return lazyItems
 }
 
 $: filter = function() { 
     let filters: ItemFilter[] = [
         // TODO: Filter out comments and/or posts?
-        // TODO: Show profile updates. (Once we've got a profile delta viewer)
+        // TODO: Show profile updates. (Once we've got a profile delta viewer?)
         new ExcludeItemTypes([ItemType.PROFILE])
     ]
 
@@ -111,14 +126,14 @@ async function updateFollowedUsers(userID: UserID|null) {
     try {
         profile = await client.getProfile(userID)
     } catch (error) {
-        console.error(`Error fetching profile for ${userID}`)
+        logger.error(`Error fetching profile for ${userID}`)
         return
     }
 
     if (!profile) return;
     let pProfile = profile.item.profile
     if (!pProfile) {
-        console.error("Got a profile object that doesn't contain a profile")
+        logger.error("Got a profile object that doesn't contain a profile")
         return
     }
 
@@ -132,7 +147,7 @@ async function updateFollowedUsers(userID: UserID|null) {
                 displayName: await $appState.getPreferredName(uid) || uid.toString()
             })
         } catch (error) {
-            console.error("Error parsing userID bytes:", follow)
+            logger.error("Error parsing userID bytes:", follow)
         }
 
     }
@@ -144,7 +159,7 @@ async function updateFollowedUsers(userID: UserID|null) {
             displayName: await $appState.getPreferredName(userID) || userID.toString()
         })
     } catch (error) {
-        console.error("Error fetching preferred name for:", userID.toString())
+        logger.error("Error fetching preferred name for:", userID.toString())
     }
 
     newFollows.sort((f1, f2) => f1.displayName.localeCompare(f2.displayName))

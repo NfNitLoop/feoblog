@@ -566,7 +566,8 @@ export type LazyItemLoaderOptions = {
     client: Client,
     
     /** Whether we should continue loading more items. */
-    continueLoading: () => boolean,
+    // TODO: deprecate
+    continueLoading?: () => boolean,
 
     // A function we'll call when a new item is available to display:
     displayItem: (nextItem: DisplayItem) => Promise<void>,
@@ -587,7 +588,7 @@ export class LazyItemLoader {
 
     constructor(options: LazyItemLoaderOptions) {
         this.client = options.client
-        this.continueLoading = options.continueLoading
+        this.continueLoading = options.continueLoading ?? (() => false)
         this.displayItemCallback = options.displayItem
         this.lazyDisplayItems = prefetch(options.itemEntries, 4, this.fetchDisplayItem)
         this.endReached = options.endReached
