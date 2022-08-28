@@ -5,7 +5,7 @@
 -->
 <svelte:window on:scroll={onScroll} />
 
-<heading-container class:stuckAtTop class:showHeading bind:this={headingElement}>
+<heading-container class:stuckAtTop class:showHeading>
 
 <div class="pageHeading" class:stuckAtTop>
 
@@ -78,10 +78,9 @@ let breadcrumbs: Breadcrumb[] = []
 
 let appState: Writable<AppState> = getContext("appStateStore")
 
-let headingElement: HTMLElement
 let headingEndElement: HTMLElement
 
-let logger = new ConsoleLogger({prefix: "<PageHeading>"}).withDebug()
+let logger = new ConsoleLogger({prefix: "<PageHeading>"}) //.withDebug()
 
 // Show the heading even if it's off-screen.
 let forceShow = false
@@ -90,15 +89,6 @@ let forceShow = false
 let stuckAtTop = false
 
 $: showHeading = stuckAtTop && forceShow
-$: headingHeight = calcHeadingHeight(forceShow, settingsHidden, stuckAtTop)
-function calcHeadingHeight(...args: unknown[]): number {
-    let height = headingElement?.clientHeight ?? 0
-
-    // TODO: calc bottom shadow too?
-    height += 10
-
-    return height
-}
 
 let observer = new IntersectionObserver(observerCallback, {threshold: [1]})
 let intersectionRatio = 1;
@@ -135,8 +125,8 @@ let scrollYDelta = new ScrollDelta()
 function onScroll(event: UIEvent) {
     if (event.type != "scroll") { return }
     if (!stuckAtTop) { return }
-    if ($appState.scrollMutex.locked) { 
-        // Something locked the scrollMutex, probably to avoid showing this. Hide it:
+    if ($appState.scroll.scrolledViaKeyboard) { 
+        // Hide the header when scrolling with keyboard:
         forceShow = false
         return
      }
@@ -145,7 +135,7 @@ function onScroll(event: UIEvent) {
     
     let delta = scrollYDelta.update()
 
-    logger.log("onScroll deleta", delta)
+    logger.log("onScroll delta", delta)
 
     // Small scroll deltas (usually <1, always <2) seem to be the browser settling after document length has changed:
     if (delta < -10) {
@@ -216,9 +206,6 @@ function getNav(app: AppState) {
 </script>
 
 <script lang="ts" context="module">
-
-// hax. But there should only ever be one of these in existence at once anyway.
-export let headingHeight = 0
     
 // A way to declare our nav hierarchy and let the URL patterns figure it out:
 // Note: the path key ":userID" is special if it matches the currently-logged-in user.

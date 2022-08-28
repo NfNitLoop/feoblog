@@ -54,7 +54,7 @@ import ShowWhen from "./widgetes/ShowWhen.svelte";
 import Button from "./Button.svelte";
 import { ElapsedTime } from "../ts/asyncStore";
 
-const logger = new ConsoleLogger({prefix: "<ItemScroll>"}).withDebug()
+const logger = new ConsoleLogger({prefix: "<ItemScroll>"}) //.withDebug()
 logger.debug("Created logger. (fresh load)")
 
 export let scrollPos: number
@@ -410,8 +410,10 @@ let activeItemSignature: string|undefined = undefined
 
 // Note, we don't bind mouseenter (above) because browsers fire that when you scroll an item into view under the mouse cursor. boo.
 function onItemMouseEnter(item: DisplayItem) {
-    logger.debug("onItemMouseEnter event", item.signature.asBase58)
-    activeItemSignature = item.signature.asBase58
+    let newSig = item.signature.asBase58
+    if (activeItemSignature == newSig) { return } 
+    logger.debug("onItemMouseEnter event", newSig)
+    activeItemSignature = newSig
 }
 
 function onWindowKeyUp(event: KeyboardEvent) {
@@ -449,7 +451,7 @@ function selectItem(direction: "prev"|"next") {
         // Just go all the way to the top of the page. 
         // 1. looks nice
         // 2: triggers loading if we haven't started that yet.
-        window.scrollTo({top: 0})
+        $appState.scroll.keyboardScrollTo({top: 0})
         return
     }
     if (index >= allItems.length) {
@@ -473,16 +475,8 @@ function selectItem(direction: "prev"|"next") {
     let top = element.offsetTop
     logger.debug("offsetTop:", top)
 
-    top -= 5
-    $appState.scrollMutex.run(async () => {
-        window.scrollTo({top})
-        // Hold the lock through the scroll:
-        logger.debug("before delayMs()")
-        // This feels quite hacky.  tick() doesn't work becasue there were no DOM changes to make here.
-        await delayMs(50)
-        logger.debug("after delayMs()")
-    })
-
+    top -= 25
+    $appState.scroll.keyboardScrollTo({top})
 }
 
 </script>

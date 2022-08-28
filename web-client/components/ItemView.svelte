@@ -78,7 +78,7 @@ let dispatcher = createEventDispatcher()
 
 let itemElement: HTMLElement|null = null
 
-const logger = new ConsoleLogger({prefix: "<ItemView>"}) //.withDebug()
+const logger = new ConsoleLogger({prefix: `<ItemView> ${signature.substring(0,10)}`}) //.withDebug()
 
 $: getItem(userID, signature, item)
 async function getItem(userID: string, signature: string, initialItem: Item|null|undefined) {
@@ -157,20 +157,24 @@ function pageEventDetail(): PageEvent {
     return {userID, signature, item, element: itemElement}
 }
 
-function enteredPage() {
-    dispatcher("enteredPage", pageEventDetail())
-
+async function enteredPage() {
+    logger.debug("enteredPage:")   
     if (shrinkImages) {
-        logger.debug("enderedPage:", signature.substring(0, 10))
-        scrollState.withQuietLock(restoreImages)
+        // Handle our own unshrink BEFORE dispatching notice to other elements,
+        // which might re-render us w/o shrink, causing a race condition.
+        await scrollState.withQuietLock(restoreImages)
     }
+
+    dispatcher("enteredPage", pageEventDetail())
 }
 
-logger.debug("loaded", signature.substring(0, 10), "shrink:", shrinkImages)
+$: logger.debug("shrinkImages:", shrinkImages)
 
 // Note: Should be run within a global lock, to prevent document offset math from having
 // race conditions.
 async function restoreImages(): Promise<boolean> {
+    logger.log("restoreImages")
+
     if (!itemElement) {
         logger.warn("restoreImages, but no itemElement!?")
         return false
@@ -178,19 +182,17 @@ async function restoreImages(): Promise<boolean> {
 
     if (shrinkImages == false) {
         logger.warn("shrinkImages already false!?")
+        return false
     }
 
-    logger.log("restoreImages", signature.substring(0, 10))
     shrinkImages = false
     await tick()
    
     let bounds = itemElement.getBoundingClientRect()
-    if (bounds.top > 100) {
-        // The item is already fully on screen or below the fold. No need to adjust height
-        return false
-    }
-
-    return true
+    logger.debug("bounds.top", bounds.top)
+    let needsAdjust = bounds.top < 0
+    logger.debug("restoreImages needsAdjust:", needsAdjust)
+    return needsAdjust
 }
 
 function leftPage() {

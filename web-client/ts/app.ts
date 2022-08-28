@@ -14,11 +14,8 @@ export class AppState
     private profileService: ProfileService
 
     readonly navigator = new Navigator()
+    readonly scroll = new WindowScroller()
     private _loggedInUser: UserID | null = null
-
-    // Allows things to exclusively scroll the page.
-    // Some things (<PageHeading>) may want to ignore scroll events while scrollMutex is locked.
-    readonly scrollMutex = new Mutex()
 
     constructor() {
         this._client = new Client({
@@ -371,6 +368,22 @@ export class Navigator {
 
 }
 
+export class WindowScroller {
+    #lastKeyboardScroll = 0
+    #recentScrollThreshold = 50 // ms
+
+    // THe user initiated keyboard navigation to scroll to this location.
+    keyboardScrollTo(options: ScrollToOptions) {
+        this.#lastKeyboardScroll = this.now
+        window.scrollTo(options)
+    }
+
+    get scrolledViaKeyboard() {
+        return this.now - this.#lastKeyboardScroll < this.#recentScrollThreshold
+    }
+
+    private get now() { return new Date().valueOf() }
+}
 
 
 export class Location {
