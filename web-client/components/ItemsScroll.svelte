@@ -36,7 +36,7 @@
         Loading...
     {/if}
 </p></ItemBox>
-<svelte:window bind:scrollY on:keyup={onWindowKeyUp} />
+<svelte:window bind:scrollY on:keyup={onWindowKeyUp} on:pageshow={onPageShow}/>
 
 <script lang="ts">
 import type { PageEvent } from "./ItemView.svelte";
@@ -477,6 +477,17 @@ function selectItem(direction: "prev"|"next") {
 
     top -= 25
     $appState.scroll.keyboardScrollTo({top})
+}
+
+function onPageShow(event: PageTransitionEvent) {
+    logger.debug("onPageShow persisted:", event.persisted, "url", window.location.toString())
+
+    // Safari on iOS tries to load a "persisted" version of the page but apparently doesn't persist
+    // it correctly so it always goes back to the top. Force a reload to get back to our saved scroll
+    // position:
+    if (event.persisted) {
+        window.location.reload()
+    }
 }
 
 </script>
