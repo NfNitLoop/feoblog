@@ -5,7 +5,7 @@
 -->
 <svelte:window on:scroll={onScroll} />
 
-<heading-container class:stuckAtTop class:showHeading>
+<heading-container class:stuckAtTop class:showHeading bind:this={headingElement}>
 
 <div class="pageHeading" class:stuckAtTop>
 
@@ -71,15 +71,17 @@ import ProfileImage from "./ProfileImage.svelte";
 import UserIdView from "./UserIDView.svelte";
 import type { AppState } from "../ts/app";
 import type { Writable } from "svelte/store";
-import { CancelTimer } from "../ts/common";
+import { CancelTimer, ConsoleLogger } from "../ts/common";
 
 let navItems: NavItem[] = []
 let breadcrumbs: Breadcrumb[] = []
 
-
 let appState: Writable<AppState> = getContext("appStateStore")
 
-let headingEndElement: HTMLElement;
+let headingElement: HTMLElement
+let headingEndElement: HTMLElement
+
+let logger = new ConsoleLogger({prefix: "<PageHeading>"}).withDebug()
 
 // Show the heading even if it's off-screen.
 let forceShow = false
@@ -88,7 +90,15 @@ let forceShow = false
 let stuckAtTop = false
 
 $: showHeading = stuckAtTop && forceShow
+$: headingHeight = calcHeadingHeight(forceShow, settingsHidden, stuckAtTop)
+function calcHeadingHeight(...args: unknown[]): number {
+    let height = headingElement?.clientHeight ?? 0
 
+    // TODO: calc bottom shadow too?
+    height += 10
+
+    return height
+}
 
 let observer = new IntersectionObserver(observerCallback, {threshold: [1]})
 let intersectionRatio = 1;
@@ -125,16 +135,27 @@ let scrollYDelta = new ScrollDelta()
 function onScroll(event: UIEvent) {
     if (event.type != "scroll") { return }
     if (!stuckAtTop) { return }
+    if ($appState.scrollMutex.locked) { 
+        // Something locked the scrollMutex, probably to avoid showing this. Hide it:
+        forceShow = false
+        return
+     }
+
+    logger.debug("onScroll event", event)
     
     let delta = scrollYDelta.update()
 
+    logger.log("onScroll deleta", delta)
+
     // Small scroll deltas (usually <1, always <2) seem to be the browser settling after document length has changed:
-    if (delta < 10) {
+    if (delta < -10) {
         forceShow = true
     } else if (delta > 10) {
         forceShow = false
     }
 }
+
+$: logger.log("forceShow", forceShow)
 
 
 // TODO: Move this up to IndexPage along side the Router config?
@@ -196,6 +217,8 @@ function getNav(app: AppState) {
 
 <script lang="ts" context="module">
 
+// hax. But there should only ever be one of these in existence at once anyway.
+export let headingHeight = 0
     
 // A way to declare our nav hierarchy and let the URL patterns figure it out:
 // Note: the path key ":userID" is special if it matches the currently-logged-in user.
@@ -389,6 +412,7 @@ class ScrollDelta {
             // Just ignore this event, stuff got resized.
             this.lastScrollY = newScrollY
             this.lastDocLength = newDocLength
+            return this.delta
         }
 
         let newDelta = newScrollY - this.lastScrollY

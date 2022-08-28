@@ -11,19 +11,22 @@
         {:else if topLoader != null}
             <p>Loading...</p>
         {:else}
-            <p>Bump the top!</p>
+            <!-- TODO: This seems hacky.  If they can see it, should we not be loading it? -->
+            <p>Scroll up to load more.</p>
         {/if}
     </ItemBox>
 </ShowWhen>
 
 {#each $items as entry (entry) }
     <ItemView 
-        userID={entry.userID.toString()}
-        signature={entry.signature.toString()}
+        userID={entry.userID.asBase58}
+        signature={entry.signature.asBase58}
         item={entry.item}
         shrinkImages={shrinkImages(entry)}
+        active={entry.signature.asBase58 == activeItemSignature}
         on:enteredPage={itemEnteredScreen}
         on:leftPage={itemLeftScreen}
+        on:mousemove={() => onItemMouseEnter(entry)}
     />
 {/each}
 <ItemBox><p>
@@ -33,7 +36,7 @@
         Loading...
     {/if}
 </p></ItemBox>
-<svelte:window bind:scrollY />
+<svelte:window bind:scrollY on:keyup={onWindowKeyUp} />
 
 <script lang="ts">
 import type { PageEvent } from "./ItemView.svelte";
@@ -41,17 +44,17 @@ import type { ItemListEntry } from "../protos/feoblog";
 import type { DisplayItem, ItemOffsetParams } from "../ts/client";
 import { ItemFilter, LazyItemLoader } from "../ts/client";
 
-import { ConsoleLogger, InfiniteScroll } from "../ts/common";
+import { ConsoleLogger, delayMs, InfiniteScroll } from "../ts/common";
 import ItemView from "./ItemView.svelte";
 import type { Writable } from "svelte/store";
 import type { AppState } from "../ts/app";
-import { getContext, onDestroy } from "svelte";
+import { getContext, onDestroy, tick } from "svelte";
 import ItemBox from "./ItemBox.svelte";
 import ShowWhen from "./widgetes/ShowWhen.svelte";
 import Button from "./Button.svelte";
 import { ElapsedTime } from "../ts/asyncStore";
 
-const logger = new ConsoleLogger({prefix: "<ItemScroll>"}) //.withDebug()
+const logger = new ConsoleLogger({prefix: "<ItemScroll>"}).withDebug()
 logger.debug("Created logger. (fresh load)")
 
 export let scrollPos: number
@@ -323,7 +326,6 @@ function onVerticalScroll(newY: number|undefined) {
     }
 
     if (newY < nearHeight) {
-        logger.debug("nearTop")
         showTopStatus = true
         nearTop()
         return
@@ -399,6 +401,88 @@ function checkMoreTop() {
     topLoader?.stop()
     topLoader = null
     bumpedTop()
+}
+
+
+//----------- Stuff for keyboard navigation --------------- 
+
+let activeItemSignature: string|undefined = undefined
+
+// Note, we don't bind mouseenter (above) because browsers fire that when you scroll an item into view under the mouse cursor. boo.
+function onItemMouseEnter(item: DisplayItem) {
+    logger.debug("onItemMouseEnter event", item.signature.asBase58)
+    activeItemSignature = item.signature.asBase58
+}
+
+function onWindowKeyUp(event: KeyboardEvent) {
+    let {key, target} = event
+    if (!(target instanceof Element)) {
+        logger.debug("onWindowKeyUp target was not an Element")
+        return
+    }
+    
+    logger.debug("keyUp", key, "on", target.tagName, event)
+    if (target.tagName != "BODY") { return }
+    if (key == "k") {
+        selectItem("prev")
+    } else if (key == "j") {
+        selectItem("next")
+    }
+}
+
+function selectItem(direction: "prev"|"next") {
+    let allItems = $items
+    let index = allItems.findIndex(it => it.signature.asBase58 == activeItemSignature)
+    if (index < 0) {
+        // No active item? Just select the first one.
+        index = 0
+    } else if (direction == "prev") { 
+        index--
+    } else if (window.scrollY == 0) {
+        // We're at the top, we just want to scroll to this element:
+        index = 0
+    } else { 
+        index++ 
+    }
+
+    if (index < 0) {
+        // Just go all the way to the top of the page. 
+        // 1. looks nice
+        // 2: triggers loading if we haven't started that yet.
+        window.scrollTo({top: 0})
+        return
+    }
+    if (index >= allItems.length) {
+        logger.debug("selectItem: User tried to navigate too far")
+        return
+    }
+
+    if (index == 0 && window.scrollY == 0) {
+        // we've scrolled to the top, now just scroll to this element:
+    }
+
+    let newItem = allItems[index]
+    activeItemSignature = newItem.signature.asBase58
+    
+    let element = document.getElementById(newItem.signature.asBase58)
+    if (!element) {
+        logger.debug("No element for", newItem.signature.asBase58)
+        return
+    }
+
+    let top = element.offsetTop
+    logger.debug("offsetTop:", top)
+
+    top -= 5
+    $appState.scrollMutex.run(async () => {
+        window.scrollTo({top})
+        // Hold the lock through the scroll:
+        logger.debug("before delayMs()")
+        // This feels quite hacky.  tick() doesn't work becasue there were no DOM changes to make here.
+        await delayMs(50)
+        logger.debug("after delayMs()")
+    })
+
 }
 
 </script>

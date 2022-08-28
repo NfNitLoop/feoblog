@@ -1,5 +1,6 @@
 import type { Item, Profile } from "../protos/feoblog"
 import { Client, Signature, UserID } from "./client"
+import { Mutex } from "./common"
 
 let instance: AppState|null = null
 
@@ -14,6 +15,10 @@ export class AppState
 
     readonly navigator = new Navigator()
     private _loggedInUser: UserID | null = null
+
+    // Allows things to exclusively scroll the page.
+    // Some things (<PageHeading>) may want to ignore scroll events while scrollMutex is locked.
+    readonly scrollMutex = new Mutex()
 
     constructor() {
         this._client = new Client({

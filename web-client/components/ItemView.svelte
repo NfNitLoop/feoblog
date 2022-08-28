@@ -68,6 +68,9 @@ export let clickable = false
 // which we'll use to preview files.
 export let previewFiles: FileInfo[] = []
 
+// This item is "active" w.r.t. keyboard navigation, so should have a different style:
+export let active = false
+
 let loadError = ""
 let viewMode: "normal"|"markdown"|"data" = "normal"
 
@@ -216,13 +219,17 @@ function leftPage() {
 {:else}<!-- item && !loadError-->
 <div
     class="item"
+    id={signature}
     class:clickable
     class:comment={loadedItem?.comment}
     class:shrinkImages
+    class:active
     on:click={onClick}
     use:fixLinks={{mode: linkMode}}
     use:observable={{enteredPage, leftPage}}
     bind:this={itemElement}
+    on:mouseenter
+    on:mousemove
 >
     {#if loadedItem === null}
         <div class="body">
@@ -308,6 +315,11 @@ function leftPage() {
 
 .shrinkImages .body :global(img) {
     height: 5px;
+}
+
+
+.item.active {
+    box-shadow: 0px 5px 20px rgb(0 0 0 / 80%);
 }
 
 </style>
