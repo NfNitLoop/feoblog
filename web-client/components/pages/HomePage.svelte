@@ -1,73 +1,41 @@
 <!-- Displays the homepage feed in the client. -->
-
 <PageHeading />
 
-{#each items as entry, index (entry.signature)}
-    <ItemView 
-        userID={entry.userID.toString()}
-        signature={entry.signature.toString()}
-        item={entry.item}
-    />
-{:else}
-    {#if !moreItems}
+<ItemsScroll {createItemLoader} {itemFilter}>
+<div slot="whenEmpty">
     <div class="item"><div class="body">
         {#if $appState.loggedInUser }
-            <p>Nothing to see here yet. Do you want to <a href="#/post">write a post</a>?</p>
+            <p>Nothing to see here yet. Do you want to <a href="#/u/{$appState.loggedInUser}/post">write a post</a>?</p>
 
-            <p>If you see your posts on <a href="#/u/{$appState.loggedInUser}/feed">your feed</a> but not here, 
+            <p>If you have <a href="#/u/{$appState.loggedInUser}/">written posts</a> but do not see them here, 
             make sure you flag your userID with <code>--homepage</code> like this:</p>
 
-            <code><pre>blog user add {$appState.loggedInUser} --homepage</pre></code>
+            <code><pre>feoblog user add {$appState.loggedInUser} --homepage</pre></code>
         {:else}
             <p>Nothing to see here yet. Do you want to <a href="#/login">log in</a> and write a post?</p>
         {/if}
     </div></div>
-    {/if}
-{/each}
-
-<VisibilityCheck on:itemVisible={lazyLoader.displayMoreItems} bind:visible={endIsVisible}/>
+</div>
+</ItemsScroll>
 
 <script lang="ts">
 import { getContext } from "svelte";
-
 import type { Writable } from "svelte/store";
 
+import type { ItemListEntry } from "../../protos/feoblog";
 import type { AppState } from "../../ts/app";
-import type { DisplayItem } from "../../ts/client"
-import { LazyItemLoader } from "../../ts/client";
-
-import ItemView from "../ItemView.svelte"
+import { ItemFilter, ItemOffsetParams } from "../../ts/client"
+import ItemsScroll from "../ItemsScroll.svelte";
 import PageHeading from "../PageHeading.svelte";
-import VisibilityCheck from "../VisibilityCheck.svelte";
 
 let appState: Writable<AppState> = getContext("appStateStore")
 
-let items: DisplayItem[] = []
-let endIsVisible: boolean
-
-
-// Assume there are more items to lazily load until we find otherwise:
-let moreItems = true
-
-
-$: lazyLoader = createLazyLoader()
-function createLazyLoader() {
-    items = []
-    if (lazyLoader) { lazyLoader.stop() }
-
-    return new LazyItemLoader({
-        itemEntries: $appState.client.getHomepageItems(),
-        client: $appState.client,
-        continueLoading: () => endIsVisible,
-        endReached: () => { moreItems = false },
-        displayItem: async (di) => {
-            // Neither comments nor profile updates belong on the homepage.
-            if (di.item.post) {
-                items = [...items, di]
-            }
-        }
-    })
+async function * createItemLoader(opts: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
+    yield* $appState.client.getHomepageItems(opts)
 }
 
+// Just show whatever the server thinks should be on the homepage.
+// (It's usually just posts, not comments/profile updates/etc.)
+let itemFilter = ItemFilter.allowAll()
 
 </script>

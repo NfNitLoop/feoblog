@@ -3,39 +3,43 @@
 
     TODO: (see: HEAD^^) un-shrink images after they've loaded, instead of waiting until a page scrolls into view.
 -->
-<ShowWhen condition={showTopStatus}>
-    <ItemBox>
-        {#if noMoreTop}
-            <p>You've reached the newest items on this page as of {$elapsedSinceNoMoreTop.elapsedRelative}</p>
-            <p><Button disabled={$elapsedSinceNoMoreTop.elapsedMs < 10_000} on:click={checkMoreTop}>Check For New Items</Button></p>
-        {:else if topLoader != null}
-            <p>Loading...</p>
-        {:else}
-            <!-- TODO: This seems hacky.  If they can see it, should we not be loading it? -->
-            <p>Scroll up to load more.</p>
-        {/if}
-    </ItemBox>
-</ShowWhen>
+{#if showSlot}
+    <slot name="whenEmpty"></slot>
+{:else}
+    <ShowWhen condition={showTopStatus}>
+        <ItemBox>
+            {#if noMoreTop}
+                <p>You've reached the newest items on this page as of {$elapsedSinceNoMoreTop.elapsedRelative}</p>
+                <p><Button disabled={$elapsedSinceNoMoreTop.elapsedMs < 10_000} on:click={checkMoreTop}>Check For New Items</Button></p>
+            {:else if topLoader != null}
+                <p>Loading...</p>
+            {:else}
+                <!-- TODO: This seems hacky.  If they can see it, should we not be loading it? -->
+                <p>Scroll up to load more.</p>
+            {/if}
+        </ItemBox>
+    </ShowWhen>
 
-{#each $items as entry (entry) }
-    <ItemView 
-        userID={entry.userID.asBase58}
-        signature={entry.signature.asBase58}
-        item={entry.item}
-        shrinkImages={shrinkImages(entry)}
-        active={entry.signature.asBase58 == activeItemSignature}
-        on:enteredPage={itemEnteredScreen}
-        on:leftPage={itemLeftScreen}
-        on:mousemove={() => onItemMouseEnter(entry)}
-    />
-{/each}
-<ItemBox><p>
-    {#if noMoreBottom}
-        No more items to display.
-    {:else}
-        Loading...
-    {/if}
-</p></ItemBox>
+    {#each $items as entry (entry) }
+        <ItemView 
+            userID={entry.userID.asBase58}
+            signature={entry.signature.asBase58}
+            item={entry.item}
+            shrinkImages={shrinkImages(entry)}
+            active={entry.signature.asBase58 == activeItemSignature}
+            on:enteredPage={itemEnteredScreen}
+            on:leftPage={itemLeftScreen}
+            on:mousemove={() => onItemMouseEnter(entry)}
+        />
+    {/each}
+    <ItemBox><p>
+        {#if noMoreBottom}
+            No more items to display.
+        {:else}
+            Loading...
+        {/if}
+    </p></ItemBox>
+{/if}
 <svelte:window bind:scrollY on:keyup={onWindowKeyUp} on:pageshow={onPageShow}/>
 
 <script lang="ts">
@@ -44,7 +48,7 @@ import type { ItemListEntry } from "../protos/feoblog";
 import type { DisplayItem, ItemOffsetParams } from "../ts/client";
 import { ItemFilter, LazyItemLoader } from "../ts/client";
 
-import { ConsoleLogger, delayMs, InfiniteScroll } from "../ts/common";
+import { ConsoleLogger, InfiniteScroll } from "../ts/common";
 import ItemView from "./ItemView.svelte";
 import type { Writable } from "svelte/store";
 import type { AppState } from "../ts/app";
@@ -53,11 +57,12 @@ import ItemBox from "./ItemBox.svelte";
 import ShowWhen from "./widgetes/ShowWhen.svelte";
 import Button from "./Button.svelte";
 import { ElapsedTime } from "../ts/asyncStore";
+import { query } from "svelte-hash-router"
+
 
 const logger = new ConsoleLogger({prefix: "<ItemScroll>"}) //.withDebug()
 logger.debug("Created logger. (fresh load)")
 
-export let scrollPos: number
 export let createItemLoader: (offset: ItemOffsetParams) => AsyncGenerator<ItemListEntry>|null
 
 export let itemFilter: ItemFilter = ItemFilter.allowAll()
@@ -79,7 +84,8 @@ let elapsedSinceNoMoreTop = new ElapsedTime()
 $: logger.debug("scrollPos", scrollPos)
 $: logger.debug("noMoreBottom", noMoreBottom)
 $: logger.debug("noMoreTop", noMoreTop)
-
+$: nothingToShow = noMoreBottom && noMoreTop && $items.length == 0
+$: showSlot = nothingToShow && $$slots.whenEmpty
 
 // if user changes itemfilter, or manually navigates to new scrollPosition, reload.
 $: onFilterChange(itemFilter, scrollPos)
@@ -178,6 +184,22 @@ function saveScrollPosition(event: PageEvent|null) {
 
     historyThrottle.setParam("ts", `${ts}`)
     scrollPos = ts
+}
+
+// Hmm, should this be auto-updating if we update it in saveScrollPosition? 
+// Ah, $query only gets updated when the URL is initially loaded or manually changed,
+// not when we update history w/ the current scrollPos. Weird edge case but handy.
+$: scrollPos = parseScrollPosition($query.ts)
+function parseScrollPosition(ts: string): number {
+    let pos: number
+    try { 
+        let parsed = parseInt(ts) 
+        if (isNaN(parsed)) { throw new Error("NaN")}
+        pos = parsed
+    } catch {
+        pos = new Date().valueOf() 
+    }
+    return pos
 }
 
 

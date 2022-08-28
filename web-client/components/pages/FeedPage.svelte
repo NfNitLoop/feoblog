@@ -29,7 +29,6 @@
 
     <ItemsScroll
         {createItemLoader}
-        {scrollPos}
         itemFilter={filter}
     />
 
@@ -62,10 +61,6 @@ const logger = new ConsoleLogger({prefix: "<FeedPage>"}) // .withDebug()
 
 $: userID = UserID.tryFromString($params.userID)
 
-// Hmm, should this be auto-updating if we're passing it to ItemScroll? 
-// Ah, $query only gets updated when the URL is initially loaded or manually changed,
-// not when we update history w/ the current scrollPos. Weird edge case but handy.
-$: scrollPos = parseScrollPosition($query.ts)
 
 function createItemLoader(params: ItemOffsetParams): AsyncGenerator<ItemListEntry>|null {
     if (!userID) return null
@@ -167,18 +162,7 @@ async function updateFollowedUsers(userID: UserID|null) {
     followedUsers = newFollows
 }
 
-function parseScrollPosition(ts: string): number {
-    let value = new Date().valueOf() 
-    try { 
-        let pos = parseInt(ts) 
-        if (!isNaN(pos)) {
-            
-            value = pos  
-        } 
-    }
-    catch { }
-    return value
-}
+
 
 function toggleSkippedUser(uid: string) {
     if (skippedUsers.has(uid)) {

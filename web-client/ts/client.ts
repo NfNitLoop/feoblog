@@ -218,37 +218,33 @@ export class Client {
         return {item, signature, bytes}
     }
 
-    async * getHomepageItems(): AsyncGenerator<ItemListEntry> {
-        let before: number|undefined = undefined
-        while (true) {
-
-            let list: ItemList = await this.getItemList("/homepage/proto3", {before})
-
-            if (list.items.length == 0) {
-                // There are no more items.
-                return
-            }
-    
-            for (let entry of list.items) yield entry
-            
-            if (list.no_more_items) {
-                return
-            }
-    
-            before = list.items[list.items.length - 1].timestamp_ms_utc
-        }
+    async * getHomepageItems(params?: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
+        yield* this.streamItemList("/homepage/proto3", params)
     }
 
     async * getUserFeedItems(userID: UserID, params?: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
-        let isBefore = typeof(params?.after) != "number"
+        yield* this.streamItemList(`/u/${userID}/feed/proto3`, params)
+    }
+
+    async * getUserItems(userID: UserID, params?: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
+        console.log("Got here")
+        yield* this.streamItemList(`/u/${userID}/proto3`, params)
+    }
+
+    async * getReplyItems(userID: UserID, signature: Signature): AsyncGenerator<ItemListEntry> {
+        yield* this.streamItemList(`/u/${userID}/i/${signature}/replies/proto3`)
+    }
+
+    private async * streamItemList(url: string, params?: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
         let offset = {...params}
+        let isBefore = typeof(offset.after) != "number"
 
         while (true) {
 
-            let list: ItemList = await this.getItemList(`/u/${userID}/feed/proto3`, offset)
+            let list: ItemList = await this.getItemList(url, offset)
             if (!isBefore) {
-                /// We want to iterate in chronological order for this case, but the server always
-                /// gives reverse order.  Fix it:
+                /// We want to iterate in chronological order for this case, but ItemList is defined to be
+                /// in reverse chronological order. Reverse it:
                 list.items.reverse()
             }
 
@@ -263,63 +259,20 @@ export class Client {
                 return
             }
     
+            let lastTimestamp = list.items[list.items.length - 1].timestamp_ms_utc
+            // TODO: Also include last signature.
+
             if (isBefore) {
-                offset.before = list.items[list.items.length - 1].timestamp_ms_utc
+                offset.before = lastTimestamp
             } else {
-                offset.after = list.items[list.items.length - 1].timestamp_ms_utc
+                offset.after = lastTimestamp
             }
-        }
-    }
-
-    // TODO: getUserItems, getUserFeedItems, getHomepageItems, could share more code. They're basically all
-    // paginating through an ItemList endpoint.
-    async * getUserItems(userID: UserID): AsyncGenerator<ItemListEntry> {
-        let before: number|undefined = undefined
-        while (true) {
-
-            let list: ItemList = await this.getItemList(`/u/${userID}/proto3`, {before})
-
-            if (list.items.length == 0) {
-                // There are no more items.
-                return
-            }
-    
-            for (let entry of list.items) yield entry
-            
-            if (list.no_more_items) {
-                return
-            }
-    
-            before = list.items[list.items.length - 1].timestamp_ms_utc
-        }
-    }
-
-    async * getReplyItems(userID: UserID, signature: Signature): AsyncGenerator<ItemListEntry> {
-        yield* this.paginateItemList(`/u/${userID}/i/${signature}/replies/proto3`)
-    }
-
-    private async * paginateItemList(url: string) {
-        let before: number|undefined = undefined
-        while (true) {
-            let list: ItemList = await this.getItemList(url, {before})
-            if (list.items.length == 0) {
-                // There are no more items.
-                return
-            }
-    
-            for (let entry of list.items) yield entry
-            
-            if (list.no_more_items) {
-                return
-            }
-    
-            before = list.items[list.items.length - 1].timestamp_ms_utc
         }
     }
 
     // itemsPath: relative path to the thing that yields an ItemsList, ex: /homepage/proto3
     // params: Any HTTP GET params we might send to that path for pagination.
-    private async getItemList(itemsPath: string, params?: Record<string,string|number|undefined>): Promise<ItemList> {
+    private async getItemList(itemsPath: string, params?: ItemOffsetParams): Promise<ItemList> {
 
         let url = this.base_url + itemsPath
         if (params) {
@@ -349,7 +302,10 @@ export interface ItemOffsetParams {
     before?: number
 
     /** timestamp in ms utc after which we want to query for items */
+    // Note: server still returns items in batches that are reverse-chronologically ordered
     after?: number
+
+    // TODO: add signature for a full ordering.
 }
 
 export type AttachmentMeta = {
@@ -425,7 +381,7 @@ export class UserID {
         }
     
         if (bytes.length == PASSWORD_BYTES) {
-            throw "UserID too long. (This may be a paswword!?)"
+            throw "UserID too long. (This may be a password!?)"
         }
     
         if (bytes.length > USER_ID_BYTES) {
@@ -722,7 +678,7 @@ export class LazyItemLoader {
 
 /**
  * Allows filtering items as we fetch them with a lazy loader.
- * Methods should return `true` to keep a particular Item.
+ * Returning `false` removes an item from the list.
  * 
  * Note: The base ItemFilter returns true for everything.
  */
@@ -742,7 +698,7 @@ export class ItemFilter {
     byTimestampMS(timestampMS: number): boolean { return true }
 
     /** The slowest filter, called after the item has been loaded from the server. */
-    byItem(item: Item): boolean { return true}
+    byItem(item: Item): boolean { return true }
 }
 
 
