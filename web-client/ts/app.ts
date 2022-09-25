@@ -228,11 +228,11 @@ export class AppState
 class ProfileService
 {
     private client: Client
-    private _userID: UserID|null
+    private _userID: UserID|null = null
 
     // Cache of displayNames the logged-in user has specified in their
     // profile.
-    private userCache: Promise<Map<string,string>>
+    private userCache: Promise<Map<string,string>> = Promise.resolve(new Map())
 
     // Cache of users names as specified by their own profiles
     // TODO: 
@@ -314,7 +314,7 @@ class ProfileService
 
 // Login information we save in local browser storage.
 // Needs to be JSON serializable/deserializable 
-export class SavedLogin
+export interface SavedLogin
 {
     // base58-encoded user ID.
     userID: string
