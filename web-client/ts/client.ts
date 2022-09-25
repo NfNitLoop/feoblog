@@ -1,15 +1,25 @@
-import { Item, ItemList, ItemListEntry, ItemType, Post } from "../protos/feoblog"
+import { Item, ItemList, ItemListEntry, ItemType, Post, Attachments } from "../protos/feoblog"
 import * as nacl from "./naclWorker/nacl"
 import tweetnacl from "tweetnacl"
 import { bytesToHex, ConsoleLogger, Logger, prefetch } from "./common";
 import { tick } from "svelte";
 import { decodeBase58, decodeBase58Check, encodeBase58 } from "./fbBase58";
 
-// Before sending files larger than this, we should check whether they exist:
-const SMALL_FILE_THRESHOLD = 1024 * 128
+// TODO: trim this file down to just the classes we're OK copying out to feoblog-client.
 
-
-// Encapsulates communication with the server(s).
+/**
+ * A client to GET/PUT FeoBlog Items.
+ * 
+ * {@link https://github.com/nfnitloop/feoblog}
+ * {@link https://github.com/NfNitLoop/feoblog/blob/develop/docs/data_format.md}
+ * 
+ * This client is available publicly as part of {@link https://deno.land/x/feoblog_client}.
+ * That is a (mostly) copy of the Client class from
+ * {@link https://github.com/NfNitLoop/feoblog/blob/develop/web-client/ts/client.ts}
+ * 
+ * A client takes a base_url parameter and knows how to construct REST URLs based off of that.
+ * To communicate among 2+ servers, instantiate a client for each server.
+ */
 export class Client {
 
     private base_url: string;
@@ -18,20 +28,22 @@ export class Client {
         this.base_url = config.base_url
     }
 
-    // A human-readable representation of the server we're talking to. 
     get url() {
-        return this.base_url || "local server"
+        return this.base_url
     }
 
-    // Load an Item from the server, if it exists.
-    // Validates the signature of the Item before returning it.
+    /**
+     * Load an Item from the server, if it exists.
+     * 
+     * By default, validates the signature of the Item before returning it.
+     */
     async getItem(userID: UserID|string, signature: Signature|string, options?: GetItemOptions): Promise<Item|null> {
         let bytes = await this.getItemBytes(userID, signature, options)
         if (bytes === null) return null
         return Item.deserialize(bytes)
     }
 
-    // Like getItem(), but returns the item bytes so that the signature remains valid over the bytes.
+    /** Like {@link getItem}, but returns the item bytes so that the signature remains valid over the (serialized) bytes. */
     async getItemBytes(userID: UserID|string, signature: Signature|string, options?: GetItemOptions): Promise<Uint8Array|null> {
         
         // Perform validation of these before sending:
@@ -77,8 +89,11 @@ export class Client {
         return bytes
     }
 
-    // Write an item to the server.
-    // This assumes you have provided a valid userID & signature for the given bytes.
+    /**
+     * Write an item to the server.
+     * This assumes you have provided a valid userID & signature for the given bytes.
+     * (The receiving server will check it, though!)
+     */
     async putItem(userID: UserID, signature: Signature, bytes: Uint8Array): Promise<Response> {
     
         let url = `${this.base_url}/u/${userID}/i/${signature}/proto3`
@@ -101,10 +116,14 @@ export class Client {
         return response
     }
 
+    /**
+     * After you putItem() an item that has {@link Attachments}, the server may allow you to upload the attachments
+     * (if they do not violate your quota)
+     */
     async putAttachment(userID: UserID, signature: Signature, fileName: string, blob: Blob): Promise<void> {
         // If the file is already in the content store, we can save some bandwidth/time:
         if (blob.size > SMALL_FILE_THRESHOLD) {
-            const {exists} = await this.headAttachment(userID, signature, fileName)
+            const {exists} = await this.getAttachmentMeta(userID, signature, fileName)
             if (exists) return
         }
 
@@ -120,7 +139,7 @@ export class Client {
             }
 
         } catch (e) {
-            const {exists} = await this.headAttachment(userID, signature, fileName)
+            const {exists} = await this.getAttachmentMeta(userID, signature, fileName)
             if (exists) return // Someone beat us to the upload, everything's OK.
             // else:
             throw e
@@ -131,7 +150,10 @@ export class Client {
         return `${this.base_url}/u/${userID}/i/${signature}/files/${fileName}`
     }
 
-    async headAttachment(userID: UserID, signature: Signature, fileName: string): Promise<AttachmentMeta> {
+    /**
+     * Get metadata a server has about an attachment.
+     */
+    async getAttachmentMeta(userID: UserID, signature: Signature, fileName: string): Promise<AttachmentMeta> {
         let url = this.attachmentURL(userID, signature, fileName)
         let response = await fetch(url, {
             method: "HEAD",
@@ -149,6 +171,12 @@ export class Client {
         return { exists, exceedsQuota }
     }
 
+    /**
+     * Download an attachment from a server, if it exists.
+     * 
+     * Warning: stores the attachment in memory. 
+     */
+    // TODO: Have attachment-meta get the file size?  max file size here? streaming option?
     async getAttachment(userID: UserID, signature: Signature, fileName: string): Promise<ArrayBuffer|null> {
         let url = this.attachmentURL(userID, signature, fileName)
         let response = await fetch(url)
@@ -161,10 +189,12 @@ export class Client {
         return await response.arrayBuffer()
     }
 
-    // Like getItem, but just gets the latest profile that a server knows about for a given user ID.
-    // The signature is returned in a header from the server. This function verifies that signature
-    // before returning the Item.
-    // We also verify that the Item has a Profile.
+    /** 
+     * Like {@link getItem}, but just gets the latest profile that a server knows about for a given user ID.
+     * The signature is returned in a header from the server. This function verifies that signature
+     * before returning the Item.
+     * We also verify that the Item has a Profile.
+     */
     async getProfile(userID: UserID|string): Promise<ProfileResult|null> {
         
         // Perform validation of these before sending:
@@ -218,19 +248,30 @@ export class Client {
         return {item, signature, bytes}
     }
 
+    /**
+     * An async stream over items on the site's home page.
+     */
     async * getHomepageItems(params?: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
         yield* this.streamItemList("/homepage/proto3", params)
     }
 
+    /**
+     * An async stream over a user's feed. (i.e.: content of those they follow, and themself)
+     */
     async * getUserFeedItems(userID: UserID, params?: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
         yield* this.streamItemList(`/u/${userID}/feed/proto3`, params)
     }
 
+    /**
+     * An async stream over a users's Items.
+     */
     async * getUserItems(userID: UserID, params?: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
-        console.log("Got here")
         yield* this.streamItemList(`/u/${userID}/proto3`, params)
     }
 
+    /**
+     * An async stream of all known replies to an item.
+     */
     async * getReplyItems(userID: UserID, signature: Signature): AsyncGenerator<ItemListEntry> {
         yield* this.streamItemList(`/u/${userID}/i/${signature}/replies/proto3`)
     }
@@ -296,46 +337,66 @@ export class Client {
     }
 }
 
-// Should not specify both before and after.
+/**
+ * Specifies an offset from which to start streaming items.
+ * 
+ * Note: Currently, you should only specify `before` XOR `after`.
+ */
+// TODO: Remove the above restriction.
 export interface ItemOffsetParams {
     /** timestamp in ms utc before which we want to query for items */
     before?: number
 
-    /** timestamp in ms utc after which we want to query for items */
-    // Note: server still returns items in batches that are reverse-chronologically ordered
+    /** 
+     * timestamp in ms utc after which we want to query for items 
+     * 
+     * Note: server still returns items in batches that are reverse-chronologically ordered
+     */
     after?: number
 
     // TODO: add signature for a full ordering.
 }
 
 export type AttachmentMeta = {
-    // The attachment already exists at the target location.
+    /** The attachment already exists at the target location. */
     exists: boolean,
-    // Sending the attachment would exceed the user's quota:
+    /** Sending the attachment would exceed the user's quota */
     exceedsQuota: boolean,
 }
 
 export type GetItemOptions = {
-    // When syncing items from one server to another, the receiving server MUST 
-    // perform the verification, so verifying in the client is redundant and slow.
-    // Set this flag to skip it.
+    /**
+     * Usually, you want to check the signatures of Items you retrieve to make sure they
+     * haven't been tampered with. But sometimes that can be redundant. In those cases,
+     * you can opt to skip the check.
+     */
     skipSignatureCheck?: boolean
 }
 
-// When we load a profile, we don't know its signature until it's loaded.
-// Return the signature w/ the Item:
-export class ProfileResult {
+/**
+ * When we load a profile, we don't know its signature until it's loaded.
+ * Return the signature w/ the Item
+ */
+export interface ProfileResult {
     item: Item
     signature: Signature
     bytes: Uint8Array
 }
 
-export class Config {
-    // The base URL of a feoblog server.
-    // Ex: base_url = "https://fb.example.com:8080". or "" for this server.
+export interface Config {
+    /**
+     * The base URL of a feoblog server.
+     * 
+     * Ex: base_url = "https://fb.example.com:8080". or "" for this server.
+     */
     base_url: string
 }
 
+/**
+ * UserIDs in FeoBlog are NaCL signing keys.
+ * 
+ * See: {@link https://github.com/NfNitLoop/feoblog/blob/develop/docs/crypto.md}
+ */
 export class UserID {
     toString(): string {
         return this.asBase58
@@ -358,7 +419,7 @@ export class UserID {
         let buf: Uint8Array;
         try {
             buf = decodeBase58(userID)
-        } catch (error) {
+        } catch (_error) {
             throw "UserID not valid base58"
         }
     
@@ -370,7 +431,7 @@ export class UserID {
     static tryFromString(userID: string): UserID|null {
         try {
             return UserID.fromString(userID)
-        } catch (error) {
+        } catch (_error) {
             return null
         }
     }
@@ -397,6 +458,11 @@ export class UserID {
     private constructor(readonly bytes: Uint8Array, readonly asBase58: string) { }
 }
 
+/**
+ * A detached NaCL signature over an Item.
+ * 
+ * See: {@link https://github.com/NfNitLoop/feoblog/blob/develop/docs/crypto.md}
+ */
 export class Signature {
     readonly bytes: Uint8Array
 
@@ -421,7 +487,7 @@ export class Signature {
         let buf: Uint8Array;
         try {
             buf = decodeBase58(signature)
-        } catch (error) {
+        } catch (_error) {
             throw "Signature not valid base58"
         }
     
@@ -453,6 +519,13 @@ export class Signature {
     }
 }
 
+/**
+ * Private keys are stored as base58check-encoded strings.
+ * They are only necessary to sign new pieces of content.
+ * You should keep a PrivateKey in memory for as short a time as possible.
+ * 
+ * See: {@link https://github.com/NfNitLoop/feoblog/blob/develop/docs/crypto.md}
+ */
 export class PrivateKey {
     readonly userID: UserID;
 
@@ -462,7 +535,7 @@ export class PrivateKey {
         let buf: Uint8Array;
         try {
             buf = decodeBase58(privateKey)
-        } catch (error) {
+        } catch (_error) {
             throw "Not valid base58"
         }
 
@@ -505,7 +578,11 @@ const MAX_ITEM_SIZE = 32 * 1024 // 32KiB
 // Though, we do want to protect against trying to load absolutely massive ones in the browser:
 const LENIENT_MAX_ITEM_SIZE = 1024 * 1024 // 1 MiB
 
+// Before sending files larger than this, we should check whether they exist:
+const SMALL_FILE_THRESHOLD = 1024 * 128
 
+
+/// --------------------------------------------------------------------------------------------------
 
 // Contains an item, and its userID/signature, required to properly display it:
 export interface DisplayItem {

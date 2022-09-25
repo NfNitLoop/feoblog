@@ -408,7 +408,7 @@ type SyncAttachmentParams = {
 async function syncAttachment({userID, signature, fileName, to, fromServers, tracker}: SyncAttachmentParams): Promise<number> {
     let bytesCopied = 0
 
-    let targetMeta = await to.headAttachment(userID, signature, fileName)
+    let targetMeta = await to.getAttachmentMeta(userID, signature, fileName)
     if (targetMeta.exists) {
         // No need to log anything here, this will be the common case:
         return bytesCopied
@@ -477,7 +477,7 @@ async function sendAttachmentMulti({userID, signature, fileName, toServers, from
 
     let heads: [Client, Promise<AttachmentMeta>][] = []
     for (let dest of destServers) {
-        let meta = dest.headAttachment(userID, signature, fileName)
+        let meta = dest.getAttachmentMeta(userID, signature, fileName)
         heads.push([dest, meta])
     }
 
