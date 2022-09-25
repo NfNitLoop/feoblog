@@ -553,7 +553,7 @@ class TimedData {
         return JSON.stringify(data)
     }
 
-    expiresAt: number;
+    expiresAt: number = 0
 
     constructor(
         public value: string,

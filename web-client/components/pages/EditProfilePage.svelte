@@ -41,13 +41,15 @@ import type { Writable } from "svelte/store";
 
 import type { AppState } from "../../ts/app";
 import type { ProfileResult, UserID } from "../../ts/client";
+    import { ConsoleLogger } from "../../ts/common";
 import Button from "../Button.svelte";
 import EditorWithPreview from "../EditorWithPreview.svelte"
 import PageHeading from "../PageHeading.svelte";
 
+let logger = new ConsoleLogger({prefix: "<EditProfilePage>"}) //.withDebug()
+logger.debug("loaded")
 let appState: Writable<AppState> = getContext("appStateStore")
-
-$: userID = $appState.loggedInUser
+let userID = $appState.loggedInUser
 
 let loadedProfile: Promise<LoadedProfile>
 $: loadedProfile = loadProfile(userID)
@@ -70,8 +72,11 @@ async function loadProfile(userID: UserID|null): Promise<LoadedProfile> {
 
     let result = await $appState.client.getProfile(userID)
 
-    if (result) return {
-        profile: result
+    if (result) {
+        logger.debug("Loaded profile for user: ", userID.asBase58)
+        return {
+            profile: result
+        }
     }
 
     return {}

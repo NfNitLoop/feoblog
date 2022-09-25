@@ -58,11 +58,13 @@ import ItemView from './ItemView.svelte'
 import EditProfile from './EditProfile.svelte';
 import EditPost from './EditPost.svelte';
 import SignAndSend from "./SignAndSend.svelte";
-import type { FileInfo } from "../ts/common";
+import { ConsoleLogger, FileInfo } from "../ts/common";
 import { getContext } from "svelte";
 import PageHeading from "./PageHeading.svelte";
 import TabBar from "./TabBar.svelte";
 
+let logger = new ConsoleLogger({prefix: "<EditorWithPreview>"})
+logger.debug("loaded")
 let appState: Writable<AppState> = getContext("appStateStore")
 
 // What kind of thing are we editing?
@@ -94,6 +96,7 @@ let editPost: EditPost|undefined = undefined
 let editProfile: EditProfile|undefined = undefined
 
 function clear() {
+    logger.debug("clear()")
     editPost?.clear()
     // TODO: editProfile?.clear()
 }

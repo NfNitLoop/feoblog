@@ -155,6 +155,7 @@ export class AppState
     // * If the ID is the logged-in user, use their profile display_name.
     // * If the ID is followed by the logged-in user, and they specify a display_name, use that.
     // * If the ID has a profile that we can fetch from this server, use its display name.
+    // * TODO: If the user is known to anyone followed by the logged-in user, possibly use that as a "Known as: X" name.
     // * Otherwise, return null, this user has no preferred name.
     async getPreferredName(userID: UserID): Promise<string|null> {
         return await this.profileService.lookup(userID)
@@ -222,9 +223,9 @@ export class AppState
     }
 }
 
-// TODO: Rename to NameService
 // Used to resolve UserIDs to displayNames.
 // See notes on AppState.getPreferredName()
+// TODO: Could store whole profile objects, in case we want to expose AKA names, etc.
 class ProfileService
 {
     private client: Client
