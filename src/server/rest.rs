@@ -327,7 +327,7 @@ pub(crate) async fn get_profile_item(
     // for itself anyway.
     Ok(
         proto_ok()
-        .header("signature", item.signature.to_base58())
+        .append_header(("signature", item.signature.to_base58()))
         .body(item.item_bytes)
     )
 }

@@ -241,7 +241,7 @@ pub(crate) async fn head_file(
     let response = HttpResponse::NotFound()
         // You can treat a 0 here as a "Yes, we would like this file".
         // i.e.: It's not a plain 404. We have metadata for it, and uploading it wouldn't exceed quota.
-        .set_header("X-FB-Quota-Exceeded", exceeded)
+        .insert_header(("X-FB-Quota-Exceeded", exceeded))
         .finish();
 
     Ok(response)

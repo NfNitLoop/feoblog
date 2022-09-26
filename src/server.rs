@@ -59,7 +59,7 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), anyhow::Error> {
     let app_factory = move || {
         let mut app = App::new()
             .wrap(actix_web::middleware::Logger::default())
-            .data(AppData{
+            .app_data(AppData{
                 backend_factory: factory_box.factory.dyn_clone(),
             })
             .configure(routes)
@@ -97,7 +97,7 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), anyhow::Error> {
         println!("Started at: http://{}/", bind);
     }
  
-    let mut system = actix_web::rt::System::new();
+    let system = actix_web::rt::System::new();
     system.block_on(server.run())?;
    
     Ok(())
@@ -233,7 +233,7 @@ impl <T: RustEmbed> StaticFilesResponder for T {
                     let part = format!("{}/", part);
                     return Ok(
                         HttpResponse::SeeOther()
-                            .header("location", part)
+                            .append_header(("location", part))
                             .finish()
                     );
                 }
@@ -276,7 +276,7 @@ impl <T: RustEmbed> StaticFilesResponder for T {
         let mime_type = format!("{}", mime_guess::from_path(path).first_or_octet_stream());
         let response = HttpResponse::Ok()
             .content_type(mime_type)
-            .header(header::ETAG, etag)
+            .append_header((header::ETAG, etag))
 
             // TODO: This likely will result in lots of byte copying.
             // Should implement our own MessageBody
@@ -322,7 +322,7 @@ where S: Service<ServiceRequest, Response=ServiceResponse>
         Either::Right(req)
     };
     async move {
-        let mut res = match fut {
+        let res = match fut {
             Either::Left(fut) => fut.await,
             Either::Right(req) => {
                 let res = req.into_response(http_not_modified());
@@ -382,21 +382,21 @@ fn statics(cfg: &mut web::ServiceConfig) {
 // // Applying it to each case individiaully may be error-prone, so here's a filter to do so for us.
 fn cors_ok_headers() -> DefaultHeaders {
     DefaultHeaders::new()
-    .header("Access-Control-Allow-Origin", "*")
-    .header("Access-Control-Expose-Headers", "*")
+    .add(("Access-Control-Allow-Origin", "*"))
+    .add(("Access-Control-Expose-Headers", "*"))
 
     // Number of seconds a browser can cache the cors allows.
     // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Max-Age
     // FF caps this at 24 hours, and is the most permissive there, so that's what we'll use.
     // Does this mean that my Cache-Control max-age is truncated to this value? That would be sad.
-    .header("Access-Control-Max-Age", "86400")
+    .add(("Access-Control-Max-Age", "86400"))
 }
 
 // Before browsers will post data to a server, they make a CORS OPTIONS request to see if that's OK.
 // This responds to that request to let the client know this request is allowed.
 async fn cors_preflight_allow() -> HttpResponse {
     HttpResponse::NoContent()
-        .header("Access-Control-Allow-Methods", "OPTIONS, GET, PUT, HEAD")
+        .append_header(("Access-Control-Allow-Methods", "OPTIONS, GET, PUT, HEAD"))
         .body("")
 }
 
