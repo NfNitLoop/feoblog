@@ -57,11 +57,14 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), anyhow::Error> {
     };
 
     let app_factory = move || {
+        let data = Data::new(
+            AppData{
+                backend_factory: factory_box.factory.dyn_clone(),
+            }
+        );
         let mut app = App::new()
             .wrap(actix_web::middleware::Logger::default())
-            .app_data(AppData{
-                backend_factory: factory_box.factory.dyn_clone(),
-            })
+            .app_data(data)
             .configure(routes)
         ;
 
