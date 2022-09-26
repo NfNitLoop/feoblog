@@ -6,7 +6,7 @@
 
 use std::io::{BufReader, BufWriter, Seek, SeekFrom};
 
-use actix_web::{HttpRequest, HttpResponse, Responder, client::HttpError, dev::{SizedStream}, http::{HeaderName, HeaderValue, header::{self, CONTENT_LENGTH}}, web::{Data, Path, Payload}};
+use actix_web::{HttpRequest, HttpResponse, Responder, http::{header::{self, CONTENT_LENGTH}}, web::{Data, Path, Payload}};
 use anyhow::Context;
 use futures::{AsyncSeekExt, AsyncWriteExt, StreamExt};
 use mime_guess::mime;
@@ -21,15 +21,15 @@ use super::{AppData, Error, PLAINTEXT};
 pub(crate) async fn get_file(
     req: HttpRequest,
     data: Data<AppData>,
-    Path((user_id, signature, file_name)): Path<(UserID, Signature, String)>,
+    path: Path<(UserID, Signature, String)>,
 ) -> Result<HttpResponse, Error> {
+    let (user_id, signature, file_name) = path.into_inner();
     let backend = data.backend_factory.open()?;
 
     let contents = backend.get_contents(user_id, signature, file_name.as_str())?;
     let contents = match contents {
         None => return Ok(
-            file_not_found("File not found").await
-            .respond_to(&req).await?
+            file_not_found("File not found").await.respond_to(&req).map_into_boxed_body()
         ),
         Some(c) => c,
     };
@@ -57,10 +57,11 @@ pub(crate) async fn get_file(
 
 pub(crate) async fn put_file(
     data: Data<AppData>,
-    Path((user_id, signature, file_name)): Path<(UserID, Signature, String)>,
+    path: Path<(UserID, Signature, String)>,
     req: HttpRequest,
     mut body: Payload,
 ) -> Result<HttpResponse, Error> {
+    let (user_id, signature, file_name) = path.into_inner();
     let backend = data.backend_factory.open()?;
 
     let metadata = backend.get_attachment_meta(&user_id, &signature, &file_name)?;
@@ -208,9 +209,10 @@ pub(crate) async fn drain(mut payload: Payload) {
 
 pub(crate) async fn head_file(
     data: Data<AppData>,
-    Path((user_id, signature, file_name)): Path<(UserID, Signature, String)>,
+    path: Path<(UserID, Signature, String)>,
     req: HttpRequest,
 ) -> Result<HttpResponse, Error> {
+    let (user_id, signature, file_name) = path.into_inner();
     let backend = data.backend_factory.open()?;
 
     let metadata = backend.get_attachment_meta(&user_id, &signature, &file_name)?;

@@ -10,17 +10,16 @@
 {%- for display_item in items -%}
     {%- let item = display_item.item() -%}
     {%- let row = display_item.row() -%}
-    {%- let userID = row.item.user.to_base58() -%}
+    {%- let uidz = row.item.user.to_base58() -%}
     {%- let signature = row.item.signature.to_base58() -%}
     {%- let post = item.get_post() -%}
-    {%- let title = post.get_title() -%}
     
     <div class="item post">
-        {% if title.len() > 0 %}<h1 class="title">{{ title }}</h1>{% endif %}
+        {% if post.get_title().len() > 0 %}<h1 class="title">{{ post.get_title() }}</h1>{% endif %}
         {% if show_authors -%}
-            <div class="userInfo"><a href="/u/{{ userID }}/" class="userID">@{{ display_item.display_name() }}</a></div>
+            <div class="userInfo"><a href="/u/{{ uidz }}/" class="userID">@{{ display_item.display_name() }}</a></div>
         {%- endif %}
-        <div class="timestamp"><a href="/u/{{ userID }}/i/{{ signature }}/">{{ 
+        <div class="timestamp"><a href="/u/{{ uidz }}/i/{{ signature }}/">{{ 
             item.get_timestamp_ms_utc() | with_offset(item.get_utc_offset_minutes())
         }}</a></div>
         {{ post.get_body()|markdown_with(row.item.user, row.item.signature)|safe }}

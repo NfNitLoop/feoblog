@@ -5,7 +5,7 @@ pub(crate) mod sqlite;
 use crate::protos::Item;
 use core::str::FromStr;
 use std::{fmt::Display, io::{Read, Seek, SeekFrom}, marker::PhantomData};
-use actix_web::{dev::SizedStream, web::Bytes};
+use actix_web::{web::Bytes};
 use anyhow::{Error, Context, bail, format_err};
 use bs58;
 use futures::Stream;

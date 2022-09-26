@@ -2,7 +2,7 @@
 //!
 //! Note: some endpoints are in attachments.rs, since they're used by both REST & HTML views.
 
-use actix_web::{HttpRequest, HttpResponse, dev::HttpResponseBuilder, web::{Data, Path, Payload, Query}};
+use actix_web::{HttpRequest, HttpResponse, web::{Data, Path, Payload, Query}, HttpResponseBuilder};
 use anyhow::{Context, format_err};
 use futures::StreamExt;
 use logging_timer::timer;
@@ -48,9 +48,10 @@ pub(crate) async fn homepage_item_list(
 
 pub(crate) async fn feed_item_list(
     data: Data<AppData>,
-    Path((user_id,)): Path<(UserID,)>,
+    path: Path<(UserID,)>,
     Query(pagination): Query<Pagination>,
 ) -> Result<HttpResponse, Error> {
+    let (user_id,) = path.into_inner();
     let mut paginator = Paginator::new(
         pagination,
         |row: ItemDisplayRow| -> Result<ItemListEntry,anyhow::Error> {
@@ -82,9 +83,10 @@ pub(crate) async fn feed_item_list(
 
 pub(crate) async fn user_item_list(
     data: Data<AppData>,
-    Path((user_id,)): Path<(UserID,)>,
+    path: Path<(UserID,)>,
     Query(pagination): Query<Pagination>,
 ) -> Result<HttpResponse, Error> {
+    let (user_id,) = path.into_inner();
     let mut paginator = Paginator::new(
         pagination,
         |row: ItemRow| -> Result<ItemListEntry,anyhow::Error> {
@@ -116,9 +118,10 @@ pub(crate) async fn user_item_list(
 
 pub(crate) async fn item_reply_list(
     data: Data<AppData>,
-    Path((user_id, signature)): Path<(UserID, Signature)>,
+    path: Path<(UserID, Signature)>,
     Query(pagination): Query<Pagination>,
 ) -> Result<HttpResponse, Error> {
+    let (user_id, signature) = path.into_inner();
     let mut paginator = Paginator::new(
         pagination,
         |row: ItemRow| -> Result<ItemListEntry,anyhow::Error> {
@@ -305,9 +308,9 @@ pub(crate) async fn get_item(
 /// returns the signature in a "signature" header so clients can verify it.
 pub(crate) async fn get_profile_item(
     data: Data<AppData>,
-    Path((user_id,)): Path<(UserID,)>,
+    path: Path<(UserID,)>,
 ) -> Result<HttpResponse, Error> {
-    
+    let (user_id,) = path.into_inner();
     let backend = data.backend_factory.open()?;
     let item = backend.user_profile(&user_id,)?;
     let item = match item {

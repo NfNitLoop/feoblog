@@ -1,5 +1,6 @@
 ///! Filters for askama.
 
+use std::borrow::Borrow;
 use askama::Result;
 
 use crate::{backend::{Signature, UserID}, markdown::{Options, ToHTML}};
@@ -16,11 +17,13 @@ pub(crate) fn markdown_with(s: &str, user_id: &UserID, signature: &Signature) ->
 
 
 // Seems filters always accept by reference:
-pub(crate) fn with_offset(utc_ms: &i64, offset_mins: &i32) -> Result<String> {
+// Except *sometimes* I don't get references.  Wat.  
+// That took foreeeeever to find.  
+pub(crate) fn with_offset(utc_ms: impl Borrow<i64>, offset_mins: impl Borrow<i32>) -> Result<String> {
     let timestamp = Timestamp{
-        unix_utc_ms: *utc_ms,
+        unix_utc_ms: *utc_ms.borrow(),
     };
     Ok(
-        timestamp.format_with_offset(*offset_mins as i16)
+        timestamp.format_with_offset(*offset_mins.borrow() as i16)
     )
 }

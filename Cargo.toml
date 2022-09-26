@@ -9,7 +9,7 @@ keywords = ["social", "network", "distributed"]
 
 [dependencies]
 # Web:
-actix-web = "3"
+actix-web = "4"
 actix-web-codegen = "*"
 # required for reading Actix Payloads:
 futures = "*"
@@ -59,10 +59,8 @@ log = "*"
 env_logger = "*"
 logging_timer = "*"
 
-askama_actix = "*"
-
 # To work around https://github.com/actix/actix-web/issues/1913
-socket2 = "*"
+socket2 = "0.4"
 
 # A nice library for getting blocking I/O out of the main thread(s)
 blocking = "*"
@@ -70,6 +68,10 @@ blocking = "*"
 tempfile = "*"
 
 tablestream = "0.1.3"
+
+# Suggested workaround for actix4 from: https://github.com/djc/askama/issues/586
+askama = { git = "https://github.com/djc/askama", branch = "main" }
+askama_actix = { git = "https://github.com/djc/askama", branch = "main"}
 
 [dependencies.identicon]
 git = "https://github.com/NfNitLoop/identicon"
@@ -87,9 +89,6 @@ features = [
 ]
 
 
-[dependencies.askama]
-version = "0.10"
-features = ["with-actix-web"]
 
 [dependencies.sizedisplay]
 path = "crates/sizedisplay"

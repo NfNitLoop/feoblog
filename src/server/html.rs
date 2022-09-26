@@ -3,8 +3,9 @@
 //! These redirect any javascript-enabled browser to the client UI.
 //! But any old browsers and search engines can use this to index content.
 
-use actix_web::{HttpRequest, HttpResponse, Responder, http::StatusCode, web::{Data, Path, Query}};
-use askama::Template;
+use actix_web::{HttpRequest, HttpResponse, Responder, http::StatusCode, web::{Data, Path, Query}, error::ErrorInternalServerError};
+use askama_actix::Template;
+use askama_actix as askama;
 use protobuf::Message;
 
 use crate::{backend::{ItemDisplayRow, ItemRow, Signature, UserID}, markdown::ToHTML, protos::Item, server::{IndexPageItem, Nav, non_standard::identicon_url, pagination::Paginator}};
@@ -12,11 +13,12 @@ use super::{AppData, Error, ProfileFollow, pagination::Pagination};
 
 mod filters;
 
-pub(crate) async fn file_not_found(msg: impl Into<String>) -> impl Responder<Error=actix_web::error::Error> {
+pub(crate) async fn file_not_found(msg: impl Into<String>) -> impl Responder {
     NotFoundPage {
         message: msg.into()
     }
-        .with_status(StatusCode::NOT_FOUND)
+    .customize()
+    .with_status(StatusCode::NOT_FOUND)
 }
 
 /// The root (`/`) page.
@@ -73,9 +75,10 @@ pub(crate) async fn view_homepage(
 
 pub(crate) async fn get_user_feed(
     data: Data<AppData>,
-    Path((user_id,)): Path<(UserID,)>,
+    path: Path<(UserID,)>,
     Query(pagination): Query<Pagination>,
 ) -> Result<impl Responder, Error> {
+    let (user_id,) = path.into_inner();
     let mut paginator = Paginator::new(
         pagination,
         |row: ItemDisplayRow| -> Result<IndexPageItem,anyhow::Error> {
@@ -217,7 +220,7 @@ pub(crate) async fn show_item(
     data: Data<AppData>,
     path: Path<(UserID, Signature,)>,
     req: HttpRequest,
-) -> Result<HttpResponse, Error> {
+) -> Result<HttpResponse, Box<dyn std::error::Error>> {
 
     let (user_id, signature) = path.into_inner();
     let backend = data.backend_factory.open()?;
@@ -229,10 +232,9 @@ pub(crate) async fn show_item(
             // the user might find this item on other servers. Maybe I'll leave that
             // for the in-browser client.
 
-            return Ok(
-                file_not_found("No such item").await
-                .respond_to(&req).await?
-            );
+            let not_found = file_not_found("No such item").await;
+            let res = not_found.respond_to(&req);
+            return Ok(res.map_into_boxed_body());
         }
     };
 
@@ -250,12 +252,12 @@ pub(crate) async fn show_item(
     
     use crate::protos::Item_oneof_item_type as ItemType;
     match item.item_type {
-        None => Ok(HttpResponse::InternalServerError().body("No known item type provided.")),
+        None => Err(ErrorInternalServerError("No known item type provided."))?,
         Some(ItemType::profile(_)) => {
             let profile_url = format!("/u/{}/profile/", user_id.to_base58());
             let page = ProfileUpdatePage{ nav: vec![], profile_url};
 
-            Ok(page.respond_to(&req).await?)
+            Ok(page.respond_to(&req).map_into_boxed_body())
         },
         Some(ItemType::post(p)) => {
             let page = PostPage {
@@ -280,11 +282,11 @@ pub(crate) async fn show_item(
                 utc_offset_minutes: item.utc_offset_minutes,
             };
 
-            Ok(page.respond_to(&req).await?)
+            Ok(page.respond_to(&req).map_into_boxed_body())
         },
         Some(ItemType::comment(_)) => {
             let page = NotFoundPage{message: "To view comments, please use the web client at /client/.".to_string()};
-            Ok(page.respond_to(&req).await?)
+            Ok(page.respond_to(&req).map_into_boxed_body())
         }
     }
 }
@@ -423,7 +425,7 @@ pub(crate) async fn show_profile(
         signature: row.signature,
     };
 
-    Ok(page.respond_to(&req).await?)
+    Ok(page.respond_to(&req).map_into_boxed_body())
 }
 
 
