@@ -34,15 +34,19 @@ pub(crate) async fn get_file(
         Some(c) => c,
     };
 
-    let mut mime_type = format!("{}", mime_guess::from_path(&file_name).first_or_octet_stream());
+    let mut mime_type = mime_guess::from_path(&file_name).first_or_octet_stream();
 
     // FeoBlog is not meant to be a general web server.
-    // Plus, since the client also runs in the browser, these could be a security risk:
-    if mime_type.contains("html") || mime_type.contains("javascript") {
-        mime_type = mime::TEXT_PLAIN.to_string();
+    // Plus, since the client also runs in the browser, any mime type that can run JavaScript
+    // could exfiltrate private keys.
+    // Javascript, obviously. But HTML and SVG(!!!) can embed JavaScript.
+    if !safe_type(&mime_type) {
+        mime_type = mime::APPLICATION_OCTET_STREAM;
     }
+
+    let mime_string = mime_type.to_string();
     let response = HttpResponse::Ok()
-        .content_type(mime_type)
+        .content_type(mime_string)
 
         // no_chunking() sets the content-length, so this is redundant:
         // .set_header(CONTENT_LENGTH, contents.size)
@@ -53,6 +57,22 @@ pub(crate) async fn get_file(
         // as streaming does. But actix::Error is not Send, which is required by blocking::Unblock.
 
     Ok(response)
+}
+
+// An allow-list for types we know can't embed JavaScript:
+fn safe_type(mime_type: &mime_guess::Mime) -> bool {
+    return match (mime_type.type_().as_str(), mime_type.subtype().as_str()) {
+        ("text", "plain") => true,
+        ("image", "gif") => true,
+        ("image", "jpeg") => true,
+        ("image", "png") => true,
+        ("audio", "mpeg") => true,
+        ("audio", "ogg") => true,
+        
+        // NO: javascript, HTML, SVG, others.
+        _ => false,
+    }
+
 }
 
 pub(crate) async fn put_file(
