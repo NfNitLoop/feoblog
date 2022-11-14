@@ -1,11 +1,12 @@
 import { Item, ItemList, ItemListEntry, ItemType, Post, Attachments } from "../protos/feoblog"
 import * as nacl from "./naclWorker/nacl"
 import tweetnacl from "tweetnacl"
-import { bytesToHex, ConsoleLogger, Logger, prefetch } from "./common";
+import { bytesToHex, ConsoleLogger, Logger, Mutex, prefetch } from "./common";
 import { tick } from "svelte";
 import { decodeBase58, decodeBase58Check, encodeBase58 } from "./fbBase58";
 
-// TODO: trim this file down to just the classes we're OK copying out to feoblog-client.
+// TODO: trim this file down to just the classes we're OK copying out to feoblog-client.\
+// OR: Make the Deno feoblog-client the authoritative one, and copy it here. (Deno DNT?)
 
 /**
  * A client to GET/PUT FeoBlog Items.
@@ -595,116 +596,77 @@ interface DisplayItemData extends DisplayItem {
     itemData: Uint8Array
 }
 
+
+
 export type LazyItemLoaderOptions = {
     client: Client,
-    
-    /** Whether we should continue loading more items. */
-    // TODO: deprecate
-    continueLoading?: () => boolean,
 
-    // A function we'll call when a new item is available to display:
-    displayItem: (nextItem: DisplayItem) => Promise<void>,
+    source: AsyncGenerator<ItemListEntry>,
 
-    // A function we'll call when we've reached the end of the available items.
-    endReached: () => void,
-
-    itemEntries: AsyncGenerator<ItemListEntry>,
-
-    itemFilter?: ItemFilter,
+    filter: ItemFilter,
 
     log?: Logger,
 }
-
-// Many pages deal with lazily loading a list of items from an ItemList provided by the server.
-// This class assists in that.
 export class LazyItemLoader {
+    // idea: we could make an itemFilter that counts how many items have been filtered out.
+    // shows progress searching for items when it's slow.
 
     constructor(options: LazyItemLoaderOptions) {
         this.client = options.client
-        this.continueLoading = options.continueLoading ?? (() => false)
-        this.displayItemCallback = options.displayItem
-        this.lazyDisplayItems = prefetch(options.itemEntries, 4, this.fetchDisplayItem)
-        this.endReached = options.endReached
-        this.log = options.log || new ConsoleLogger()
-        this.itemFilter = options.itemFilter || ItemFilter.allowAll()
+        this.itemFilter = options.filter
+        this.lazyDisplayItems = prefetch(options.source, 4, i => this.fetchDisplayItem(i))
     }
 
     private client: Client
-    private continueLoading: () => boolean
-    private displayItemCallback: (nextItem: DisplayItem) => Promise<void>
     private lazyDisplayItems: AsyncGenerator<DisplayItem|null>
-    private endReached: () => void
-    private log: Logger
     private itemFilter: ItemFilter
+    private log = new ConsoleLogger({prefix:"LazyItemLoader2"})
 
-    #hasMore = true
-    get hasMore() { return this.#hasMore && !this.stopped }
-    
-    // We've been stopped, and will never yield more items. Can drop in-progress items.
-    private stopped = false
-
-    private minItemsToDisplay = 10
-
-    // Are we currently in the middle of displaying more items?
-    private displayingMoreItems = false
-
-    // Call this whenever the UI needs for us to display more items.
-    // We'll continue displaying items until !continueLoading (at least).
-    displayMoreItems = async () => {
-        if (!this.hasMore) { return }
-        if (this.displayingMoreItems) {
-            // The user could scroll to the end of the page while we're still loading and displaying more items.
-            // No need to fire off another async process:
-            return
-        }
-        try {
-            this.displayingMoreItems = true
-            await this.displayMoreItems2()
-        } finally {
-            this.displayingMoreItems = false
-        }
+    #done = false
+    get done() { return this.#done }
+    abort() { 
+        this.#done = true
+        // Kill the asyncgenerator:
+        this.lazyDisplayItems.return(null)
     }
 
-    private async displayMoreItems2() {
-        const continueLoading = this.continueLoading
-        const displayItem = this.displayItemCallback
-        this.log.debug("displayMoreItems, continueLoading", continueLoading())
+    #mutex = new Mutex()
 
-        let minToDisplay = this.minItemsToDisplay
-
-        while(minToDisplay > 0 || continueLoading()) {
-
-            let n = await this.lazyDisplayItems.next()
-            if (this.stopped) {
-                // abort! We're no longer the live LazyLoader.
-                return
-            }
-
-            if (n.done) {
-                this.#hasMore = false
-                this.endReached()
-                return
-            }
-
-            if (n.value === null) {
-                // lazyDisplayItems already warned about this. Just skip:
-                continue
-            }
-
-
-            await displayItem(n.value)
-            minToDisplay--
-
-            // TODO: Deprecate continueLoading() and remove this.
-            // Wait for Svelte to apply state changes.
-            // MAY cause continueLoading to toggle off, but at least in Firefox that
-            // doesn't always seem to have happened ASAP.
-            // I don't mind loading a few more items than necessary, though.
-            await tick()  
-        }
+    /**
+     * Get up to the next `count` DisplayItems.
+     * May return a shorter list if there are no more items to fetch.
+     */
+    async getNext(count: number): Promise<Array<DisplayItem>> {
+        return await this.#mutex.run(async () => {
+            return this.#getNext(count)
+        })
     }
 
-    private fetchDisplayItem = async (entry: ItemListEntry): Promise<DisplayItem|null> => {
+    async #getNext(count: number): Promise<Array<DisplayItem>> {
+        let out: DisplayItem[] = []
+
+        for (; count > 0; count--) {
+            if (this.#done) { 
+                // inside loop because it can be set externally via abort()
+                return out
+            }
+            let next = await this.lazyDisplayItems.next()
+            if (next.done) {
+                this.#done = true
+                return out
+            }
+            if (next.value == null) {
+                count++ // this one didn't count
+            } else {
+                out.push(next.value)
+            }
+        }
+
+        return out
+    }
+
+    // Returns null if the item was filtered out.
+    private async fetchDisplayItem(entry: ItemListEntry): Promise<DisplayItem|null> {
         const filter = this.itemFilter
 
         if (!filter.byItemType(entry.item_type)) return null
@@ -717,7 +679,6 @@ export class LazyItemLoader {
         let signature = Signature.fromBytes(entry.signature.bytes)
         if (!filter.bySignature(signature)) return null
 
-
         let item: Item 
         let bytes: Uint8Array|null
         try {
@@ -726,7 +687,7 @@ export class LazyItemLoader {
             if (bytes === null) {
                 // TODO: Display some placeholder?
                 // It does seem like an error, the server told us about the item, but doesn't have it?
-                this.log.error("No such item", userID, signature)
+                this.log.error("Server advertises, but doesn't have:", userID, signature)
                 return null
             }
             item = Item.deserialize(bytes)
@@ -739,7 +700,7 @@ export class LazyItemLoader {
 
         // Check signature:
         if (!await signature.isValid(userID, bytes)) {
-            this.log.error("Invalid signature for Item", userID, signature)
+            this.log.error("Invalid signature for Item. Filtering out.", userID, signature)
             return null
         }
 
@@ -749,8 +710,6 @@ export class LazyItemLoader {
             userID: userID,
         }
     }
-
-    stop() { this.stopped = true }
 }
 
 /**
@@ -765,7 +724,7 @@ export class ItemFilter {
 
     static allowAll(): ItemFilter { return new ItemFilter() }
 
-    static matchAll(filters: ItemFilter[]) {
+    static matchAll(filters: ItemFilter[]): ItemFilter {
         return new MatchAllFilter(filters)
     }
 
@@ -773,6 +732,8 @@ export class ItemFilter {
     byUserID(userID: UserID): boolean { return true }
     bySignature(signature: Signature): boolean { return true }
     byTimestampMS(timestampMS: number): boolean { return true }
+
+    // TODO: byEntry(entry: ItemEntry)
 
     /** The slowest filter, called after the item has been loaded from the server. */
     byItem(item: Item): boolean { return true }

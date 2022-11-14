@@ -45,7 +45,7 @@ export function parseUserIDError(userID: string): string {
     try {
         parseUserID(userID)
     } catch (errorMessage) {
-        return errorMessage
+        return `${errorMessage}`
     }
     return ""
 }
@@ -350,10 +350,13 @@ function interceptLinkClick(event: Event, anchor: HTMLAnchorElement, params?: Fi
 
 // Applies `mapper` to up to `count` items before it begins yielding them.
 // Useful for prefetching things in parallel with promises.
+// `items` is assumed to be reasonably fast relative to `mapper`.
 export async function* prefetch<T, Out>(items: AsyncIterable<T>, count: Number, mapper: (t: T) => Promise<Out>): AsyncGenerator<Out> {
     let outs: Promise<Out>[] = []
 
+    // We assume items.next() is (generally, relatively) fast, so we always get it:
     for await (let item of items) {
+        // .. and then queue the next mapper call(s), but don't wait for them:
         outs.push(mapper(item))
         while (outs.length > count) {
             yield assertExists(outs.shift())
@@ -749,22 +752,20 @@ export class FileInfo {
     readonly file: File
     name: string
     readonly objectURL: string
-    hash: Hash
 
-    private constructor(file: File, name: string) {
+    private constructor(file: File, name: string, readonly hash: Hash) {
         this.file = file
         this.name = name
         this.objectURL = URL.createObjectURL(file)
     }
 
     static async from(file: File): Promise<FileInfo> {
-        let fi = new FileInfo(file, file.name)
         
         // TODO: Not supported in Safari?
         let bytes = await file.arrayBuffer()
         let ui8a = new Uint8Array(bytes)
-        fi.hash = Hash.ofBytes(ui8a)
-        return fi
+        let hash = Hash.ofBytes(ui8a)
+        return new FileInfo(file, file.name, hash)
     }
 
     get type() { return this.file.type }

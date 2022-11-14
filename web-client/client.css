@@ -22,7 +22,12 @@ input[type="text"], input[type="password"], textarea {
     font-family: inherit;
     font-size: inherit;
 }
-input:hover, input:focus, textarea:hover, textarea:focus {
+input[type="text"]:hover
+, input[type="text"]:focus
+, input[type="password"]:hover
+, input[type="password"]:focus
+, textarea:hover
+, textarea:focus {
     border: 1px solid rgba(0, 0, 0, 0.5);
     transition: border 500ms ease-in-out;
 }

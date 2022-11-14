@@ -5,12 +5,14 @@
 {#if shown}
     <slot></slot>
 {/if}
+<div bind:this={theDiv}></div>
 
 <script lang="ts">
 import { tick } from "svelte";
 import { ConsoleLogger, scrollState } from "../../ts/common";
 
 export let condition: boolean
+let theDiv: HTMLElement
 
 // private/internal:
 let shown = condition
@@ -34,9 +36,7 @@ function onChange(newValue: boolean) {
 
 // Is the item above the current viewport?
 function isAbove(): boolean {
-// TODO: Add our own element to figure this for ourselves.
-// For now, hax:
-return true
+    return theDiv.getBoundingClientRect().bottom < 0
 }
 
 </script>
