@@ -113,13 +113,14 @@ where
 
     /// The time before which we should query for items.
     /// Prefer time_span() if bidirectional pagination is supported.
+    /// TODO: Deprecate pagination by "before" only:
     pub fn before(&self) -> Timestamp {
         self.params.before.map(|t| Timestamp{ unix_utc_ms: t}).unwrap_or_else(|| Timestamp::now())
     }
 
     /// The time span we should display for the current request:
     pub fn time_span(&self) -> TimeSpan {
-        // Prefer standard reverse-chronological ordering:
+        // If both are specified, prefer "before":
         if let Some(before) = self.params.before {
             return TimeSpan::Before(Timestamp { unix_utc_ms: before });
         }

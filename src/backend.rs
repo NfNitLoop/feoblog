@@ -474,6 +474,7 @@ impl Display for SHA512 {
 }
 
 // TODO: Add signature to allow for pagination w/ full ordering:
+// TODO: Allow this to be an actual span so we can specify both ends?
 /// A(n unbounded) range of time we're requesting data for.
 #[derive(Debug)]
 pub enum TimeSpan {
