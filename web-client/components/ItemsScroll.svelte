@@ -22,7 +22,7 @@
                 {/if}
                 <p>
                     Go to: 
-                    <Button on:click={goToNow}>Now</Button>
+                    <Button disabled={!loadTopEnabled} on:click={goToNow}>Now</Button>
                     <Button on:click={goToDate} disabled={!dateButton}>Date</Button>
                     <input type="datetime-local" bind:this={goToDateInput} bind:value={goToDateValue}/>
                 </p>

@@ -38,43 +38,12 @@ import { getContext } from "svelte";
 import { params } from "svelte-hash-router"
 
 import { ProfileResult, UserID } from "../../ts/client";
-import Button from "../Button.svelte";
 import ItemView from "../ItemView.svelte";
 import PageHeading from "../PageHeading.svelte";
-import type { NavItem } from "../PageHeading.svelte"
-import type { Breadcrumbs } from "../PageHeading.svelte"
 
 let appState: Writable<AppState> = getContext("appStateStore")
 
 $: userID = UserID.tryFromString($params.userID)
-
-$: breadcrumbs = getBreadcrumbs(userID)
-function getBreadcrumbs(userID: UserID|null): Breadcrumbs {
-    if (!userID) {
-        return {crumbs: [
-            {text: "Invalid UserID"}
-        ]}
-    }
-
-    return {crumbs: [
-        {userID},
-        {text: "Profile"},
-    ]}
-}
-
-$: navItems = getNavItems(userID)
-function getNavItems(userID: UserID|null): NavItem[] {
-    if (!userID) { return [] }
-
-    let loggedIn = userID.toString() == $appState.loggedInUser?.toString()
-    if (loggedIn) {
-        return [
-            {text: "Edit", href: $appState.navigator.editProfile().hash }
-        ]
-    }
-
-    return []
-}
 
 
 let loadedProfile: Promise<LoadedProfile>

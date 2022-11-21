@@ -117,7 +117,7 @@ $: validFollows = function(){
     return valid
 }()
 
-class ValidFollow {
+interface ValidFollow {
     userID: UserID
     displayName: string
 }
@@ -235,7 +235,9 @@ function leftPage() {
 >
     {#if loadedItem === null}
         <div class="body">
-            No such item: <code>/u/{userID}/i/{signature}/</code>
+            <p>No such item:
+                <br><code>/u/{userID}/i/{signature}/</code>
+            </p>
         </div>
     {:else if loadedItem.post}
         <ItemHeader item={loadedItem} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
