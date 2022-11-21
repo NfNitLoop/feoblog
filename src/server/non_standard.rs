@@ -3,7 +3,7 @@
 //! These are not part of the documented FeoBlog standard, but are used by this
 //! particular FeoBlog implementation to provide extra features.
 
-use actix_web::{HttpResponse, web::Path, Responder};
+use actix_web::{HttpResponse, web::{Path, self}, Responder, error::{self, ErrorInternalServerError}, body::MessageBody, ResponseError};
 use futures::Future;
 use identicon::IdenticonJSOptions;
 
@@ -12,15 +12,16 @@ use crate::backend::UserID;
 /// This is not really defined as part of the standard for FeoBlogs.
 /// BUT, having a default user image is handy when implementing the Open Graph Protocol.
 /// (... which is itself also not a strict requirement for a FeoBlog.)
-pub(crate) async fn identicon_get(Path(user_id): Path<UserID>) -> Result<HttpResponse,HttpResponse> {
-    let icon = actix_web::web::block(move || identicon_get_sync(user_id))
-        .await
-        .map_err(|e| HttpResponse::InternalServerError().finish())?;
+pub(crate) async fn identicon_get(path: Path<UserID>) -> Result<HttpResponse, actix_web::Error> {
+    let user_id = path.into_inner();
+    let result = actix_web::web::block(move || identicon_get_sync(user_id)).await?;
 
-    Ok(HttpResponse::Ok()
-        .content_type("image/png")
-        .body(icon)
-    )
+    result
+        .map_err(|_| ErrorInternalServerError("Couldn't render icon"))
+        .map(|icon| {
+            let bytes = web::Bytes::from(icon);
+            HttpResponse::Ok().content_type("image/png").body(bytes)
+        })
 }
 
 fn identicon_get_sync(user_id: UserID) -> Result<Vec<u8>, ()> {

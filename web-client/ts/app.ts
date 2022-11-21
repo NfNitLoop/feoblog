@@ -1,5 +1,6 @@
 import type { Item, Profile } from "../protos/feoblog"
 import { Client, Signature, UserID } from "./client"
+import { Mutex } from "./common"
 
 let instance: AppState|null = null
 
@@ -13,6 +14,7 @@ export class AppState
     private profileService: ProfileService
 
     readonly navigator = new Navigator()
+    readonly scroll = new WindowScroller()
     private _loggedInUser: UserID | null = null
 
     constructor() {
@@ -49,6 +51,12 @@ export class AppState
     private get activeLogin(): SavedLogin|null {
         if (this._loggedInUser == null) { return null }
         let matches = this._savedLogins.filter((sl) => sl.userID == this._loggedInUser!.toString())
+        if (matches.length == 0) {
+            console.debug("Someone forgot to unset the logged-in user when it was removed")
+            this._loggedInUser = null;
+            this.saveLoggedIn()
+            return null;
+        }
         if (matches.length != 1) {
             console.warn("Excpected to find 1 profile for active login but found", matches.length)
         }
@@ -84,14 +92,14 @@ export class AppState
 
 
 
-    // Save a new login (as the first item), OR, move it to the top if it already exists.
+    // "Log in" as an identity.  It gets added to the bottom if it wasn't yet present.
     logIn(newLogin: SavedLogin) {
         let foundIndex = this._savedLogins.findIndex(
             (it) => it.userID == newLogin.userID
         )
         
         if (foundIndex < 0) {
-            this._savedLogins.unshift(newLogin)
+            this._savedLogins.push(newLogin)
         }
 
         this.writeSavedLogins()
@@ -147,6 +155,7 @@ export class AppState
     // * If the ID is the logged-in user, use their profile display_name.
     // * If the ID is followed by the logged-in user, and they specify a display_name, use that.
     // * If the ID has a profile that we can fetch from this server, use its display name.
+    // * TODO: If the user is known to anyone followed by the logged-in user, possibly use that as a "Known as: X" name.
     // * Otherwise, return null, this user has no preferred name.
     async getPreferredName(userID: UserID): Promise<string|null> {
         return await this.profileService.lookup(userID)
@@ -214,17 +223,17 @@ export class AppState
     }
 }
 
-// TODO: Rename to NameService
 // Used to resolve UserIDs to displayNames.
 // See notes on AppState.getPreferredName()
+// TODO: Could store whole profile objects, in case we want to expose AKA names, etc.
 class ProfileService
 {
     private client: Client
-    private _userID: UserID|null
+    private _userID: UserID|null = null
 
     // Cache of displayNames the logged-in user has specified in their
     // profile.
-    private userCache: Promise<Map<string,string>>
+    private userCache: Promise<Map<string,string>> = Promise.resolve(new Map())
 
     // Cache of users names as specified by their own profiles
     // TODO: 
@@ -237,6 +246,7 @@ class ProfileService
     }
 
     set userID(userID: UserID|null) {
+        if (this._userID?.asBase58 == userID?.asBase58) { return }
         this._userID = userID
         this.userCache = this.getUserCache(userID)
     }
@@ -305,7 +315,7 @@ class ProfileService
 
 // Login information we save in local browser storage.
 // Needs to be JSON serializable/deserializable 
-export class SavedLogin
+export interface SavedLogin
 {
     // base58-encoded user ID.
     userID: string
@@ -359,6 +369,22 @@ export class Navigator {
 
 }
 
+export class WindowScroller {
+    #lastKeyboardScroll = 0
+    #recentScrollThreshold = 50 // ms
+
+    // THe user initiated keyboard navigation to scroll to this location.
+    keyboardScrollTo(options: ScrollToOptions) {
+        this.#lastKeyboardScroll = this.now
+        window.scrollTo(options)
+    }
+
+    get scrolledViaKeyboard() {
+        return this.now - this.#lastKeyboardScroll < this.#recentScrollThreshold
+    }
+
+    private get now() { return new Date().valueOf() }
+}
 
 
 export class Location {

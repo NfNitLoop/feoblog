@@ -18,7 +18,7 @@
         </td>
         <td>{file.name}</td>
         <td>{file.readableSize}</td>
-        <td><Button requiresConfirmation on:click={() => removeFile(file)}>Remove</Button></td>
+        <td><Button on:click={() => removeFile(file)}>Remove</Button></td>
     </tr>
     {/each}
 </table>

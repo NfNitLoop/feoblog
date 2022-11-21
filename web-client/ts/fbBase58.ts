@@ -4,6 +4,8 @@ import * as bs58c from "bs58check"
 // While a Buffer in theory extends a Uint8Array, the google-protobuf library
 // checks the constuctor of the object to make sure it's actually a Uint8Array.
 // See: https://github.com/protocolbuffers/protobuf/issues/1319
+// TODO: In theory fixed in v3.21 by https://github.com/protocolbuffers/protobuf-javascript/pull/100/commits/5e339a3dec254371039ea49b364d5047ad31d6c1
+
 
 // This module wraps our base58(check) dependencies to fix that.
 

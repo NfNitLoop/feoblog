@@ -1,22 +1,26 @@
 use std::{borrow::Cow, fmt, fmt::Write, marker::PhantomData, net::TcpListener, ops::{Deref, DerefMut}};
 
+use askama_actix::actix_web::http::header::HeaderValue;
 use backend::FactoryBox;
 use futures::{Future, StreamExt};
 
-use actix_web::{dev::{HttpResponseBuilder, Service, ServiceRequest, ServiceResponse, Body}, http::{HeaderValue, Method, header::{self, ContentType}}, middleware::DefaultHeaders, web::Query};
+use actix_web::{middleware::DefaultHeaders, HttpRequest, HttpResponse, body};
+use actix_web::http::{Method, header::{self, ContentType}};
+
 use actix_web::web::{
     self,
     get,
     put,
     route,
     Data,
-    HttpResponse,
     Path,
-    HttpRequest,
     Payload,
+    Query,
 };
+use actix_web::dev::{Service, ServiceRequest, ServiceResponse};
+
 use actix_web::{App, HttpServer, Responder};
-use askama::Template;
+use askama_actix::Template;
 use anyhow::{Context, format_err};
 use log::debug;
 use logging_timer::timer;
@@ -53,11 +57,14 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), anyhow::Error> {
     };
 
     let app_factory = move || {
+        let data = Data::new(
+            AppData{
+                backend_factory: factory_box.factory.dyn_clone(),
+            }
+        );
         let mut app = App::new()
             .wrap(actix_web::middleware::Logger::default())
-            .data(AppData{
-                backend_factory: factory_box.factory.dyn_clone(),
-            })
+            .app_data(data)
             .configure(routes)
         ;
 
@@ -93,7 +100,7 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), anyhow::Error> {
         println!("Started at: http://{}/", bind);
     }
  
-    let mut system = actix_web::rt::System::new("web server");
+    let system = actix_web::rt::System::new();
     system.block_on(server.run())?;
    
     Ok(())
@@ -109,14 +116,14 @@ fn open_socket(bind: &str) -> Result<TcpListener, anyhow::Error> {
     
     let addr = bind.parse()?;
     let domain = match addr {
-        SocketAddr::V4(_) => Domain::ipv4(),
-        SocketAddr::V6(_) => Domain::ipv6(),
+        SocketAddr::V4(_) => Domain::IPV4,
+        SocketAddr::V6(_) => Domain::IPV6,
     };
-    let socket = Socket::new(domain, Type::stream(), Some(Protocol::tcp()))?;
+    let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
     socket.bind(&addr.into())?;
     socket.listen(backlog)?;
 
-    Ok(socket.into_tcp_listener())
+    Ok(socket.into())
 }
 
 /// Data available for our whole application.
@@ -229,7 +236,7 @@ impl <T: RustEmbed> StaticFilesResponder for T {
                     let part = format!("{}/", part);
                     return Ok(
                         HttpResponse::SeeOther()
-                            .header("location", part)
+                            .append_header(("location", part))
                             .finish()
                     );
                 }
@@ -237,7 +244,7 @@ impl <T: RustEmbed> StaticFilesResponder for T {
                 // All attempts to find a file or index.html failed:
                 return Ok(
                     HttpResponse::NotFound()
-                    .set(ContentType::plaintext())
+                    .content_type(ContentType::plaintext())
                     .body("File not found.")
                 )
             }
@@ -272,7 +279,7 @@ impl <T: RustEmbed> StaticFilesResponder for T {
         let mime_type = format!("{}", mime_guess::from_path(path).first_or_octet_stream());
         let response = HttpResponse::Ok()
             .content_type(mime_type)
-            .header(header::ETAG, etag)
+            .append_header((header::ETAG, etag))
 
             // TODO: This likely will result in lots of byte copying.
             // Should implement our own MessageBody
@@ -294,14 +301,14 @@ fn http_not_modified() -> HttpResponse {
     // In particular, when using this behind an Apache ProxyPass config, which uses persistent
     // connections, Apache seems to always be sending an HTTP 200 with (and maybe because-of?) the
     // Content-Length == 0, instead of a 304 without a Content-Length header.
-    HttpResponse::NotModified().body(Body::None)
+    HttpResponse::NotModified().body(body::None::new())
 }
 
 /// Browsers like to re-validate things even when they don't need to. (Say, when the user hits reload.)
 /// For our content-addressable URLs, make a shortcut etag to spare us some bandwidth & DB hits:
-fn immutable_etag<'a, S>(req: ServiceRequest, service: &'a mut S) 
--> impl Future<Output = Result<ServiceResponse, actix_web::error::Error>>
-where S: Service<Request=ServiceRequest, Response=ServiceResponse, Error=actix_web::error::Error>
+fn immutable_etag<'a, S>(req: ServiceRequest, service: &'a S) 
+-> impl Future<Output = Result<ServiceResponse, S::Error>>
+where S: Service<ServiceRequest, Response=ServiceResponse>
 {
     use actix_web::Either;
 
@@ -312,18 +319,24 @@ where S: Service<Request=ServiceRequest, Response=ServiceResponse, Error=actix_w
 
 
     let fut = if !cache_validation_request {
-        Either::A(service.call(req))
+        Either::Left(service.call(req))
     } else {
         // Skip dispatching to the underlying service, and pass along the req:
-        Either::B(req)
+        Either::Right(req)
     };
     async move {
-        let mut res = match fut {
-            Either::A(fut) => fut.await?,
-            Either::B(req) => {
+        let res = match fut {
+            Either::Left(fut) => fut.await,
+            Either::Right(req) => {
                 let res = req.into_response(http_not_modified());
                 return Ok(res);
             }
+        };
+
+        let mut res = match res {
+            // If result was an error, no caching:
+            Err(r) => { return Err(r); }
+            Ok(r) => r,
         };
 
         if is_get && res.response().status().is_success() {
@@ -372,21 +385,21 @@ fn statics(cfg: &mut web::ServiceConfig) {
 // // Applying it to each case individiaully may be error-prone, so here's a filter to do so for us.
 fn cors_ok_headers() -> DefaultHeaders {
     DefaultHeaders::new()
-    .header("Access-Control-Allow-Origin", "*")
-    .header("Access-Control-Expose-Headers", "*")
+    .add(("Access-Control-Allow-Origin", "*"))
+    .add(("Access-Control-Expose-Headers", "*"))
 
     // Number of seconds a browser can cache the cors allows.
     // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Max-Age
     // FF caps this at 24 hours, and is the most permissive there, so that's what we'll use.
     // Does this mean that my Cache-Control max-age is truncated to this value? That would be sad.
-    .header("Access-Control-Max-Age", "86400")
+    .add(("Access-Control-Max-Age", "86400"))
 }
 
 // Before browsers will post data to a server, they make a CORS OPTIONS request to see if that's OK.
 // This responds to that request to let the client know this request is allowed.
 async fn cors_preflight_allow() -> HttpResponse {
     HttpResponse::NoContent()
-        .header("Access-Control-Allow-Methods", "OPTIONS, GET, PUT, HEAD")
+        .append_header(("Access-Control-Allow-Methods", "OPTIONS, GET, PUT, HEAD"))
         .body("")
 }
 
@@ -464,6 +477,12 @@ where E: Into<Box<dyn std::error::Error + 'static>>
 #[derive(Debug)]
 pub struct SendError {
     inner: Box<dyn std::error::Error + Send + 'static>
+}
+
+impl Into<Box<dyn std::error::Error>> for SendError {
+    fn into(self) -> Box<dyn std::error::Error> {
+        self.inner
+    }
 }
 
 impl fmt::Display for SendError {

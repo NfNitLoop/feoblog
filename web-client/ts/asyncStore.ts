@@ -52,7 +52,7 @@ export class PeriodicStore<T> implements Readable<T> {
     }
 
     // Start a timer in case there isn't one running.
-    private start() {
+    start() {
         this.timer.start(() => {this.poll()}, 0)
     }
 
@@ -137,6 +137,58 @@ interface CountdownData {
 
     // The end-time in human-readable form relative to now:
     endRelative: string
+}
+
+// Svelte store that shows relative elapsed time.
+export class ElapsedTime implements Readable<ElapsedData> {
+
+    private inner: PeriodicStore<ElapsedData>
+    private begin: DateTime;
+
+    constructor(begin?: Date) {
+        this.begin = DateTime.fromJSDate(begin ?? new Date())
+        this.inner = new PeriodicStore(() => this.provide())
+    }
+
+    private provide(): PeriodicUpdate<ElapsedData> {
+        let elapsedMs = (new Date().valueOf()) - this.begin.valueOf() 
+        let nextPollMs = 1000 // ms
+
+        let opts: Opts = {
+            significantUnits: 2,
+            units: ["days", "hours", "minutes", "seconds"]
+        }
+
+        if (elapsedMs > 60_000) { 
+            nextPollMs = 60_000 
+            opts.units = ["days", "hours", "minutes"]
+        } 
+
+        let elapsed = relativeDuration(Duration.fromMillis(-elapsedMs), opts)
+
+        return {
+            nextPollMs,
+            value: {
+                elapsedMs,
+                elapsedRelative: elapsed
+            }
+        }
+    }
+
+    // Restart the elapsed timer from now.
+    startNow() {
+        this.begin = DateTime.fromJSDate(new Date())
+        this.inner.start()
+    }
+
+    subscribe(run: Subscriber<ElapsedData>, invalidate?: (value?: ElapsedData) => void): Unsubscriber {
+        return this.inner.subscribe(run, invalidate)
+    }
+}
+
+export interface ElapsedData {
+    elapsedMs: number
+    elapsedRelative: string
 }
 
 // See: https://github.com/moment/luxon/issues/1129

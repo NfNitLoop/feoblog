@@ -1,118 +1,162 @@
 <!--
     "infinite" scrolling for a collection of items.
+
+    TODO: (see: HEAD^^) un-shrink images after they've loaded, instead of waiting until a page scrolls into view.
 -->
-{#each $items as entry (entry) }
-    <ItemView 
-        userID={entry.userID.toString()}
-        signature={entry.signature.toString()}
-        item={entry.item}
-        shrinkImages={shrinkImages(entry)}
-        on:enteredPage={itemEnteredScreen}
-        on:leftPage={itemLeftScreen}
-    />
-    <!-- 
-    {#if entry.item?.timestamp_ms_utc == firstVisible?.item?.timestamp_ms_utc}
-        <div>👆⬆ This guy is the first visible</div>
-    {/if}
-    -->
-{/each}
-<div class="item"><div class="body"><p>
-    {#if noMoreBottom}
-        No more items to display.
-    {:else}
-        Loading...
-    {/if}
-</p></div></div>
-<svelte:window bind:scrollY />
+{#if showSlot}
+    <slot name="whenEmpty"></slot>
+{:else}
+    <ShowWhen condition={showTopStatus}>
+        <ItemBox>
+            {#if loadingTop}
+                <p>Loading...</p>
+            {:else}
+                {#if !loadTopEnabled}
+                    <p>You're all caught up!</p>
+                {:else}
+                <p><Button disabled={!loadTopEnabled} on:click={() => checkMoreTop(1)}>Load 1</Button>
+                    <Button disabled={!loadTopEnabled} on:click={() => checkMoreTop(10)}>Load 10</Button>
+                    <Button disabled={!loadTopEnabled} on:click={() => checkMoreTop(25)}>Load 25</Button>
+                    <Button disabled={!loadTopEnabled} on:click={() => checkMoreTop(50)}>Load 50</Button>
+                </p>
+                {/if}
+                <p>
+                    Go to: 
+                    <Button disabled={!loadTopEnabled} on:click={goToNow}>Now</Button>
+                    <Button on:click={goToDate} disabled={!dateButton}>Date</Button>
+                    <input type="datetime-local" bind:this={goToDateInput} bind:value={goToDateValue}/>
+                </p>
+            {/if}
+        </ItemBox>
+    </ShowWhen>
+
+    {#each $items as entry (entry) }
+        <ItemView 
+            userID={entry.userID.asBase58}
+            signature={entry.signature.asBase58}
+            item={entry.item}
+            shrinkImages={shrinkImages(entry)}
+            active={entry.signature.asBase58 == activeItemSignature}
+            on:enteredPage={itemEnteredScreen}
+            on:leftPage={itemLeftScreen}
+            on:mousemove={() => onItemMouseEnter(entry)}
+        />
+    {/each}
+    <ItemBox><p>
+        {#if noMoreBottom}
+            No more items to display.
+        {:else}
+            Loading...
+        {/if}
+    </p></ItemBox>
+{/if}
+<svelte:window bind:scrollY on:keyup={onWindowKeyUp} on:pageshow={onPageShow}/>
 
 <script lang="ts">
 import type { PageEvent } from "./ItemView.svelte";
 import type { ItemListEntry } from "../protos/feoblog";
-import type { DisplayItem, ItemOffsetParams } from "../ts/client";
-import { ItemFilter, LazyItemLoader } from "../ts/client";
+import { DisplayItem, ItemOffsetParams, ItemFilter, LazyItemLoader } from "../ts/client";
 
 import { ConsoleLogger, InfiniteScroll } from "../ts/common";
 import ItemView from "./ItemView.svelte";
 import type { Writable } from "svelte/store";
 import type { AppState } from "../ts/app";
-import { getContext, onDestroy } from "svelte";
+import { getContext, onDestroy, tick } from "svelte";
+import ItemBox from "./ItemBox.svelte";
+import ShowWhen from "./widgetes/ShowWhen.svelte";
+import Button from "./Button.svelte";
+import { ElapsedTime } from "../ts/asyncStore";
+import { query } from "svelte-hash-router"
 
-const LOGGER = new ConsoleLogger()
 
-export let scrollPos: number
-export let createItemLoader: (offset: ItemOffsetParams) => AsyncGenerator<ItemListEntry>|null
+const logger = new ConsoleLogger({prefix: "<ItemScroll>"})// .withDebug()
+logger.debug("Created logger. (fresh load)")
+
+export let createItemLoader: (offset: ItemOffsetParams) => AsyncGenerator<ItemListEntry>
 
 export let itemFilter: ItemFilter = ItemFilter.allowAll()
 
 let appState: Writable<AppState> = getContext("appStateStore")
 
-let bottomLoader: LazyItemLoader|null = null 
 
-// We only load top if the user bumps it.
-// See bumpedTop()
-let topLoader: LazyItemLoader|null = null
+let loader: LazyItemLoader|undefined
+type Direction = "up"|"down"
+let loaderDirection: Direction = "down"
+let load = {
+    initial: 15,
+    incremental: 5
+} as const
+
 
 // We've reached the end of the items at the bottom/top:
 let noMoreBottom = false
 let noMoreTop = false
+let loadingTop = false
+let showTopStatus = false
+let showGoTo = false
+let elapsedSinceNoMoreTop = new ElapsedTime()
+$: loadTopEnabled = !noMoreTop || $elapsedSinceNoMoreTop.elapsedMs > 10_000
 
+let goToDateInput: HTMLInputElement
+let goToDateValue: number|undefined
+$: dateButton = goToDateValue !== undefined
 
-$: onFilterChange(itemFilter)
-function onFilterChange(filter: ItemFilter) { 
-    topLoader?.stop()
-    topLoader = null
-    bottomLoader?.stop()
-    bottomLoader = null
+$: logger.debug("scrollPos", scrollPos)
+$: logger.debug("noMoreBottom", noMoreBottom)
+$: logger.debug("noMoreTop", noMoreTop)
+$: nothingToShow = noMoreBottom && noMoreTop && $items.length == 0
+$: showSlot = nothingToShow && $$slots.whenEmpty
 
-    items.clear()
-    bottomLoader =  reInitLoader(bottomLoader, {before: scrollPos + 1})
+function initLoaderTop() {
+    logger.debug("initLoaderTop()")
+    if (loader && !loader.done && loaderDirection == "up") {
+        logger.debug("top loading already initialized")
+        return
+    }
+
+    return reInitLoader({after: scrollPos}) 
 }
 
-
-function reInitLoader(oldLoader: LazyItemLoader|null|undefined, offset: ItemOffsetParams): LazyItemLoader|null {
+function reInitLoader(offset: ItemOffsetParams) {
     // This can happen when Svelte re-uses the component:
-    oldLoader?.stop()
-    let itemLoader = createItemLoader(offset)
-    if (!itemLoader) { return null }
+    loader?.abort()
 
-    let isBottom = typeof(offset.before) == "number"
-    LOGGER.debug("Reinit logger", isBottom ? "bottom":"top")
-    let continueLoading = (() => false)
-    let displayItem = isBottom ? (
-        async (di: DisplayItem) => { await items.pushBottom(di) }
-    ) : (
-        async (di: DisplayItem) => { await items.pushTop(di) }
-    )
-    let endReached = isBottom ? () => { noMoreBottom = true } : () => { noMoreTop = true }
+    let itemLoader = createItemLoader(offset)
+
+
+    let direction = typeof(offset.before) == "number" ? "down" : "up"
+    logger.debug("Reinit loader going", direction)
+    if (direction == "down") {
+        noMoreBottom = false
+    } else {
+        noMoreTop = false
+    }
 
     let newLoader = new LazyItemLoader({
         client: $appState.client,
-        itemEntries: itemLoader,
-        continueLoading,
-        // displayItem: async (di) => {
-        //     console.log("display", isBottom? "bottom" : "top", di.item.timestamp_ms_utc)
-        //     await displayItem(di)
-        // },
-        displayItem,
-        endReached,
-        itemFilter,
+        source: itemLoader,
+        filter: itemFilter,
     })
 
-    newLoader.displayMoreItems()
-    return newLoader
+    loader = newLoader
+    loaderDirection = offset?.before ? "down" : "up"
+    return loader
 }
 
 let items = new InfiniteScroll<DisplayItem>()
 
 let visibleElements: PageEvent[] = []
-// $: console.log("visible", visibleElements.map(e => e.item?.timestamp_ms_utc))
+// $: logger.debug("visible", visibleElements.map(e => e.item?.timestamp_ms_utc))
 
 function itemEnteredScreen(event: CustomEvent<PageEvent>) {
     visibleElements = [...visibleElements, event.detail]
 
+    // logger.debug("Item entered page", event.detail.signature.substring(0, 10))
+
     let ts = event.detail.item?.timestamp_ms_utc
     if (ts && (!shrinkWatermark || ts > shrinkWatermark)) {
         shrinkWatermark = ts
+        logger.debug("new shrinkWatermark", shrinkWatermark)
     }
 }
 
@@ -148,6 +192,56 @@ function saveScrollPosition(event: PageEvent|null) {
     scrollPos = ts
 }
 
+// Hmm, should this be auto-updating if we update it in saveScrollPosition?
+// Ah, $query only gets updated when the URL is initially loaded or manually changed,
+// not when we update history w/ the current scrollPos. Weird edge case but handy.
+$: scrollPos = parseScrollPosition($query.ts)
+$: logger.debug({scrollPos})
+function parseScrollPosition(ts: string): number {
+    let pos: number
+    try { 
+        let parsed = parseInt(ts) 
+        if (isNaN(parsed)) { throw new Error("NaN")}
+        pos = parsed
+    } catch {
+        pos = new Date().valueOf() 
+    }
+    return pos
+}
+
+// if user changes itemfilter, or manually navigates to new scrollPosition, reload.
+$: onFilterChange(itemFilter, $query.ts)
+function onFilterChange(..._changedFields: unknown[]) { 
+    logger.debug("onFilterChange()")
+    items.clear()
+
+    noMoreTop = false
+    noMoreBottom = false
+    showTopStatus = false
+    reInitLoader({before: scrollPos + 1})
+
+    loadMore(load.initial)
+}
+
+async function loadMore(count: number) {
+    logger.debug("loadMore()")
+
+    if (!loader) { return }
+
+    let nextItems = await loader.getNext(count)
+    logger.debug("Tried to load", count, "items and got", nextItems.length)
+
+    if (loaderDirection == "up") {
+        for (let item of nextItems) { await items.pushTop(item) }
+        if (loader.done) {
+            noMoreTop = true
+            elapsedSinceNoMoreTop.startNow()
+        }
+    } else {
+        for (let item of nextItems) { await items.pushBottom(item) }
+        if (loader.done) { noMoreBottom = true }
+    }
+}
 
 /**
  * Provide throttled access to the window.history API via timers.
@@ -220,22 +314,42 @@ onDestroy(() => {
 })
 
 
+// TODO: SHould be (timestamp, signature) for a full ordering. 
 // The top timestamp that's ever been visible.
 // Things before this have shrunken images to avoid scroll issues.
 let shrinkWatermark: number|undefined = undefined
 
 function shrinkImages(entry: DisplayItem): boolean {
-    return !!shrinkWatermark && (entry.item.timestamp_ms_utc > shrinkWatermark)
+    // For the very first item, don't wait for an itemEnteredScreen event
+    // If it doesn't happen from scrolling down, scrolling up will not get a shrinkImage=true, which will
+    // cause scrolling issues.
+    let ts = entry.item.timestamp_ms_utc
+    if (!shrinkWatermark) {
+        logger.debug("Setting initial watermark", ts)
+        shrinkWatermark = ts
+        return false
+    }
+
+    let shrink = ts > shrinkWatermark
+
+    if (shrink) {
+        logger.debug(entry.signature.asBase58.substring(0, 10), "shrinkImages", shrink)
+    }
+
+    return shrink
 }
 
 
 let previousScrollY = 0
-let scrollY: number
+// Can be undefined before first event fires:
+let scrollY: number|undefined
 
 $: onVerticalScroll(scrollY)
 
-function onVerticalScroll(newY: number) {
-    // LOGGER.debug("scrollY", newY)
+function onVerticalScroll(newY: number|undefined) {
+    if (newY === undefined) { return }
+
+    // logger.debug("onVerticalScroll previous", previousScrollY, "new", newY)
     let oldScrollY = previousScrollY
     previousScrollY = newY
 
@@ -247,88 +361,217 @@ function onVerticalScroll(newY: number) {
     let nearHeight = winHeight
 
     // Note: Check bottom first because it's the preferred scroll direction:
-    let bottomY = newY + winHeight
-    if (bottomY >= docHeight && bottomY > oldScrollY) {
-        bumpedBottom()
-        return
+    // If we've already loaded everything at the bottom, don't care if we're at/near there.
+    if (!noMoreBottom) {
+        let bottomY = newY + winHeight
+        if (bottomY >= docHeight && bottomY > oldScrollY) {
+            logger.debug("bumpedBottom")
+            bumpedBottom()
+            return
+        }
+
+        // Need to allow fallthrough to bumped/near top for short documents.
+        if (bottomY + nearHeight >= docHeight) {
+            logger.debug("nearBottom")
+            nearBottom()
+            return
+        }
     }
-
-    if (bottomY + nearHeight >= docHeight) {
-        nearBottom()
-        return
-    }
-
-
-    if (oldScrollY > 0 && newY == 0) {
+   
+    // With momentum-based scrolling in Safari, oldScroll might've been < 0!
+    // TODO: Bug here when manually changing ?ts= value, oldScrollY is not reset.
+    if (oldScrollY != 0 && newY == 0) {
+        logger.debug("bumpedTop", "olldScrollY", oldScrollY, "newY", newY)
         bumpedTop()
         return
     }
 
     if (newY < nearHeight) {
+        showTopStatus = true
         nearTop()
         return
     }
 }
 
-// top/bottom loaders can have 3 states:
-// loader == null -- has never been initialized, or was cleared.
-// !loader.hasMore -- loader ran out of items.
-// loader.hasMore -- ready to load more items.
 
-let haveBumpedTop = false
-function bumpedTop() {
-    haveBumpedTop = true
-    nearTop()
+$: if(noMoreBottom) {
+    // We might not have been able to scroll down, so just show the top:
+    showTopStatus = true
 }
 
-$: if (noMoreBottom && !topLoader) {
-    // We were never able to bump the top. Start loading it:
-    topLoader = reInitLoader(topLoader, {after: scrollPos})
-}
+
 
 function nearTop() {
-    // Only when we bump the top do we try loading in that direction.
-    // But we make an exception if we started at the bottom:
-    if (!haveBumpedTop) { return }
-    LOGGER.debug("nearTop")
+    // TODO: Delete?
+    return
 
-    if (!topLoader) {
-        let topTs = $items[0]?.item?.timestamp_ms_utc
-        if (!topTs) { return }
-        topLoader = reInitLoader(topLoader, {after: topTs})
-        if (shrinkWatermark) {
-            shrinkWatermark = undefined
-        }
-    }
+    // // Only when we bump the top do we try loading in that direction.
+    // // But we make an exception if we started at the bottom:
+    // if (!haveBumpedTop) { return }
+    // logger.debug("nearTop")
 
-    if (!topLoader?.hasMore) { return }
+    // if (!topLoader) {
+    //     let topTs = $items[0]?.item?.timestamp_ms_utc
+    //     if (!topTs) { return }
+    //     topLoader = reInitLoader(topLoader, {after: topTs})
+    //     if (shrinkWatermark) {
+    //         // TODO: WHy did I think I needed to do this?
+    //         // shrinkWatermark = undefined
+    //     }
+    // }
 
-    // Reset bottomLoader because we may end up truncating the list.
-    bottomLoader?.stop()
-    bottomLoader = null
-    topLoader.displayMoreItems()
+    // if (!topLoader?.hasMore) { return }
+
+    // // Reset bottomLoader because we may end up truncating the list.
+    // bottomLoader?.stop()
+    // bottomLoader = null
+    // topLoader.displayMoreItems()
 }
 
-function bumpedBottom() {
-   // No real need to distinguish this case:
-   nearBottom()
-}
+
 
 function nearBottom() {
-    
-    if (!bottomLoader) {
+    if (loaderDirection != "down") {
         let myItems = $items
         let end = myItems.length - 1
         let bottomTs = myItems[end]?.item?.timestamp_ms_utc
         if (!bottomTs) { return }
-        bottomLoader = reInitLoader(bottomLoader, {before: bottomTs})
+        reInitLoader({before: bottomTs})
     }
     
-    if (!bottomLoader?.hasMore) { return }
+    if (loader?.done) {
+        return
+    }
 
-    topLoader?.stop()
-    topLoader = null
-    // LOGGER.debug("loadMore (bottom)")
-    bottomLoader.displayMoreItems()
+    loadMore(load.incremental)
 }
+
+// No real need to distinguish these cases:
+function bumpedBottom() { nearBottom() }
+function bumpedTop() { nearTop() }
+
+async function checkMoreTop(maxItems: number) {
+    logger.log("checkMoreTop()")
+    if (loadingTop) { return }
+    try {
+        loadingTop = true
+        initLoaderTop()
+        await loadMore(maxItems)
+    } finally {
+        loadingTop = false
+    }
+
+}
+
+
+//----------- Stuff for keyboard navigation --------------- 
+
+let activeItemSignature: string|undefined = undefined
+
+// Note, we don't bind mouseenter (above) because browsers fire that when you scroll an item into view under the mouse cursor. boo.
+function onItemMouseEnter(item: DisplayItem) {
+    let newSig = item.signature.asBase58
+    if (activeItemSignature == newSig) { return } 
+    // logger.debug("onItemMouseEnter event", newSig)
+    activeItemSignature = newSig
+}
+
+function onWindowKeyUp(event: KeyboardEvent) {
+    let {key, target} = event
+    if (!(target instanceof Element)) {
+        logger.debug("onWindowKeyUp target was not an Element")
+        return
+    }
+    
+    logger.debug("keyUp", key, "on", target.tagName, event)
+    if (target.tagName != "BODY") { return }
+    if (key == "k") {
+        selectItem("prev")
+    } else if (key == "j") {
+        selectItem("next")
+    }
+}
+
+function selectItem(direction: "prev"|"next") {
+    let allItems = $items
+    let index = allItems.findIndex(it => it.signature.asBase58 == activeItemSignature)
+    if (index < 0) {
+        // No active item? Just select the first one.
+        index = 0
+    } else if (direction == "prev") { 
+        index--
+    } else if (window.scrollY == 0) {
+        // We're at the top, we just want to scroll to this element:
+        index = 0
+    } else { 
+        index++ 
+    }
+
+    if (index < 0) {
+        // Just go all the way to the top of the page. 
+        // 1. looks nice
+        // 2: triggers loading if we haven't started that yet.
+        $appState.scroll.keyboardScrollTo({top: 0})
+        return
+    }
+    if (index >= allItems.length) {
+        logger.debug("selectItem: User tried to navigate too far")
+        return
+    }
+
+    if (index == 0 && window.scrollY == 0) {
+        // we've scrolled to the top, now just scroll to this element:
+    }
+
+    let newItem = allItems[index]
+    activeItemSignature = newItem.signature.asBase58
+    
+    let element = document.getElementById(newItem.signature.asBase58)
+    if (!element) {
+        logger.debug("No element for", newItem.signature.asBase58)
+        return
+    }
+
+    let top = element.offsetTop
+    logger.debug("offsetTop:", top)
+
+    top -= 25
+    $appState.scroll.keyboardScrollTo({top})
+}
+
+function onPageShow(event: PageTransitionEvent) {
+    logger.debug("onPageShow persisted:", event.persisted, "url", window.location.toString())
+
+    // Safari on iOS tries to load a "persisted" version of the page but apparently doesn't persist
+    // it correctly so it always goes back to the top. Force a reload to get back to our saved scroll
+    // position:
+    if (event.persisted) {
+        window.location.reload()
+    }
+}
+
+function goToNow() {
+    scrollPos = new Date().valueOf()
+    onFilterChange()
+}
+
+function goToDate() {
+    if (!goToDateInput) {
+        logger.error("Can't find goToDateInput")
+        return
+    }
+
+
+    let value = goToDateInput.value
+    if (!value) {
+        logger.warn("No date selected")
+        return
+    }
+
+    let date = new Date(value)
+    let msUtc = date.valueOf()
+    scrollPos = msUtc
+    onFilterChange()
+}
+
 </script>

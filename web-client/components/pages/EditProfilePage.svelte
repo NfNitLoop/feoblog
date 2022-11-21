@@ -9,11 +9,12 @@
     {#if loaded.error}
         <div class="item error">{loaded.error}</div>
     {:else if !loaded.profile && !createNewOK}
+        <PageHeading/>
         <div class="item">
             <div class="body">
                 <p>Could not find an existing profile.</p>
                 <Button on:click={createNew}>Create New Profile</Button>
-                <Button href="#/sync">Sync from another server</Button>
+                <Button href="#/u/{userID}/sync">Sync from another server</Button>
             </div>
         </div>
     {:else if !loaded.profile}
@@ -40,12 +41,15 @@ import type { Writable } from "svelte/store";
 
 import type { AppState } from "../../ts/app";
 import type { ProfileResult, UserID } from "../../ts/client";
+    import { ConsoleLogger } from "../../ts/common";
 import Button from "../Button.svelte";
 import EditorWithPreview from "../EditorWithPreview.svelte"
+import PageHeading from "../PageHeading.svelte";
 
+let logger = new ConsoleLogger({prefix: "<EditProfilePage>"}) //.withDebug()
+logger.debug("loaded")
 let appState: Writable<AppState> = getContext("appStateStore")
-
-$: userID = $appState.loggedInUser
+let userID = $appState.loggedInUser
 
 let loadedProfile: Promise<LoadedProfile>
 $: loadedProfile = loadProfile(userID)
@@ -66,12 +70,13 @@ async function loadProfile(userID: UserID|null): Promise<LoadedProfile> {
         error: "Must be logged in."
     }
 
-    // TODO: Exhaustive search for latest profile.
-    // Warn if we only got a profile from a non-exhaustive search.
-    let result = await $appState.client.getLatestProfile(userID)
+    let result = await $appState.client.getProfile(userID)
 
-    if (result) return {
-        profile: result
+    if (result) {
+        logger.debug("Loaded profile for user: ", userID.asBase58)
+        return {
+            profile: result
+        }
     }
 
     return {}

@@ -12,8 +12,6 @@ export interface PageEvent {
     element: HTMLElement|null
 }
 
-const lock = new Mutex()
-
 </script>
 
 <script lang="ts">
@@ -21,7 +19,7 @@ const lock = new Mutex()
 import type { Writable } from "svelte/store"
 
 import { UserID} from "../ts/client"
-import { markdownToHtml, fixLinks, FileInfo, observable, Mutex} from "../ts/common"
+import { markdownToHtml, fixLinks, FileInfo, observable, scrollState, ConsoleLogger} from "../ts/common"
 import type { Item } from "../protos/feoblog"
 import type { AppState } from "../ts/app"
 import UserIdView from "./UserIDView.svelte"
@@ -70,12 +68,17 @@ export let clickable = false
 // which we'll use to preview files.
 export let previewFiles: FileInfo[] = []
 
+// This item is "active" w.r.t. keyboard navigation, so should have a different style:
+export let active = false
+
 let loadError = ""
 let viewMode: "normal"|"markdown"|"data" = "normal"
 
 let dispatcher = createEventDispatcher()
 
 let itemElement: HTMLElement|null = null
+
+const logger = new ConsoleLogger({prefix: `<ItemView> ${signature.substring(0,10)}`}) //.withDebug()
 
 $: getItem(userID, signature, item)
 async function getItem(userID: string, signature: string, initialItem: Item|null|undefined) {
@@ -89,7 +92,7 @@ async function getItem(userID: string, signature: string, initialItem: Item|null
         loadedItem = result
     } catch (e) {
         loadError = `Error loading item: ${e}`
-        console.error(e)
+        logger.error(e)
     }
 
     dispatcher("itemLoaded", loadedItem)
@@ -108,13 +111,13 @@ $: validFollows = function(){
                 displayName: follow.display_name.trim() || id.toString(),
             })
         } catch (e) {
-            console.warn(`Error parsing follow for ${userID}`, e)
+            logger.warn(`Error parsing follow for ${userID}`, e)
         }
     }
     return valid
 }()
 
-class ValidFollow {
+interface ValidFollow {
     userID: UserID
     displayName: string
 }
@@ -154,29 +157,42 @@ function pageEventDetail(): PageEvent {
     return {userID, signature, item, element: itemElement}
 }
 
-function enteredPage() {
-    dispatcher("enteredPage", pageEventDetail())
-
+async function enteredPage() {
+    logger.debug("enteredPage:")   
     if (shrinkImages) {
-        lock.run(restoreImages)
+        // Handle our own unshrink BEFORE dispatching notice to other elements,
+        // which might re-render us w/o shrink, causing a race condition.
+        await scrollState.withQuietLock(restoreImages)
     }
+
+    dispatcher("enteredPage", pageEventDetail())
 }
+
+$: logger.debug("shrinkImages:", shrinkImages)
 
 // Note: Should be run within a global lock, to prevent document offset math from having
 // race conditions.
-async function restoreImages() {
-    let beforeLength = document.body.scrollHeight
+async function restoreImages(): Promise<boolean> {
+    logger.log("restoreImages")
+
+    if (!itemElement) {
+        logger.warn("restoreImages, but no itemElement!?")
+        return false
+    }
+
+    if (shrinkImages == false) {
+        logger.warn("shrinkImages already false!?")
+        return false
+    }
+
     shrinkImages = false
     await tick()
-    let afterLength = document.body.scrollHeight
-    let deltaY = afterLength - beforeLength
-
-    // TODO: Both scrollBy and scrollTo behave strangely when scrolling with the
-    // mouse wheel in Chrome. It's as if they scrolled too much. Does this have to
-    // do with some scroll smoothing going on w/ the mouse wheel?  Doesn't happen
-    // when using the scrollbar. 
-    // window.scrollBy(0, deltaY)
-    window.scrollTo(window.scrollX, window.scrollY + deltaY)
+   
+    let bounds = itemElement.getBoundingClientRect()
+    logger.debug("bounds.top", bounds.top)
+    let needsAdjust = bounds.top < 0
+    logger.debug("restoreImages needsAdjust:", needsAdjust)
+    return needsAdjust
 }
 
 function leftPage() {
@@ -205,31 +221,38 @@ function leftPage() {
 {:else}<!-- item && !loadError-->
 <div
     class="item"
+    id={signature}
     class:clickable
     class:comment={loadedItem?.comment}
     class:shrinkImages
+    class:active
     on:click={onClick}
     use:fixLinks={{mode: linkMode}}
     use:observable={{enteredPage, leftPage}}
     bind:this={itemElement}
+    on:mouseenter
+    on:mousemove
 >
     {#if loadedItem === null}
         <div class="body">
-            No such item: <code>/u/{userID}/i/{signature}/</code>
+            <p>No such item:
+                <br><code>/u/{userID}/i/{signature}/</code>
+            </p>
         </div>
     {:else if loadedItem.post}
         <ItemHeader item={loadedItem} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
         <div class="body">
-            {#if loadedItem.post.title}
-                <h1 class="title">{ loadedItem.post.title }</h1>
-            {/if}        
             {#if viewMode == "normal"}
+                {#if loadedItem.post.title}
+                    <h1 class="title">{ loadedItem.post.title }</h1>
+                {/if}
+
                 {@html markdownToHtml(loadedItem.post.body || "", {withPreview: previewFiles, relativeBase: `/u/${userID}/i/${signature}/`})}
             {:else if viewMode == "markdown"}
-                Markdown source:
+                <p>Markdown source:</p>
                 <code><pre>{loadedItem.post.body}</pre></code>
             {:else} 
-                JSON representation of Protobuf Item:
+                <p>JSON representation of Protobuf Item:</p>
                 <code><pre>{JSON.stringify(loadedItem.toObject(), null, 4)}</pre></code>
             {/if}
 
@@ -243,10 +266,10 @@ function leftPage() {
             {#if viewMode == "normal"}
                 {@html markdownToHtml(loadedItem.profile.about, {relativeBase: `/u/${userID}/i/${signature}`})}
             {:else if viewMode == "markdown"}
-                Markdown source:
+                <p>Markdown source:</p>
                 <code><pre>{loadedItem.profile.about}</pre></code>
             {:else} 
-                JSON representation of Protobuf Item:
+                <p>JSON representation of Protobuf Item:</p>
                 <code><pre>{JSON.stringify(loadedItem.toObject(), null, 4)}</pre></code>
             {/if}
 
@@ -296,6 +319,11 @@ function leftPage() {
 
 .shrinkImages .body :global(img) {
     height: 5px;
+}
+
+
+.item.active {
+    box-shadow: 0px 5px 20px rgb(0 0 0 / 80%);
 }
 
 </style>

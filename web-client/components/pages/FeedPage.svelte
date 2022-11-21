@@ -29,7 +29,6 @@
 
     <ItemsScroll
         {createItemLoader}
-        {scrollPos}
         itemFilter={filter}
     />
 
@@ -51,25 +50,36 @@ import PageHeading from "../PageHeading.svelte"
 import UserIDView from "../UserIDView.svelte"
 import InputBox from "../InputBox.svelte";
 import ItemsScroll from "../ItemsScroll.svelte";
-import { ItemType } from "../../protos/feoblog";
+import { ItemListEntry, ItemType, Signature } from "../../protos/feoblog";
+import { ConsoleLogger } from "../../ts/common";
 
 let appState: Writable<AppState> = getContext("appStateStore")
-
-
 let search = ""
 
-$: userID = UserID.tryFromString($params.userID)
-$: scrollPos = parseScrollPosition($query.ts)
+const logger = new ConsoleLogger({prefix: "<FeedPage>"}) // .withDebug()
 
-function createItemLoader(params: ItemOffsetParams) {
+
+$: userID = UserID.tryFromString($params.userID)
+
+
+function createItemLoader(params: ItemOffsetParams): AsyncGenerator<ItemListEntry>|null {
     if (!userID) return null
-    return $appState.client.getUserFeedItems(userID, params)
+    let lazyItems = $appState.client.getUserFeedItems(userID, params)
+
+    // async function * loggingLazyItems(): AsyncGenerator<ItemListEntry> {
+    //     for await (let entry of lazyItems) {
+    //         logger.debug("got entry at ts", entry.timestamp_ms_utc)
+    //         yield entry
+    //     }
+    // }
+
+    return lazyItems
 }
 
 $: filter = function() { 
     let filters: ItemFilter[] = [
         // TODO: Filter out comments and/or posts?
-        // TODO: Show profile updates. (Once we've got a profile delta viewer)
+        // TODO: Show profile updates. (Once we've got a profile delta viewer?)
         new ExcludeItemTypes([ItemType.PROFILE])
     ]
 
@@ -109,16 +119,16 @@ async function updateFollowedUsers(userID: UserID|null) {
     let client = $appState.client
     let profile
     try {
-        profile = await client.getLatestProfile(userID)
+        profile = await client.getProfile(userID)
     } catch (error) {
-        console.error(`Error fetching profile for ${userID}`)
+        logger.error(`Error fetching profile for ${userID}`)
         return
     }
 
     if (!profile) return;
     let pProfile = profile.item.profile
     if (!pProfile) {
-        console.error("Got a profile object that doesn't contain a profile")
+        logger.error("Got a profile object that doesn't contain a profile")
         return
     }
 
@@ -132,7 +142,7 @@ async function updateFollowedUsers(userID: UserID|null) {
                 displayName: await $appState.getPreferredName(uid) || uid.toString()
             })
         } catch (error) {
-            console.error("Error parsing userID bytes:", follow)
+            logger.error("Error parsing userID bytes:", follow)
         }
 
     }
@@ -144,7 +154,7 @@ async function updateFollowedUsers(userID: UserID|null) {
             displayName: await $appState.getPreferredName(userID) || userID.toString()
         })
     } catch (error) {
-        console.error("Error fetching preferred name for:", userID.toString())
+        logger.error("Error fetching preferred name for:", userID.toString())
     }
 
     newFollows.sort((f1, f2) => f1.displayName.localeCompare(f2.displayName))
@@ -152,18 +162,7 @@ async function updateFollowedUsers(userID: UserID|null) {
     followedUsers = newFollows
 }
 
-function parseScrollPosition(ts: string): number {
-    let value = new Date().valueOf() 
-    try { 
-        let pos = parseInt(ts) 
-        if (!isNaN(pos)) {
-            
-            value = pos  
-        } 
-    }
-    catch { }
-    return value
-}
+
 
 function toggleSkippedUser(uid: string) {
     if (skippedUsers.has(uid)) {

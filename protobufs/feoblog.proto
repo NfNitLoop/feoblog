@@ -31,8 +31,11 @@ message Item {
     // for maybe a small allowance due to clock drift.)
     //
     // Servers must validate that this value is specified.
-    // Due to protobuf3 default values, this means that this means the value
+    //
+    // Due to protobuf3 default values, this means the value
     // can not be exactly 0.
+    // Update: With new versionf of proto3, we can now unambiguously specify 0.
+    // TODO: Implement that.
     int64 timestamp_ms_utc = 1;
 
     // Optionally specify the user's timezone offset when they created this
@@ -85,7 +88,7 @@ message Post {
 // /u/{userID}/profile.
 // This should always be the newest version of the Profile available on the
 // server.
-// If a server hosts a user profile, it must allow uploads of newer signed
+// If a server serves a user profile, it must allow uploads of newer signed
 // Item entries to replace it.
 message Profile {
 
@@ -139,7 +142,9 @@ message ReplyRef {
     ItemType item_type = 3;
 }
 
-// Information about where a 
+// Information about where a user's posts may be found.
+// This lets content creators' clients know where to send posts when they're uploaded.
+// This also lets consumers' clients know where they can find the creator's content.
 message Server {
 
     // A URL to a FeoBlog server.
@@ -149,7 +154,13 @@ message Server {
     // "https://feo.example.com:8080"
     // "https://feo.example.com:8080/"
     //
-    // Note: subpaths are currently not supported. Ex: "https://feo.example.com/some/subpath/"
+    // Note 1: Subpaths are currently not supported. Ex: "https://feo.example.com/some/subpath/"
+    // 
+    // Note 2: While the signature authentication allows serving/sending signed protobuf Items
+    // securely without HTTPS, since the main client is currently implemented as in-browser JavaScript,
+    // it is recommended that servers use only HTTPS to avoid JavaScript injection in the client.
+    // So, you should probably prefer https for the REST endpoints too.
+    // Plus, HTTP/2 requires HTTPS, and you'll get better performance for fetching many small Items w/ HTTP/2.
     string url = 1;
 }
 
@@ -181,11 +192,14 @@ message Signature {
 }
 
 // A list of items available on a server.
+// Exmaples:
 // GET /u/{userID}/items[?before=timestamp_ms_utc] to list a single user's items.
 // GET /u/{userID]/feed/items[?before=...] to list items in a user's feed.
-// The list is sorted in reverse chronological order.
+//
+// The list is sorted appropriately according to the request.
+// ex: ?after=... will be sorted in ascending chronological order. ?before=..., in descending.
 message ItemList {
-    // A list of items, in chronological order (newest first)
+   
     repeated ItemListEntry items = 1;
 
     // If true, the server explicitly states there are no items after this list.

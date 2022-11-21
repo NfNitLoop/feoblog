@@ -140,10 +140,14 @@ Returns a protobuf `ItemList` of all items from users followed by `userID`, incl
 
 Should accept a `before` parameter, which allows paginating through results.
 
+Also now supports an `after` parameter for iterating in the opposite direction.
+
 `/u/<userID>/profile/proto3`
 -------------------------
 
-Returns the `Item` that includes the user's latest profile. 
+Returns the `Item` that includes the user's latest profile.
+
+TODO: When revocation is implemented, the Profile returned must be the revocation. No newer profiles will be accepted past that point.
 
 MUST include a `signature` HTTP response header which contains the base58-encoded signature for the item. This allows clients to verify
 that the profile information is authentic.

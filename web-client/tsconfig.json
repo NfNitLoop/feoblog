@@ -5,8 +5,7 @@
         "esModuleInterop": true,
         "moduleResolution": "node",
         "experimentalDecorators": true,
-        "strictNullChecks": true,
-        "noImplicitAny": true,
+        "strict": true,
         "lib": [
             "dom",
             "es2020",

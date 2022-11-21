@@ -5,7 +5,7 @@ pub(crate) mod sqlite;
 use crate::protos::Item;
 use core::str::FromStr;
 use std::{fmt::Display, io::{Read, Seek, SeekFrom}, marker::PhantomData};
-use actix_web::{dev::SizedStream, web::Bytes};
+use actix_web::{web::Bytes};
 use anyhow::{Error, Context, bail, format_err};
 use bs58;
 use futures::Stream;
@@ -474,6 +474,7 @@ impl Display for SHA512 {
 }
 
 // TODO: Add signature to allow for pagination w/ full ordering:
+// TODO: Allow this to be an actual span so we can specify both ends?
 /// A(n unbounded) range of time we're requesting data for.
 #[derive(Debug)]
 pub enum TimeSpan {

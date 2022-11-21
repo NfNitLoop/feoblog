@@ -1,15 +1,26 @@
-import { Item, ItemList, ItemListEntry, ItemType, Post } from "../protos/feoblog"
+import { Item, ItemList, ItemListEntry, ItemType, Post, Attachments } from "../protos/feoblog"
 import * as nacl from "./naclWorker/nacl"
 import tweetnacl from "tweetnacl"
-import { bytesToHex, ConsoleLogger, Logger, prefetch } from "./common";
+import { bytesToHex, ConsoleLogger, Logger, Mutex, prefetch } from "./common";
 import { tick } from "svelte";
 import { decodeBase58, decodeBase58Check, encodeBase58 } from "./fbBase58";
 
-// Before sending files larger than this, we should check whether they exist:
-const SMALL_FILE_THRESHOLD = 1024 * 128
+// TODO: trim this file down to just the classes we're OK copying out to feoblog-client.\
+// OR: Make the Deno feoblog-client the authoritative one, and copy it here. (Deno DNT?)
 
-
-// Encapsulates communication with the server(s).
+/**
+ * A client to GET/PUT FeoBlog Items.
+ * 
+ * {@link https://github.com/nfnitloop/feoblog}
+ * {@link https://github.com/NfNitLoop/feoblog/blob/develop/docs/data_format.md}
+ * 
+ * This client is available publicly as part of {@link https://deno.land/x/feoblog_client}.
+ * That is a (mostly) copy of the Client class from
+ * {@link https://github.com/NfNitLoop/feoblog/blob/develop/web-client/ts/client.ts}
+ * 
+ * A client takes a base_url parameter and knows how to construct REST URLs based off of that.
+ * To communicate among 2+ servers, instantiate a client for each server.
+ */
 export class Client {
 
     private base_url: string;
@@ -18,20 +29,22 @@ export class Client {
         this.base_url = config.base_url
     }
 
-    // A human-readable representation of the server we're talking to. 
     get url() {
-        return this.base_url || "local server"
+        return this.base_url
     }
 
-    // Load an Item from the server, if it exists.
-    // Validates the signature of the Item before returning it.
+    /**
+     * Load an Item from the server, if it exists.
+     * 
+     * By default, validates the signature of the Item before returning it.
+     */
     async getItem(userID: UserID|string, signature: Signature|string, options?: GetItemOptions): Promise<Item|null> {
         let bytes = await this.getItemBytes(userID, signature, options)
         if (bytes === null) return null
         return Item.deserialize(bytes)
     }
 
-    // Like getItem(), but returns the item bytes so that the signature remains valid over the bytes.
+    /** Like {@link getItem}, but returns the item bytes so that the signature remains valid over the (serialized) bytes. */
     async getItemBytes(userID: UserID|string, signature: Signature|string, options?: GetItemOptions): Promise<Uint8Array|null> {
         
         // Perform validation of these before sending:
@@ -77,8 +90,11 @@ export class Client {
         return bytes
     }
 
-    // Write an item to the server.
-    // This assumes you have provided a valid userID & signature for the given bytes.
+    /**
+     * Write an item to the server.
+     * This assumes you have provided a valid userID & signature for the given bytes.
+     * (The receiving server will check it, though!)
+     */
     async putItem(userID: UserID, signature: Signature, bytes: Uint8Array): Promise<Response> {
     
         let url = `${this.base_url}/u/${userID}/i/${signature}/proto3`
@@ -101,10 +117,14 @@ export class Client {
         return response
     }
 
+    /**
+     * After you putItem() an item that has {@link Attachments}, the server may allow you to upload the attachments
+     * (if they do not violate your quota)
+     */
     async putAttachment(userID: UserID, signature: Signature, fileName: string, blob: Blob): Promise<void> {
         // If the file is already in the content store, we can save some bandwidth/time:
         if (blob.size > SMALL_FILE_THRESHOLD) {
-            const {exists} = await this.headAttachment(userID, signature, fileName)
+            const {exists} = await this.getAttachmentMeta(userID, signature, fileName)
             if (exists) return
         }
 
@@ -120,7 +140,7 @@ export class Client {
             }
 
         } catch (e) {
-            const {exists} = await this.headAttachment(userID, signature, fileName)
+            const {exists} = await this.getAttachmentMeta(userID, signature, fileName)
             if (exists) return // Someone beat us to the upload, everything's OK.
             // else:
             throw e
@@ -131,7 +151,10 @@ export class Client {
         return `${this.base_url}/u/${userID}/i/${signature}/files/${fileName}`
     }
 
-    async headAttachment(userID: UserID, signature: Signature, fileName: string): Promise<AttachmentMeta> {
+    /**
+     * Get metadata a server has about an attachment.
+     */
+    async getAttachmentMeta(userID: UserID, signature: Signature, fileName: string): Promise<AttachmentMeta> {
         let url = this.attachmentURL(userID, signature, fileName)
         let response = await fetch(url, {
             method: "HEAD",
@@ -149,6 +172,12 @@ export class Client {
         return { exists, exceedsQuota }
     }
 
+    /**
+     * Download an attachment from a server, if it exists.
+     * 
+     * Warning: stores the attachment in memory. 
+     */
+    // TODO: Have attachment-meta get the file size?  max file size here? streaming option?
     async getAttachment(userID: UserID, signature: Signature, fileName: string): Promise<ArrayBuffer|null> {
         let url = this.attachmentURL(userID, signature, fileName)
         let response = await fetch(url)
@@ -161,10 +190,12 @@ export class Client {
         return await response.arrayBuffer()
     }
 
-    // Like getItem, but just gets the latest profile that a server knows about for a given user ID.
-    // The signature is returned in a header from the server. This function verifies that signature
-    // before returning the Item.
-    // We also verify that the Item has a Profile.
+    /** 
+     * Like {@link getItem}, but just gets the latest profile that a server knows about for a given user ID.
+     * The signature is returned in a header from the server. This function verifies that signature
+     * before returning the Item.
+     * We also verify that the Item has a Profile.
+     */
     async getProfile(userID: UserID|string): Promise<ProfileResult|null> {
         
         // Perform validation of these before sending:
@@ -218,46 +249,44 @@ export class Client {
         return {item, signature, bytes}
     }
 
-    // Load the latest profile from any server that hosts profiles for this user.
-    async getLatestProfile(userID: UserID|string): Promise<ProfileResult|null> {
-        let result = await this.getProfile(userID)
-        if (result === null) { return result }
-
-        // TODO: Walk the profile servers and find the most-recently-updated one.
-        return result
+    /**
+     * An async stream over items on the site's home page.
+     */
+    async * getHomepageItems(params?: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
+        yield* this.streamItemList("/homepage/proto3", params)
     }
 
-    async * getHomepageItems(): AsyncGenerator<ItemListEntry> {
-        let before: number|undefined = undefined
-        while (true) {
-
-            let list: ItemList = await this.getItemList("/homepage/proto3", {before})
-
-            if (list.items.length == 0) {
-                // There are no more items.
-                return
-            }
-    
-            for (let entry of list.items) yield entry
-            
-            if (list.no_more_items) {
-                return
-            }
-    
-            before = list.items[list.items.length - 1].timestamp_ms_utc
-        }
-    }
-
+    /**
+     * An async stream over a user's feed. (i.e.: content of those they follow, and themself)
+     */
     async * getUserFeedItems(userID: UserID, params?: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
-        let isBefore = typeof(params?.after) != "number"
+        yield* this.streamItemList(`/u/${userID}/feed/proto3`, params)
+    }
+
+    /**
+     * An async stream over a users's Items.
+     */
+    async * getUserItems(userID: UserID, params?: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
+        yield* this.streamItemList(`/u/${userID}/proto3`, params)
+    }
+
+    /**
+     * An async stream of all known replies to an item.
+     */
+    async * getReplyItems(userID: UserID, signature: Signature): AsyncGenerator<ItemListEntry> {
+        yield* this.streamItemList(`/u/${userID}/i/${signature}/replies/proto3`)
+    }
+
+    private async * streamItemList(url: string, params?: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
         let offset = {...params}
+        let isBefore = typeof(offset.after) != "number"
 
         while (true) {
 
-            let list: ItemList = await this.getItemList(`/u/${userID}/feed/proto3`, offset)
+            let list: ItemList = await this.getItemList(url, offset)
             if (!isBefore) {
-                /// We want to iterate in chronological order for this case, but the server always
-                /// gives reverse order.  Fix it:
+                /// We want to iterate in chronological order for this case, but ItemList is defined to be
+                /// in reverse chronological order. Reverse it:
                 list.items.reverse()
             }
 
@@ -272,63 +301,20 @@ export class Client {
                 return
             }
     
+            let lastTimestamp = list.items[list.items.length - 1].timestamp_ms_utc
+            // TODO: Also include last signature.
+
             if (isBefore) {
-                offset.before = list.items[list.items.length - 1].timestamp_ms_utc
+                offset.before = lastTimestamp
             } else {
-                offset.after = list.items[list.items.length - 1].timestamp_ms_utc
+                offset.after = lastTimestamp
             }
-        }
-    }
-
-    // TODO: getUserItems, getUserFeedItems, getHomepageItems, could share more code. They're basically all
-    // paginating through an ItemList endpoint.
-    async * getUserItems(userID: UserID): AsyncGenerator<ItemListEntry> {
-        let before: number|undefined = undefined
-        while (true) {
-
-            let list: ItemList = await this.getItemList(`/u/${userID}/proto3`, {before})
-
-            if (list.items.length == 0) {
-                // There are no more items.
-                return
-            }
-    
-            for (let entry of list.items) yield entry
-            
-            if (list.no_more_items) {
-                return
-            }
-    
-            before = list.items[list.items.length - 1].timestamp_ms_utc
-        }
-    }
-
-    async * getReplyItems(userID: UserID, signature: Signature): AsyncGenerator<ItemListEntry> {
-        yield* this.paginateItemList(`/u/${userID}/i/${signature}/replies/proto3`)
-    }
-
-    private async * paginateItemList(url: string) {
-        let before: number|undefined = undefined
-        while (true) {
-            let list: ItemList = await this.getItemList(url, {before})
-            if (list.items.length == 0) {
-                // There are no more items.
-                return
-            }
-    
-            for (let entry of list.items) yield entry
-            
-            if (list.no_more_items) {
-                return
-            }
-    
-            before = list.items[list.items.length - 1].timestamp_ms_utc
         }
     }
 
     // itemsPath: relative path to the thing that yields an ItemsList, ex: /homepage/proto3
     // params: Any HTTP GET params we might send to that path for pagination.
-    private async getItemList(itemsPath: string, params?: Record<string,string|number|undefined>): Promise<ItemList> {
+    private async getItemList(itemsPath: string, params?: ItemOffsetParams): Promise<ItemList> {
 
         let url = this.base_url + itemsPath
         if (params) {
@@ -352,43 +338,66 @@ export class Client {
     }
 }
 
-// Should not specify both before and after.
+/**
+ * Specifies an offset from which to start streaming items.
+ * 
+ * Note: Currently, you should only specify `before` XOR `after`.
+ */
+// TODO: Remove the above restriction.
 export interface ItemOffsetParams {
     /** timestamp in ms utc before which we want to query for items */
     before?: number
 
-    /** timestamp in ms utc after which we want to query for items */
+    /** 
+     * timestamp in ms utc after which we want to query for items 
+     * 
+     * Note: server still returns items in batches that are reverse-chronologically ordered
+     */
     after?: number
+
+    // TODO: add signature for a full ordering.
 }
 
 export type AttachmentMeta = {
-    // The attachment already exists at the target location.
+    /** The attachment already exists at the target location. */
     exists: boolean,
-    // Sending the attachment would exceed the user's quota:
+    /** Sending the attachment would exceed the user's quota */
     exceedsQuota: boolean,
 }
 
 export type GetItemOptions = {
-    // When syncing items from one server to another, the receiving server MUST 
-    // perform the verification, so verifying in the client is redundant and slow.
-    // Set this flag to skip it.
+    /**
+     * Usually, you want to check the signatures of Items you retrieve to make sure they
+     * haven't been tampered with. But sometimes that can be redundant. In those cases,
+     * you can opt to skip the check.
+     */
     skipSignatureCheck?: boolean
 }
 
-// When we load a profile, we don't know its signature until it's loaded.
-// Return the signature w/ the Item:
-export class ProfileResult {
+/**
+ * When we load a profile, we don't know its signature until it's loaded.
+ * Return the signature w/ the Item
+ */
+export interface ProfileResult {
     item: Item
     signature: Signature
     bytes: Uint8Array
 }
 
-export class Config {
-    // The base URL of a feoblog server.
-    // Ex: base_url = "https://fb.example.com:8080". or "" for this server.
+export interface Config {
+    /**
+     * The base URL of a feoblog server.
+     * 
+     * Ex: base_url = "https://fb.example.com:8080". or "" for this server.
+     */
     base_url: string
 }
 
+/**
+ * UserIDs in FeoBlog are NaCL signing keys.
+ * 
+ * See: {@link https://github.com/NfNitLoop/feoblog/blob/develop/docs/crypto.md}
+ */
 export class UserID {
     toString(): string {
         return this.asBase58
@@ -411,7 +420,7 @@ export class UserID {
         let buf: Uint8Array;
         try {
             buf = decodeBase58(userID)
-        } catch (error) {
+        } catch (_error) {
             throw "UserID not valid base58"
         }
     
@@ -423,7 +432,7 @@ export class UserID {
     static tryFromString(userID: string): UserID|null {
         try {
             return UserID.fromString(userID)
-        } catch (error) {
+        } catch (_error) {
             return null
         }
     }
@@ -434,7 +443,7 @@ export class UserID {
         }
     
         if (bytes.length == PASSWORD_BYTES) {
-            throw "UserID too long. (This may be a paswword!?)"
+            throw "UserID too long. (This may be a password!?)"
         }
     
         if (bytes.length > USER_ID_BYTES) {
@@ -450,11 +459,16 @@ export class UserID {
     private constructor(readonly bytes: Uint8Array, readonly asBase58: string) { }
 }
 
+/**
+ * A detached NaCL signature over an Item.
+ * 
+ * See: {@link https://github.com/NfNitLoop/feoblog/blob/develop/docs/crypto.md}
+ */
 export class Signature {
     readonly bytes: Uint8Array
 
     toString(): string {
-        return encodeBase58(this.bytes)
+        return this.asBase58
     }
 
     // Check that a signature is valid.
@@ -474,7 +488,7 @@ export class Signature {
         let buf: Uint8Array;
         try {
             buf = decodeBase58(signature)
-        } catch (error) {
+        } catch (_error) {
             throw "Signature not valid base58"
         }
     
@@ -498,14 +512,21 @@ export class Signature {
             throw new Error("Signature too long.")
         }
     
-        return new Signature(bytes)
+        return new Signature(bytes, encodeBase58(bytes))
     }
 
-    private constructor(bytes: Uint8Array) {
+    private constructor(bytes: Uint8Array, readonly asBase58: string) {
         this.bytes = bytes
     }
 }
 
+/**
+ * Private keys are stored as base58check-encoded strings.
+ * They are only necessary to sign new pieces of content.
+ * You should keep a PrivateKey in memory for as short a time as possible.
+ * 
+ * See: {@link https://github.com/NfNitLoop/feoblog/blob/develop/docs/crypto.md}
+ */
 export class PrivateKey {
     readonly userID: UserID;
 
@@ -515,7 +536,7 @@ export class PrivateKey {
         let buf: Uint8Array;
         try {
             buf = decodeBase58(privateKey)
-        } catch (error) {
+        } catch (_error) {
             throw "Not valid base58"
         }
 
@@ -558,7 +579,11 @@ const MAX_ITEM_SIZE = 32 * 1024 // 32KiB
 // Though, we do want to protect against trying to load absolutely massive ones in the browser:
 const LENIENT_MAX_ITEM_SIZE = 1024 * 1024 // 1 MiB
 
+// Before sending files larger than this, we should check whether they exist:
+const SMALL_FILE_THRESHOLD = 1024 * 128
 
+
+/// --------------------------------------------------------------------------------------------------
 
 // Contains an item, and its userID/signature, required to properly display it:
 export interface DisplayItem {
@@ -571,115 +596,77 @@ interface DisplayItemData extends DisplayItem {
     itemData: Uint8Array
 }
 
+
+
 export type LazyItemLoaderOptions = {
     client: Client,
-    
-    /** Whether we should continue loading more items. */
-    continueLoading: () => boolean,
 
-    // A function we'll call when a new item is available to display:
-    displayItem: (nextItem: DisplayItem) => Promise<void>,
+    source: AsyncGenerator<ItemListEntry>,
 
-    // A function we'll call when we've reached the end of the available items.
-    endReached: () => void,
-
-    itemEntries: AsyncGenerator<ItemListEntry>,
-
-    itemFilter?: ItemFilter,
+    filter: ItemFilter,
 
     log?: Logger,
 }
-
-// Many pages deal with lazily loading a list of items from an ItemList provided by the server.
-// This class assists in that.
 export class LazyItemLoader {
+    // idea: we could make an itemFilter that counts how many items have been filtered out.
+    // shows progress searching for items when it's slow.
 
     constructor(options: LazyItemLoaderOptions) {
         this.client = options.client
-        this.continueLoading = options.continueLoading
-        this.displayItemCallback = options.displayItem
-        this.lazyDisplayItems = prefetch(options.itemEntries, 4, this.fetchDisplayItem)
-        this.endReached = options.endReached
-        this.log = options.log || new ConsoleLogger()
-        this.itemFilter = options.itemFilter || ItemFilter.allowAll()
+        this.itemFilter = options.filter
+        this.lazyDisplayItems = prefetch(options.source, 4, i => this.fetchDisplayItem(i))
     }
 
     private client: Client
-    private continueLoading: () => boolean
-    private displayItemCallback: (nextItem: DisplayItem) => Promise<void>
     private lazyDisplayItems: AsyncGenerator<DisplayItem|null>
-    private endReached: () => void
-    private log: Logger
     private itemFilter: ItemFilter
+    private log = new ConsoleLogger({prefix:"LazyItemLoader2"})
 
-    #hasMore = true
-    get hasMore() { return this.#hasMore && !this.stopped }
-    
-    // We've been stopped, and will never yield more items. Can drop in-progress items.
-    private stopped = false
-
-    private minItemsToDisplay = 10
-
-    // Are we currently in the middle of displaying more items?
-    private displayingMoreItems = false
-
-    // Call this whenever the UI needs for us to display more items.
-    // We'll continue displaying items until !continueLoading (at least).
-    displayMoreItems = async () => {
-        if (!this.hasMore) { return }
-        if (this.displayingMoreItems) {
-            // The user could scroll to the end of the page while we're still loading and displaying more items.
-            // No need to fire off another async process:
-            return
-        }
-        try {
-            this.displayingMoreItems = true
-            await this.displayMoreItems2()
-        } finally {
-            this.displayingMoreItems = false
-        }
+    #done = false
+    get done() { return this.#done }
+    abort() { 
+        this.#done = true
+        // Kill the asyncgenerator:
+        this.lazyDisplayItems.return(null)
     }
 
-    private async displayMoreItems2() {
-        const continueLoading = this.continueLoading
-        const displayItem = this.displayItemCallback
-        this.log.debug("displayMoreItems, continueLoading", continueLoading())
+    #mutex = new Mutex()
 
-        let minToDisplay = this.minItemsToDisplay
-
-        while(minToDisplay > 0 || continueLoading()) {
-
-            let n = await this.lazyDisplayItems.next()
-            if (this.stopped) {
-                // abort! We're no longer the live LazyLoader.
-                return
-            }
-
-            if (n.done) {
-                this.#hasMore = false
-                this.endReached()
-                return
-            }
-
-            if (n.value === null) {
-                // lazyDisplayItems already warned about this. Just skip:
-                continue
-            }
-
-
-            await displayItem(n.value)
-            minToDisplay--
-
-            // TODO: Deprecate continueLoading() and remove this.
-            // Wait for Svelte to apply state changes.
-            // MAY cause continueLoading to toggle off, but at least in Firefox that
-            // doesn't always seem to have happened ASAP.
-            // I don't mind loading a few more items than necessary, though.
-            await tick()  
-        }
+    /**
+     * Get up to the next `count` DisplayItems.
+     * May return a shorter list if there are no more items to fetch.
+     */
+    async getNext(count: number): Promise<Array<DisplayItem>> {
+        return await this.#mutex.run(async () => {
+            return this.#getNext(count)
+        })
     }
 
-    private fetchDisplayItem = async (entry: ItemListEntry): Promise<DisplayItem|null> => {
+    async #getNext(count: number): Promise<Array<DisplayItem>> {
+        let out: DisplayItem[] = []
+
+        for (; count > 0; count--) {
+            if (this.#done) { 
+                // inside loop because it can be set externally via abort()
+                return out
+            }
+            let next = await this.lazyDisplayItems.next()
+            if (next.done) {
+                this.#done = true
+                return out
+            }
+            if (next.value == null) {
+                count++ // this one didn't count
+            } else {
+                out.push(next.value)
+            }
+        }
+
+        return out
+    }
+
+    // Returns null if the item was filtered out.
+    private async fetchDisplayItem(entry: ItemListEntry): Promise<DisplayItem|null> {
         const filter = this.itemFilter
 
         if (!filter.byItemType(entry.item_type)) return null
@@ -692,7 +679,6 @@ export class LazyItemLoader {
         let signature = Signature.fromBytes(entry.signature.bytes)
         if (!filter.bySignature(signature)) return null
 
-
         let item: Item 
         let bytes: Uint8Array|null
         try {
@@ -701,7 +687,7 @@ export class LazyItemLoader {
             if (bytes === null) {
                 // TODO: Display some placeholder?
                 // It does seem like an error, the server told us about the item, but doesn't have it?
-                this.log.error("No such item", userID, signature)
+                this.log.error("Server advertises, but doesn't have:", userID, signature)
                 return null
             }
             item = Item.deserialize(bytes)
@@ -714,7 +700,7 @@ export class LazyItemLoader {
 
         // Check signature:
         if (!await signature.isValid(userID, bytes)) {
-            this.log.error("Invalid signature for Item", userID, signature)
+            this.log.error("Invalid signature for Item. Filtering out.", userID, signature)
             return null
         }
 
@@ -724,13 +710,11 @@ export class LazyItemLoader {
             userID: userID,
         }
     }
-
-    stop() { this.stopped = true }
 }
 
 /**
  * Allows filtering items as we fetch them with a lazy loader.
- * Methods should return `true` to keep a particular Item.
+ * Returning `false` removes an item from the list.
  * 
  * Note: The base ItemFilter returns true for everything.
  */
@@ -740,7 +724,7 @@ export class ItemFilter {
 
     static allowAll(): ItemFilter { return new ItemFilter() }
 
-    static matchAll(filters: ItemFilter[]) {
+    static matchAll(filters: ItemFilter[]): ItemFilter {
         return new MatchAllFilter(filters)
     }
 
@@ -749,8 +733,10 @@ export class ItemFilter {
     bySignature(signature: Signature): boolean { return true }
     byTimestampMS(timestampMS: number): boolean { return true }
 
+    // TODO: byEntry(entry: ItemEntry)
+
     /** The slowest filter, called after the item has been loaded from the server. */
-    byItem(item: Item): boolean { return true}
+    byItem(item: Item): boolean { return true }
 }
 
 

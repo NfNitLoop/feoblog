@@ -68,7 +68,7 @@ import { PrivateKey, Signature } from "../ts/client";
 import Button from "./Button.svelte";
 import InputBox from "./InputBox.svelte"
 import TaskTrackerView from "./TaskTrackerView.svelte"
-import { FileInfo, Mutex, TaskTracker } from "../ts/common";
+import { ConsoleLogger, FileInfo, Mutex, TaskTracker } from "../ts/common";
 import { decodeBase58, decodeBase58Check, encodeBase58 } from "../ts/fbBase58";
 import SecretKeyInput from "./SecretKeyInput.svelte";
 import { SecurityManager } from "../ts/storage";
@@ -89,6 +89,8 @@ export let onSendSuccess = () => {}
 // Attachments SignAndSend should send w/ the Item:
 export let attachments: FileInfo[] = []
 
+let logger = new ConsoleLogger({prefix: "<SignAndSend>"})
+logger.debug("loaded")
 
 $: itemBytes = item.serialize()
 
@@ -158,7 +160,7 @@ $: validSignature = function(): boolean {
         let sig = Signature.fromString(signature)
         isValid = sig.isValidSync(userID, itemBytes)
     } catch (error) {
-        console.error("Error validating signature:", error)
+        logger.error("Error validating signature:", error)
     }
 
     // Re-validating a signature on every keypress is *expensive*.
@@ -182,6 +184,8 @@ $: signEnabled = (
     || validPrivateKey
 )
 
+$: logger.debug("validSignature", validSignature)
+$: logger.debug("signature:", signature)
 
 // Create a signature, delete the password.
 function sign() {
@@ -231,7 +235,7 @@ async function submit() {
         return
     }
     await sendMutex.run(async () => {
-        await tracker.run("Sending", doSubmit)
+        await tracker.run("Sending", trackerSubmit)
     })
 
     if (tracker.errorCount == 0 && navigateWhenDone) {
@@ -240,7 +244,7 @@ async function submit() {
 
 }
 
-async function doSubmit(tracker: TaskTracker): Promise<void> {
+async function trackerSubmit(tracker: TaskTracker): Promise<void> {
     if ( anyErrors || !validSignature) {
         console.error("Submit clicked when not valid");
         return

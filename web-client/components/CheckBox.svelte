@@ -13,7 +13,7 @@ function onClick(event: InputEvent) {
 </script>
 
 <check-box class:checked class:onGrey on:click={onClick}>
-    <input type="checkbox" {checked}> <slot></slot>
+    <input type="checkbox" {checked} {disabled}> <slot></slot>
 </check-box>
 
 <style>
