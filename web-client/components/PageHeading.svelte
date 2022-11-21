@@ -154,37 +154,60 @@ let navTree = new NavNode({
     pattern: "/home",
     title: window.location.hostname,
     children: [
+        {
+            requireCurrentUser: true,
+            title: "My Feed",
+            pattern: "/u/:uid/feed",
+            linkAway: true,
+        },
         { 
-            loginState: "logged-out",
+            requireLoggedIn: false,
             pattern: "/login",
             title: "Log In",
             children: [
+                {title: "Home", pattern: "/home", linkAway: true},
                 {title: "Log In", pattern: "/login" },
                 {title: "Create ID", pattern: "/login/create-id" },
             ]
         },
         { 
-            loginState: "logged-in",
+            requireLoggedIn: true,
             pattern: "/login",
-            title: "Identities",
+            title: "Log Out",
             children: [
-                {title: "Identities", pattern: "/login" },
+                {title: "Home", pattern: "/home", linkAway: true},
+                {title: "Log Out", pattern: "/login" },
                 {title: "Create ID", pattern: "/login/create-id" },
             ]
         },
         {
-            title: "User Posts",
-            pattern: "/u/:userID/(*)",
-            userIDcrumb: "userID",
+            requireCurrentUser: true,
+            title: "My Posts",
+            pattern: "/u/:uid/(*)",
+            userIdParam: "uid",
             placeholder: true,
             children: [
-                { pattern: "/u/:userID/", title: "Posts" },
-                { pattern: "/u/:userID/profile", title: "Profile" },
-                { pattern: "/u/:userID/feed", title: "Feed" },
-                { loginState: "current-user", pattern: "/u/:userID/post", title: "New Post"},
-                { loginState: "current-user", pattern: "/u/:userID/profile/edit", title: "Edit Profile"},
-                { loginState: "current-user", pattern: "/u/:userID/sync", title: "Sync"},
-                { loginState: "current-user", pattern: "/login", title: "Identities" },
+                {title: "Home", pattern: "/home", linkAway: true},
+                { pattern: "/u/:uid/", title: "Posts" },
+                { pattern: "/u/:uid/profile", title: "Profile" },
+                { pattern: "/u/:uid/feed", title: "Feed" },
+                { pattern: "/u/:uid/post", title: "New Post"},
+                // TODO: Just move into the profile view:
+                { pattern: "/u/:uid/profile/edit", title: "Edit Profile"},
+                { pattern: "/u/:uid/sync", title: "Sync"},
+            ]
+        },
+        {
+            requireCurrentUser: false,
+            title: "User Posts",
+            pattern: "/u/:uid/(*)",
+            userIdParam: "uid",
+            placeholder: true,
+            children: [
+                {title: "Home", pattern: "/home", linkAway: true},
+                { pattern: "/u/:uid/", title: "Posts" },
+                { pattern: "/u/:uid/profile", title: "Profile" },
+                { pattern: "/u/:uid/feed", title: "Feed" },
             ]
         },
     ]
@@ -196,7 +219,7 @@ function getNav(app: AppState) {
     let url = window.location.hash.substring(1).replace(/\?.*/, "")
     let node = navTree.getDisplayNode(app, url)
     if (!node) {
-        navItems = [{text: "Error loading nav items", href: "#/"} ]
+        navItems = [{text: "Couln't determine navigation", href: "#/"} ]
         return
     }
     navItems = node.getNavItems(app, url)
@@ -206,62 +229,68 @@ function getNav(app: AppState) {
 </script>
 
 <script lang="ts" context="module">
-    
+
+// TODO: Ugh, this class was not designed. It was evolved. It seems overly complicated for generating such a small
+// navigation.  I'd like to rewrite the whole thing when I've got time. If you are reading this, I apologise.
+//
 // A way to declare our nav hierarchy and let the URL patterns figure it out:
-// Note: the path key ":userID" is special if it matches the currently-logged-in user.
+// Note: the path key ":uid" is special.
 class NavNode {
     readonly urlPattern: UrlPattern
     readonly title: string
     private parent?: NavNode
     readonly children: NavNode[]
-    private loginState?: LoginState
     private userIDcrumb?: string
     private placeholder: boolean
+    private requireCurrentUser: boolean | undefined;
+    private requireLoggedIn: boolean | undefined;
+    private linkAway: boolean | undefined;
 
-    constructor({pattern, title, loginState, children = [], userIDcrumb, placeholder = false}: NavNodeParams) {
-        this.urlPattern = new UrlPattern(pattern)
-        this.title = title
-        this.children = children.map((c) => new NavNode(c))
+    constructor(params: NavNodeParams) {
+        this.urlPattern = new UrlPattern(params.pattern)
+        this.title = params.title
+        this.children = params.children?.map((c) => new NavNode(c)) ?? []
         this.children.forEach((c) => c.parent = this)
-        this.loginState = loginState
-        this.userIDcrumb = userIDcrumb
-        this.placeholder = placeholder
+        this.userIDcrumb = params.userIdParam
+        this.placeholder = params.placeholder ?? false
+        this.requireCurrentUser = params.requireCurrentUser
+        this.requireLoggedIn = params.requireLoggedIn
+        this.linkAway = params.linkAway
     }
 
+    // If this is chosen as the main navNode, what nav items should we show?
     getNavItems(app: AppState, url: string): NavItem[] {
-        let loginState: LoginState = "logged-out"
         let currentUser = app.loggedInUser
-        let params = this.compileParams(url)
-        if (currentUser) {
-            loginState = "logged-in"
-            if (currentUser.toString() == params?.userID) {
-                loginState = "current-user"
-            }
-        }
+        let loggedIn = !!currentUser
 
         let items: NavItem[] = []
 
-        if (this.parent) {
-            let root = this.parent
-            while (root.parent) {
-                root = root.parent
-            }
-
-            let home = root.getUrl(url)           
-            items.push({
-                text: "Home",
-                href: `#${home}`
-            })
-        }
+        let params = this.compileParams(url)
+        let uid = params.uid
+        
+        
 
         for (let child of this.children) {
             if (child.placeholder) { continue }
-            if (child.loginState == "current-user" && loginState != "current-user") { continue }
-            if (child.loginState == "logged-in" && loginState == "logged-out") { continue }
-            if (child.loginState == "logged-out" && loginState != "logged-out") { continue }
+            if (child.requireLoggedIn !== undefined) {
+                if (child.requireLoggedIn != loggedIn) continue
+            }
+
+            let childParams = {...params}
+            if (child.requireCurrentUser !== undefined) {
+                if (uid) {
+                    let isCurrentUser = uid == currentUser?.asBase58
+                    if (child.requireCurrentUser != isCurrentUser) { continue }
+                } else {
+                    // parent hasn't specified uid, use currentUser.
+                    if (!currentUser) { continue } // there is none!
+                    childParams.uid = currentUser.asBase58
+                }
+            }
+            let childUrl = child.getUrl(url, childParams)
             items.push({
                 text: child.title,
-                href: '#' + child.getUrl(url),
+                href: '#' + childUrl,
                 isActive: child.matches(app, url),
             })
         }
@@ -313,8 +342,8 @@ class NavNode {
         return {...baseParams, ...match}
     }
 
-    getUrl(currentUrl: string): string {
-        let params = this.compileParams(currentUrl)
+    private getUrl(currentUrl: string, defaultParams?: Partial<Record<string,string>>): string {
+        let params = { ...this.compileParams(currentUrl), ...defaultParams}
 
         return this.urlPattern.stringify(params)
     }
@@ -324,14 +353,21 @@ class NavNode {
         // Depth-first search:
         let node: NavNode|null = null
 
-        // ... unless this node should be hidden:
+        // ... unless this node is excluded for some reason:
         
-        if (this.loginState) {
-            let user = app.loggedInUser
-            if (this.loginState == "logged-out" && user) { return null }
-            if (this.loginState == "logged-in" && !user) { return null }
-            let pathUserID = this.compileParams(url).userID
-            if (this.loginState == "current-user" && user?.toString() != pathUserID) { return null }
+        if (this.linkAway) { return null }
+
+        let currentUserID = app.loggedInUser?.asBase58
+        if (this.requireLoggedIn !== undefined) {
+            let loggedIn = !!currentUserID
+            if (this.requireLoggedIn != loggedIn) { return null }
+        }
+
+        if (this.requireCurrentUser !== undefined) {
+            let pathArgs = this.compileParams(url)
+            let uid = pathArgs.uid
+            let isCurrentUser = uid && (uid == currentUserID)
+            if (this.requireCurrentUser != isCurrentUser) { return null }
         }
 
         for (let child of this.children) {
@@ -351,32 +387,34 @@ class NavNode {
         return node
     }
 
-    matches(app: AppState, url: string): boolean {
-        if (!this.urlPattern.match(url)) { return false }
-
-
-        return true
+    private matches(app: AppState, url: string): boolean {
+        return !!this.urlPattern.match(url)
     }
 
 }
-
-// When should nav be shown?
-type LoginState = "current-user" | "logged-out" | "logged-in"
-
-
 
 interface NavNodeParams {
     pattern: string,
     title: string,
 
     /** Instead of displaying the page title, use this parameter name to pull & display the user profile by ID. */
-    userIDcrumb?: string,
+    userIdParam?: string,
 
     /** This item is just a placeholder for breadcrumb nav and shouldn't show up as a child nav item. */
     placeholder?: boolean,
 
-    loginState?: LoginState
     children?: NavNodeParams[]
+
+    // true: Only show this link if the user ID matches the "current" (logged-in) user ID.
+    // false: Only show this when the uid is NOT the current user.
+    requireCurrentUser?: boolean
+
+    // true = Only show this if the user is "logged in"
+    // false = Only show this if the user is not logged-in.
+    requireLoggedIn?: boolean
+
+    // This link should not be counted as a nav node, we only display it to link away to a different section.
+    linkAway?: boolean
 }
 
 
