@@ -1,4 +1,38 @@
 <PageHeading />
+{#if $appState.savedLogins}
+    <ItemBox>
+        <h1>Log In As:</h1>
+        <saved-logins>
+        {#each $appState.savedLogins as savedLogin, index (savedLogin.userID)}
+        {@const uid = savedLogin.userID}
+        {@const loggedIn = uid == $appState.loggedInUser?.asBase58}
+        {@const isFirst = index == 0}
+        {@const isLast = index == $appState.savedLogins.length - 1}
+            <input type="checkbox" checked={loggedIn} on:change={(event) => checkClicked(event, savedLogin)}> <!--bind:this={checkbox} bind:checked on:click={checkClicked}> --> 
+            <login-info >
+                <ProfileImage userID={UserID.fromString(savedLogin.userID)}/>
+                <input type="text" 
+                        bind:value={savedLogin.displayName} 
+                        placeholder="(unknown display name)"
+                    >
+                <user-id>id: {savedLogin.userID}</user-id>
+                <ColorPicker bind:color={savedLogin.bgColor} on:change={() => update(savedLogin)}/>
+                <Button disabled={isFirst} class="moveUp" on:click={() => move(savedLogin, "up")}>⬆️</Button>
+                <Button disabled={isLast} class="moveDown" on:click={() =>  move(savedLogin, "down")}>⬇️</Button>
+                <Button class="deleteLogin">❌</Button>
+            </login-info>
+        {/each}
+        </saved-logins>
+</ItemBox>
+{:else}
+<ItemBox>
+    <p>FeoBlog allows you to save multiple identities which you can easily switch between. Why have one blog when you
+        can have as many as you want! <tt>:)</tt>
+    </p>
+</ItemBox>        
+{/if}
+
+<hr/>
 
 {#each $appState.savedLogins as savedLogin, index (savedLogin.userID)}
     <div animate:flip={{duration: 200}}>
@@ -14,13 +48,7 @@
         first={index == 0}
         last={index == $appState.savedLogins.length - 1}
     />
-    </div>
-{:else}
-<ItemBox>
-    <p>FeoBlog allows you to save multiple identities which you can easily switch between. Why have one blog when you
-        can have as many as you want! <tt>:)</tt>
-    </p>
-</ItemBox>        
+    </div>  
 {/each}
 
 
@@ -63,6 +91,8 @@ import Button from "../Button.svelte"
 import ViewSavedLogin from "../ViewSavedLogin.svelte"
 import PageHeading from "../PageHeading.svelte";
 import ItemBox from "../ItemBox.svelte";
+import ProfileImage from "../ProfileImage.svelte";
+import ColorPicker from "../ColorPicker.svelte";
 
 
 let appState: Writable<AppState> = getContext("appStateStore")
@@ -123,6 +153,15 @@ function removeID(savedLogin: SavedLogin) {
     })
 }
 
+function checkClicked(e: Event, login: SavedLogin) {
+    let newValue = (e.target as HTMLInputElement).checked
+    if (newValue) {
+        checked(login)
+    } else {
+        unchecked(login)
+    }
+}
+
 function checked(login: SavedLogin) {
     updateApp((app) => {
         app.logIn(login)
@@ -174,4 +213,78 @@ function swap<T>(arr: T[], index1: number, index2: number) {
 
 
 
+
 </script>
+
+<style>
+saved-logins {
+    display: grid;
+    grid-template-columns: 0fr 10fr;
+}
+
+saved-logins > input {
+    grid-column: 1;
+    align-self: center;
+}
+
+login-info {
+    display: grid;
+    grid-template-columns: fit-content(5rem) fit-content(5rem) 1fr fit-content(5rem) fit-content(5rem);
+    grid-auto-flow: dense;
+    gap: 0.2rem;
+    padding: 0.2em;
+}
+
+login-info:hover {
+    background: #eee;
+}
+
+login-info > :global(.profileImage) {
+    grid-row: 1 / span 2;
+    align-self: center;
+}
+
+login-info :global(.colorPicker) {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+}
+
+login-info > user-id {
+    grid-row: 2;
+}
+
+login-info input {
+    background: inherit;
+}
+
+
+
+login-info :global(.moveUp) {
+    grid-row: 1 / span 2;
+    grid-column: 4;
+    align-self: center;
+}
+
+login-info :global(.moveDown) {
+    grid-column: 5;
+    grid-row: 1 / span 2;
+    align-self: center;
+}
+login-info :global(.deleteLogin) {
+    grid-column: 6;
+    grid-row: 1 / span 2;
+    align-self: center;
+}
+
+
+
+user-id {
+    font-family: monospace;
+    white-space: nowrap;
+    overflow-x: hidden;
+    text-overflow: ellipsis;
+}
+
+
+</style>

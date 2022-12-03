@@ -3,6 +3,7 @@
     alt="identicon"
     class:defaultSize
     class:followFont
+    class="profileImage"
     height={sizeNum}
     width={sizeNum}
 />
@@ -29,6 +30,9 @@ img {
     margin: 0.2rem;
     border-radius: 5px;
     box-shadow: 0px 3px 3px rgba(0,0,0,0.15);
+
+    /** top-level CSS has .item img { max-width: 100%; }, but that causes this image to be shrinkable. Do not want: */
+    max-width: none;
 }
 
 /* Size used in ItemView blocks:*/

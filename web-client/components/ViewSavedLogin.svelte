@@ -12,7 +12,7 @@
 <div class="item" class:collapsed transition:slide|local>
     <div class="header">
         <input type="checkbox" bind:this={checkbox} bind:checked on:click={checkClicked}>
-        <ProfileImage userID={UserID.fromString(savedLogin.userID)} slot="headerLeft"/>
+        <ProfileImage userID={UserID.fromString(savedLogin.userID)}/>
         <div class="mid">
             <input type="text" 
                 bind:value={savedLogin.displayName} 

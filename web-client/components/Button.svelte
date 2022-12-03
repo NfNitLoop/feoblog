@@ -1,4 +1,4 @@
-<div class="buttonPosition">
+<div class="buttonPosition {$$props.class}">
     <div class="button" class:disabled class:confirmationMode on:mouseup={clicked} on:mouseleave={onMouseLeave}>
         <slot/>
     </div>
@@ -20,6 +20,7 @@ export let disabled = false
 export let href = ""
 
 // This button requires confirmation, and is currently asking for confirmation
+// TODO: Get rid of confirmation. I think I've stopped using it everywhere. also get rid of buttonPositon container.
 let confirmationMode = false
 
 let dispatcher = createEventDispatcher()

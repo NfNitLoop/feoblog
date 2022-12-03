@@ -1,4 +1,4 @@
-<div class:isIphone>
+<div class="colorPicker" class:isIphone>
     <input bind:this={inputter} class="color" type="color" bind:value={color}>
     <color-box bind:this={box} on:click={clicked}></color-box>    
 </div>
