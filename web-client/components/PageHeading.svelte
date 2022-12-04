@@ -181,6 +181,7 @@ let navTree = new NavNode({
                 {title: "Home", pattern: "/home", linkAway: true},
                 {title: "Identities", pattern: "/login" },
                 {title: "Create ID", pattern: "/login/create-id" },
+                {title: "Security", pattern: "/login/security", requireLoggedIn: true},
             ]
         },
         {
