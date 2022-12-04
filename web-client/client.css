@@ -104,6 +104,14 @@ input[type="text"]:hover
     gap: 0.3rem;
 }
 
+.item .body > h1 {
+    font-size: 1.5em;
+}
+
+.item .body > h2 {
+    font-size: 1.3em;
+}
+
 
 .item .header .text > * {
     display: inline-block;
