@@ -180,49 +180,6 @@ $:{
     
     
 <style>
-.userID {
-    font-family: monospace;
-}
-
-.header input {
-    background: inherit;
-    border: 0px;
-}
-
-.header .mid {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    /** Without a (min-)width, flex-shrink doesn't work: */
-    min-width: 10em;
-}
-
-.header .mid > * {
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    overflow: hidden;
-}
-
-.upDown {
-    white-space: nowrap;
-}
-
-input[type="text"] {
-    padding: 0px;
-}
-
-.item .header {
-    padding: 0.5rem 1.0rem;
-}
-
-.item.collapsed .body {
-    display: none
-}
-.item.collapsed .header {
-    border-radius: 20px;
-}
-
-
 setting-section {
     display: block;
     background-color: #eee;
