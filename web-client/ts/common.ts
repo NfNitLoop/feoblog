@@ -846,6 +846,12 @@ export class Mutex {
         return promise
     }
 
+    // Only run this task if none is already running:
+    runIfNone<T>(callback: () => Promise<T>): Promise<T>|null {
+        if (this.locked) return null
+        else return this.run(callback)
+    }
+
     private async runQueue() {
         // already running:
         if (this.locked) return

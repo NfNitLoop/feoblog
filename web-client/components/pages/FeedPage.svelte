@@ -47,10 +47,9 @@ import { FindMatchingString, SkipUsers, ExcludeItemTypes} from "../../ts/client"
 import { UserID, ItemFilter } from "../../ts/client";
 
 import PageHeading from "../PageHeading.svelte"
-import UserIDView from "../UserIDView.svelte"
 import InputBox from "../InputBox.svelte";
 import ItemsScroll from "../ItemsScroll.svelte";
-import { ItemListEntry, ItemType, Signature } from "../../protos/feoblog";
+import { ItemListEntry, ItemType } from "../../protos/feoblog";
 import { ConsoleLogger } from "../../ts/common";
 
 let appState: Writable<AppState> = getContext("appStateStore")
@@ -58,12 +57,12 @@ let search = ""
 
 const logger = new ConsoleLogger({prefix: "<FeedPage>"}) // .withDebug()
 
-
+    
 $: userID = UserID.tryFromString($params.userID)
 
 
-function createItemLoader(params: ItemOffsetParams): AsyncGenerator<ItemListEntry>|null {
-    if (!userID) return null
+function createItemLoader(params: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
+    if (!userID) throw new Error("this page requires a userID")
     let lazyItems = $appState.client.getUserFeedItems(userID, params)
 
     // async function * loggingLazyItems(): AsyncGenerator<ItemListEntry> {

@@ -57,7 +57,7 @@ import type { PageEvent } from "./ItemView.svelte";
 import type { ItemListEntry } from "../protos/feoblog";
 import { DisplayItem, ItemOffsetParams, ItemFilter, LazyItemLoader } from "../ts/client";
 
-import { ConsoleLogger, InfiniteScroll } from "../ts/common";
+import { ConsoleLogger, InfiniteScroll, Mutex } from "../ts/common";
 import ItemView from "./ItemView.svelte";
 import type { Writable } from "svelte/store";
 import type { AppState } from "../ts/app";
@@ -223,10 +223,19 @@ function onFilterChange(..._changedFields: unknown[]) {
     loadMore(load.initial)
 }
 
-async function loadMore(count: number) {
-    logger.debug("loadMore()")
+let loadMutex = new Mutex()
 
-    if (!loader) { return }
+async function loadMore(count: number) {
+    loadMutex.runIfNone(() => _loadMore(count))
+}
+
+async function _loadMore(count: number) {
+    logger.debug("loadMore(", count, ")")
+
+    if (!loader) { 
+        logger.debug("no loader, ending loadMore()")
+        return
+    }
 
     let nextItems = await loader.getNext(count)
     logger.debug("Tried to load", count, "items and got", nextItems.length)
@@ -241,6 +250,8 @@ async function loadMore(count: number) {
         for (let item of nextItems) { await items.pushBottom(item) }
         if (loader.done) { noMoreBottom = true }
     }
+
+    logger.debug("loadMore() done")
 }
 
 /**
