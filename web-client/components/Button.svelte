@@ -74,6 +74,7 @@ function onMouseLeave() {
 .button:active, .button.disabled{
     box-shadow: none;
     background-color: #eee;
+    cursor: default;
 }
 .button.disabled {
     color: #888;
