@@ -23,6 +23,7 @@ import PostPage from "./pages/PostPage.svelte";
 import EditProfilePage from "./pages/EditProfilePage.svelte";
 import SyncPage from "./pages/SyncPage.svelte";
 import CreateIDPage from "./pages/login/CreateIDPage.svelte";
+import SecurityPage from "./pages/login/SecurityPage.svelte";
 
 // This is a writable() store so that we can notify the app
 // that appState has been modified. Svelte doesn't/can't propagate updates
@@ -48,6 +49,7 @@ routes.set({
 
     "/login": Login,
     "/login/create-id": CreateIDPage,
+    "/login/security": SecurityPage,
 
     // These are deprecated old paths.
     // TODO: Figure out a succinct way to do redirects?

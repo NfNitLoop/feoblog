@@ -160,24 +160,28 @@ let navTree = new NavNode({
             pattern: "/u/:uid/feed",
             linkAway: true,
         },
-        { 
-            requireLoggedIn: false,
-            pattern: "/login",
-            title: "Log In",
-            children: [
-                {title: "Home", pattern: "/home", linkAway: true},
-                {title: "Log In", pattern: "/login" },
-                {title: "Create ID", pattern: "/login/create-id" },
-            ]
-        },
-        { 
+        {
             requireLoggedIn: true,
-            pattern: "/login",
             title: "Log Out",
+            pattern: "/login",
+            linkAway: true,
+        },
+        {
+            requireLoggedIn: false,
+            title: "Log In",
+            pattern: "/login",
+            linkAway: true,
+        },
+        
+        { 
+            pattern: "/login",
+            title: "Log In/Out",
+            placeholder: true,
             children: [
                 {title: "Home", pattern: "/home", linkAway: true},
-                {title: "Log Out", pattern: "/login" },
+                {title: "Identities", pattern: "/login" },
                 {title: "Create ID", pattern: "/login/create-id" },
+                {title: "Security", pattern: "/login/security", requireLoggedIn: true},
             ]
         },
         {

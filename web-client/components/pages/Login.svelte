@@ -1,32 +1,43 @@
 <PageHeading />
 
-{#each $appState.savedLogins as savedLogin, index (savedLogin.userID)}
-    <div animate:flip={{duration: 200}}>
-    <ViewSavedLogin 
-        {savedLogin}
-        checked={savedLogin.userID == $appState.loggedInUser?.toString()}
-        on:change={() => update(savedLogin)}
-        on:checked={() => checked(savedLogin)}
-        on:unchecked={() => unchecked(savedLogin)}
-        on:remove={() => removeID(savedLogin)}
-        on:up={() => move(savedLogin, "up")}
-        on:down={() => move(savedLogin, "down")}
-        first={index == 0}
-        last={index == $appState.savedLogins.length - 1}
-    />
-    </div>
+{#if $appState.savedLogins}
+    <ItemBox>
+        <h1>Log In As:</h1>
+        {#each $appState.savedLogins as savedLogin, index (savedLogin.userID)}
+        {@const uid = savedLogin.userID}
+        {@const loggedIn = uid == $appState.loggedInUser?.asBase58}
+        {@const isFirst = index == 0}
+        {@const isLast = index == $appState.savedLogins.length - 1}
+        <saved-login animate:flip={{duration: 200}}>
+            <input type="checkbox" checked={loggedIn} on:change={(event) => checkClicked(event, savedLogin)}> <!--bind:this={checkbox} bind:checked on:click={checkClicked}> --> 
+                <ProfileImage userID={UserID.fromString(savedLogin.userID)}/>
+                <input type="text" 
+                        bind:value={savedLogin.displayName} 
+                        placeholder="(unknown display name)"
+                    >
+                <user-id>id: {savedLogin.userID}</user-id>
+                <ColorPicker bind:color={savedLogin.bgColor} on:change={() => update(savedLogin)}/>
+                <Button disabled={isFirst} class="moveUp" on:click={() => move(savedLogin, "up")}>⬆️</Button>
+                <Button disabled={isLast} class="moveDown" on:click={() =>  move(savedLogin, "down")}>⬇️</Button>
+                <Button class="deleteLogin" on:click={() => removeID(savedLogin)}>❌</Button>
+        </saved-login>
+        {/each}
+</ItemBox>
 {:else}
 <ItemBox>
     <p>FeoBlog allows you to save multiple identities which you can easily switch between. Why have one blog when you
         can have as many as you want! <tt>:)</tt>
     </p>
+    <p>Use the "Add User ID" form below to add a user ID to this list. Then you can choose among these IDs to interact with
+        content in FeoBlog.
+    </p>
 </ItemBox>        
-{/each}
-
+{/if}
 
 <ItemBox>
+    <h1>Add User ID</h1>
     <form>
-        <UserIDInput label="" placeholder="Add User ID" bind:value={userID} bind:valid={validUserID} bind:hasFocus />
+        <UserIDInput label="" placeholder="User ID" bind:value={userID} bind:valid={validUserID} bind:hasFocus />
     </form>
 
     {#if validUserID}
@@ -55,14 +66,15 @@ import { getContext } from "svelte";
 import type { Writable } from "svelte/store"
 import { flip } from "svelte/animate"
 
-import type { Item, Profile } from "../../protos/feoblog"
+import type { Item } from "../../protos/feoblog"
 import type { AppState, SavedLogin } from "../../ts/app"
 import { UserID } from "../../ts/client"
 import UserIDInput from "../UserIDInput.svelte"
 import Button from "../Button.svelte"
-import ViewSavedLogin from "../ViewSavedLogin.svelte"
 import PageHeading from "../PageHeading.svelte";
 import ItemBox from "../ItemBox.svelte";
+import ProfileImage from "../ProfileImage.svelte";
+import ColorPicker from "../ColorPicker.svelte";
 
 
 let appState: Writable<AppState> = getContext("appStateStore")
@@ -123,6 +135,15 @@ function removeID(savedLogin: SavedLogin) {
     })
 }
 
+function checkClicked(e: Event, login: SavedLogin) {
+    let newValue = (e.target as HTMLInputElement).checked
+    if (newValue) {
+        checked(login)
+    } else {
+        unchecked(login)
+    }
+}
+
 function checked(login: SavedLogin) {
     updateApp((app) => {
         app.logIn(login)
@@ -174,4 +195,74 @@ function swap<T>(arr: T[], index1: number, index2: number) {
 
 
 
+
 </script>
+
+<style>
+saved-login {
+    display: grid;
+    grid-template-columns: repeat(3,fit-content(5rem)) 5fr repeat(3,fit-content(5rem));
+    grid-template-areas:
+        "check bg icon name up down del"
+        "check bg icon id   up down del"
+    ;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.2rem;
+}
+
+saved-login > input[type="checkbox"] {
+    grid-area: check;
+}
+
+saved-login:hover {
+    background: #eee;
+}
+
+saved-login > :global(.profileImage) {
+    grid-area: icon;
+}
+
+saved-login :global(.colorPicker) {
+    grid-area: bg;
+}
+
+saved-login > user-id {
+    grid-area: id;
+}
+
+saved-login input[type="text"] {
+    background: inherit;
+    grid-area: name;
+}
+
+saved-login :global(.moveUp) {
+    grid-area: up;
+}
+
+saved-login :global(.moveDown) {
+    grid-area: down;
+}
+saved-login :global(.deleteLogin) {
+    grid-area: del;
+}
+
+user-id {
+    font-family: monospace;
+    white-space: nowrap;
+    overflow-x: hidden;
+    text-overflow: ellipsis;
+}
+
+
+@media(max-width: 30rem) {
+    saved-login {
+        grid-template-columns: repeat(1,fit-content(5rem)) repeat(5,1fr);
+        grid-template-areas:
+            "check  name name name name name"
+            "check  id   id   id   id   id"
+            ".      icon bg   up   down del"
+        ;
+    }
+}
+</style>
