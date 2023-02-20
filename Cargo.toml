@@ -46,7 +46,7 @@ async-trait = "*"
 # Required fix for soft_unstable rustfmt::skip (as of Rust 1.52).
 # See: https://github.com/stepancheg/rust-protobuf/issues/551
 protobuf = "^2.22.1"
-time = "0.2"
+time = "0.3"
 
 # Used to deserialize strings in URL paths.
 serde = "*"
