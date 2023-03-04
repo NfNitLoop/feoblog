@@ -979,7 +979,7 @@ dependencies = [
 
 [[package]]
 name = "feoblog"
-version = "0.7.0-rc7"
+version = "0.7.0-rc8"
 dependencies = [
  "actix-web",
  "actix-web-codegen",

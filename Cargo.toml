@@ -1,6 +1,6 @@
 [package]
 name = "feoblog"
-version = "0.7.0-rc7"
+version = "0.7.0-rc8"
 authors = ["Cody Casterline <cody.casterline@gmail.com>"]
 edition = "2018"
 
