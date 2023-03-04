@@ -21,7 +21,7 @@ anyhow = "*"
 structopt = "0.3.17"
 webbrowser = "0.8.3"
 
-multihash = "*"
+multihash = "0.18"
 rust-base58 = "*"
 bs58 = { version = "*", features = ["check"] }
 
