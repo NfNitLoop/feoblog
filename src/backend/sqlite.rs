@@ -17,7 +17,7 @@ use backend::{FileMeta, RowCallback, SHA512};
 use futures::Stream;
 use log::{debug, warn};
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{DatabaseName, NO_PARAMS, OpenFlags, named_params};
+use rusqlite::{DatabaseName, OpenFlags, named_params};
 use sodiumoxide::randombytes::randombytes;
 use crate::backend::{self, UserID, Signature, ItemRow, ItemDisplayRow, Timestamp, ServerUser, QuotaDenyReason};
 
@@ -402,7 +402,7 @@ impl Connection
                 OR (user_id = :uid AND signature > :sig)
                 ORDER BY user_id, signature
             ")?;
-            rows = stmt.query_named(named_params! {
+            rows = stmt.query(named_params! {
                 "uid": uid.bytes(),
                 "sig": sig.bytes(),
             })?;
@@ -585,7 +585,7 @@ impl backend::Backend for Connection
         };
 
         let mut stmt = self.conn.prepare(query)?;
-        let mut rows = stmt.query(params)?;
+        let mut rows = stmt.query(rusqlite::params_from_iter(params))?;
 
 
         let to_item_profile_row = |row: &Row<'_>| -> Result<ItemDisplayRow, Error> {
@@ -661,7 +661,7 @@ impl backend::Backend for Connection
         };
         
         let mut stmt = self.conn.prepare(query)?;
-        let mut rows = stmt.query(params)?;
+        let mut rows = stmt.query(rusqlite::params_from_iter(params))?;
 
         let convert = |row: &Row<'_>| -> Result<ItemRow, Error> {
             let item = ItemRow{
@@ -805,7 +805,7 @@ impl backend::Backend for Connection
 
         let mut stmt = self.conn.prepare(&query)?;
 
-        let mut rows = stmt.query_named(&[
+        let mut rows = stmt.query(&[
             (":timestamp", &timestamp.unix_utc_ms),
         ])?;
 
@@ -873,7 +873,7 @@ impl backend::Backend for Connection
             ORDER BY on_homepage, user_id
         ")?;
 
-        let mut rows = stmt.query(NO_PARAMS)?;
+        let mut rows = stmt.query([])?;
 
         while let Some(row) = rows.next()? {
             let on_homepage: isize = row.get(2)?;
@@ -1045,7 +1045,7 @@ impl backend::Backend for Connection
                 )
         ")?;
 
-        let mut result = query.query_named(&[
+        let mut result = query.query(&[
             (":user_id", &user_id.bytes())
         ])?;
 
@@ -1559,7 +1559,7 @@ fn get_follows(conn: &Connection, user_id: &UserID) -> Result<HashMap<UserID, Fo
         WHERE p.user_id = :user_id
     ")?;
 
-    let mut rows = stmt.query_named(&[
+    let mut rows = stmt.query(&[
         (":user_id", &user_id.bytes()),
     ])?;
 
