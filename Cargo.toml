@@ -19,7 +19,7 @@ anyhow = "*"
 
 # CLI: 
 structopt = "0.3.17"
-webbrowser = "*"
+webbrowser = "0.8.3"
 
 multihash = "*"
 rust-base58 = "*"
