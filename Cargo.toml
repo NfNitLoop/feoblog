@@ -79,6 +79,15 @@ askama_actix = { git = "https://github.com/djc/askama", branch = "main"}
 # dependencies to avoid security issues in older versions:
 smallvec = "0.6.14"
 
+### Dependency updates ###
+# Other updates to versions our transitive dependencies use:
+#
+# TODO:
+# rusqlite uses libsqlite3-sys.  this version bundles sqlite 3.41.
+# Previous versions (3.39-3.40 at least) have a performance regression.
+# libsqlite3-sys: TODO VERSION: https://github.com/rusqlite/rusqlite/pull/1294
+
+
 
 [dependencies.identicon]
 git = "https://github.com/NfNitLoop/identicon"
@@ -106,10 +115,7 @@ protoc-rust = "2"
 
 [features]
 
-# TODO: 
-# default = []
-default = ["sqlite_trace", "sqlite_profile"]
-
+default = []
 # Enables sqlite tracing
 sqlite_trace = ["rusqlite/trace"]
 
