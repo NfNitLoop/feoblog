@@ -73,6 +73,13 @@ tablestream = "0.1.3"
 askama = { git = "https://github.com/djc/askama", branch = "main" }
 askama_actix = { git = "https://github.com/djc/askama", branch = "main"}
 
+
+### Security updates ###
+# These are not directly needed, but we need to bump up versions used by our 
+# dependencies to avoid security issues in older versions:
+smallvec = "0.6.14"
+
+
 [dependencies.identicon]
 git = "https://github.com/NfNitLoop/identicon"
 rev = "dcee725b1d72088128a396d9d84a684434b77012"
@@ -96,3 +103,5 @@ path = "crates/sizedisplay"
 [build-dependencies]
 # Generate rust from .proto files.
 protoc-rust = "2"
+
+
