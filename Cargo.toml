@@ -30,7 +30,7 @@ sodiumoxide = "*"
 
 # Markdown:
 # Comrak is safe by default:
-comrak = "*"
+comrak = "0.16"
 
 # Allow embedding local files. 
 rust-embed = { version = "6.4.2", features = ["compression"] }
