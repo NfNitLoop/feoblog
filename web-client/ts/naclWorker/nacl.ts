@@ -2,6 +2,7 @@ import * as nacl from "tweetnacl"
 import {WorkerProxy} from "./coms"
 
 // Thank youuuuu https://github.com/mitschabaude/esbuild-plugin-inline-worker
+// @ts-ignore -- this gets wrapped by the above plugin.
 import NaClWorker from "./nacl.worker.js"
 
 // Wraps tweetnacl functions in async versions that run in a WebWorker if available.

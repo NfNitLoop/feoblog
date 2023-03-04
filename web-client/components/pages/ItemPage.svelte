@@ -46,12 +46,11 @@
 <script lang="ts">
 import type { Writable } from "svelte/store"
 import type { AppState } from "../../ts/app"
-import type { Item } from "../../protos/feoblog";
 
 import { getContext } from "svelte";
 import { params } from "svelte-hash-router"
 
-import { Signature, UserID } from "../../ts/client"
+import { Signature, UserID, protobuf as pb} from "../../ts/client"
 
 import ItemView from "../ItemView.svelte"
 import CommentEditor from "../CommentEditor.svelte"
@@ -64,12 +63,12 @@ $: userID = UserID.tryFromString($params.userID)
 $: signature = Signature.tryFromString($params.signature)
 $: loadComments(allowComments, userID, signature)
 
-let item: Item|undefined = undefined
-function itemLoaded(event: CustomEvent<Item>) {
+let item: pb.Item|undefined = undefined
+function itemLoaded(event: CustomEvent<pb.Item>) {
     item = event.detail
 }
 
-$: isProfile = !!(item && item.profile)
+$: isProfile = !!(item && item.itemType.case == "profile")
 // Don't show coments UI on profile updates. Profiles are the one ephemeral-ish part of FeoBlog.
 // An individual comment update never goes away, but it will not always be the newest.
 $: allowComments = !!(item && !isProfile)
@@ -77,7 +76,7 @@ $: allowComments = !!(item && !isProfile)
 
 
 type DisplayItem = {
-    item: Item
+    item: pb.Item
     userID: UserID
     signature: Signature
 }
@@ -101,8 +100,8 @@ async function loadComments(allowComments: boolean, userID: UserID|null, signatu
     let items = client.getReplyItems(userID, signature)
 
     for await (let entry of items) {
-        let uid = UserID.fromBytes(entry.user_id.bytes)
-        let sig = Signature.fromBytes(entry.signature.bytes)
+        let uid = UserID.fromBytes(entry.userId!.bytes)
+        let sig = Signature.fromBytes(entry.signature!.bytes)
 
         // TODO: Could filter items here according to preferences.
         // ex: 

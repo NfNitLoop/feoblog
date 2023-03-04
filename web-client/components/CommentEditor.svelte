@@ -38,9 +38,9 @@
 import { DateTime } from "luxon";
 import { getContext } from "svelte";
 import type { Writable } from "svelte/store";
-import { Item, Comment, ReplyRef, UserID as ProtoUserID, Signature as ProtoSignature} from "../protos/feoblog";
 import type { AppState } from "../ts/app";
-import type { Signature, UserID } from "../ts/client";
+import type { Signature, UserID} from "../ts/client";
+import { protobuf as pb} from "../ts/client";
 import CommentView from "./CommentView.svelte";
 import ExpandingTextarea from "./ExpandingTextarea.svelte";
 import SignAndSend from "./SignAndSend.svelte";
@@ -68,23 +68,27 @@ $: errors = !hasText ? ["Can not submit an empty comment"] : []
 $: placeholder = isLoggedIn ? "Leave a Comment" : "Must log in to comment"
 
 $: commentItem = function() {
-    let item = new Item()
+    let item = new pb.Item()
 
     let now = DateTime.local()
-    item.timestamp_ms_utc = now.valueOf()
-    item.utc_offset_minutes = now.offset
+    item.timestampMsUtc = BigInt(now.valueOf())
+    item.utcOffsetMinutes = now.offset
 
-    let comment = new Comment()
-    item.comment = comment
+    let comment = new pb.Comment()
     
-    let ref = new ReplyRef()
-    ref.user_id = new ProtoUserID()
-    ref.user_id.bytes = replyToUserID.bytes
-    ref.signature = new ProtoSignature()
+    // Nope: item.comment = comment
+    item.itemType = {case: "comment", value: comment}
+
+
+    
+    let ref = new pb.ReplyRef()
+    ref.userId = new pb.UserID()
+    ref.userId.bytes = replyToUserID.bytes
+    ref.signature = new pb.Signature()
     ref.signature.bytes = replyToSignature.bytes
     // ref.item_type = // TODO
 
-    comment.reply_to = ref
+    comment.replyTo = ref
     comment.text = text
 
     return item

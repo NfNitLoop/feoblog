@@ -113,6 +113,9 @@ message Profile {
     // The order of the list is unimportant.
     repeated Follow follows = 4;
 
+    // Users may collect their follows into groups to make sorting/filtering/syncing them easier.
+    repeated FollowGroup follow_groups = 5;
+
     // TODO:
     // irrevocably_purge_this_user
     // Though, maybe that should just be its own type so that you can't specify a Profile with it.
@@ -176,9 +179,22 @@ message Follow {
     // Here you can set a stable name so you always know who's who.
     string display_name = 2;
 
+    // The (0-indexed) group index that this follow should be grouped under.
+    optional int32 follow_group = 3;
+
     // Possible future features:
     // * quota -- determine how much disk space a particular user may use.
     //   (i.e.: how much of their content to cache on their behalf)
+}
+
+message FollowGroup {
+    // A display name for this group. ex: "News", or "Friends".
+    // Names should probably be unique for users' own sanity but at the moment that is not enforced by the protocol.
+    string name = 1;
+
+    // Future possibilities:
+    // quota settings by group?
+    // Additional filter options (ex: don't display comments from this group)
 }
 
 message UserID {

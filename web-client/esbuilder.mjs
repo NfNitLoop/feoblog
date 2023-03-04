@@ -6,28 +6,29 @@ import inlineWorkerPlugin from 'esbuild-plugin-inline-worker';
 
 import { execSync } from "child_process";
 
-main()
-function main() {
+async function main() {
 
     // We usually don't need to constantly rebuild the protobuf code, so do that here
     // in case we're going to --watch:
-    protoToTypeScript()
 
     let watch = process.argv.includes("--watch")
-    doEsBuild({watch})
+    await doEsBuild({watch})
 }
 
 
 
-function doEsBuild(opts = {}) {
-    esbuild.build({
+async function doEsBuild(opts = {}) {
+    let result = await esbuild.build({
         entryPoints: ['index.js'],
         bundle: true,
         outfile: 'build/index.js',
         plugins: [
             inlineWorkerPlugin(),
             sveltePlugin({
-                preprocess: sveltePreprocess(),
+                // Note: as of v4, this plugin does NOT check types!
+                // That's handled by `npm run svelte-check` now.
+                // See: https://github.com/sveltejs/svelte-preprocess/blob/main/docs/preprocessing.md#typescript---limitations
+                preprocess: sveltePreprocess(),                
             }),
             copy({ from: "index.html", to: "index.html" }),
             copy({ from: "style.css", to: "style.css" }),
@@ -47,33 +48,4 @@ function doEsBuild(opts = {}) {
       }).catch(() => process.exit(1))    
 }
 
-function protoToTypeScript() {
-    let cmd =
-        "protoc"
-        + ` --plugin=./node_modules/.bin/${npmScript('protoc-gen-ts')}`
-        + " --ts_out=protos"
-        + " --proto_path=../protobufs/"
-        + " feoblog.proto"
-    ;
-
-    console.log("Running", cmd);
-
-    execSync(cmd, (error, stdout, stderr) => {
-        if (error) {
-            console.log("Error building proto file: ", e);
-           throw error;
-        }
-    });
-    console.log("Done")
-}
-
-function npmScript(name) {
-    if (isWindows()) {
-        return `${name}.cmd`
-    }
-    return name
-}
-
-function isWindows() {
-    return process.platform == "win32"
-}
+await main()

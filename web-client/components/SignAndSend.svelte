@@ -62,9 +62,8 @@
 import { getContext } from "svelte";
 import { slide } from "svelte/transition"
 import type { Writable } from "svelte/store";
-import type { Item, File as PFile } from "../protos/feoblog";
 import type { AppState } from "../ts/app";
-import { PrivateKey, Signature } from "../ts/client";
+import { PrivateKey, Signature, protobuf as pb, getInner } from "../ts/client";
 import Button from "./Button.svelte";
 import InputBox from "./InputBox.svelte"
 import TaskTrackerView from "./TaskTrackerView.svelte"
@@ -75,7 +74,7 @@ import { SecurityManager } from "../ts/storage";
 import { CountDown } from "../ts/asyncStore";
 
 let appState: Writable<AppState> = getContext("appStateStore")
-export let item: Item
+export let item: pb.Item
 
 // Errors sent to us from outside, which can prevent sign & send.
 export let errors: string[] = []
@@ -92,7 +91,7 @@ export let attachments: FileInfo[] = []
 let logger = new ConsoleLogger({prefix: "<SignAndSend>"})
 logger.debug("loaded")
 
-$: itemBytes = item.serialize()
+$: itemBytes = item.toBinary()
 
 $: userID = $appState.requireLoggedInUser()
 
@@ -119,8 +118,8 @@ $: ourErrors = function() {
 
     // Note: eventually we'll need to check non-post types here. (Profiles).
     // But the rules may be different.
-    let itemFiles: PFile[]|null = item.post?.attachments?.file
-    let itemFilesMap = new Map<string, PFile>()
+    let itemFiles: pb.File[]|undefined = getInner(item, "post")?.attachments?.file
+    let itemFilesMap = new Map<string, pb.File>()
     if (itemFiles) {
         for (let pf of itemFiles) {
             itemFilesMap.set(pf.name, pf)

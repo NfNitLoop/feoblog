@@ -36,10 +36,9 @@
 import ExpandingTextarea from "./ExpandingTextarea.svelte"
 import FollowBox from "./FollowBox.svelte"
 import Button from "./Button.svelte"
-import { Follow, Item, Profile, Server, UserID } from "../protos/feoblog";
 import type { AppState } from "../ts/app";
 import type { Writable } from "svelte/store";
-import { UserID as ClientUserID } from "../ts/client";
+import { UserID as ClientUserID, protobuf as pb, getInner } from "../ts/client";
 import { parseUserID, validateServerURL } from "../ts/common";
 import { getContext, tick } from "svelte";
 import InputBox from "./InputBox.svelte";
@@ -48,10 +47,10 @@ import { decodeBase58 } from "../ts/fbBase58";
 
 let appState: Writable<AppState> = getContext("appStateStore")
 // Exported so that EditorWithPreview can preview, serialize, & send it for us.
-export let item: Item
+export let item: pb.Item
 
 // Possibly imported, so we can start editing an existing profile:
-export let initialItem: Item|undefined
+export let initialItem: pb.Item|undefined
 
 export let validationErrors: string[] = []
 $: validationErrors = function(): string[] {
@@ -137,10 +136,10 @@ class FollowEntry {
         this.displayName = displayName
     }
 
-    toFollow(): Follow {
-        return new Follow({
-            display_name: this.displayName,
-            user: new UserID({
+    toFollow(): pb.Follow {
+        return new pb.Follow({
+            displayName: this.displayName,
+            user: new pb.UserID({
                 bytes: this.userIDBytes()
             }),
         });
@@ -166,14 +165,14 @@ $: {
 }
 
 // This is the inverse of $: itemProto above. Given an Item, load data from it.
-function loadFromProto(item: Item) {
-    let profile = item.profile
-    displayName = profile.display_name
+function loadFromProto(item: pb.Item) {
+    let profile = getInner(item, "profile")!
+    displayName = profile.displayName
     profileContent = profile.about
 
     let _follows = new Array<FollowEntry>()
     profile.follows.forEach((follow) => {
-        let f = new FollowEntry(ClientUserID.fromBytes(follow.user.bytes).toString(), follow.display_name)
+        let f = new FollowEntry(ClientUserID.fromBytes(follow.user!.bytes).toString(), follow.displayName)
         _follows.push(f)
     })
 
@@ -187,35 +186,36 @@ if (initialItem) {
 }
 
 
-$: item = function(): Item {
+$: item = function(): pb.Item {
     // For profiles, we *always* want to save with the latest timestamp possible:
     let now = DateTime.local()
 
-    let item = new Item({
-        timestamp_ms_utc: now.valueOf(),
-        utc_offset_minutes: now.offset,
-        profile: new Profile({
-            display_name: displayName,
-            about: profileContent,
-        })
+    let profile = new pb.Profile({
+        displayName,
+        about: profileContent,
     })
 
-    let profile = item.profile
+    let item = new pb.Item({
+        timestampMsUtc: BigInt(now.valueOf()),
+        utcOffsetMinutes: now.offset,
+        itemType: { case: "profile", value: profile }
+    })
+
     follows.forEach(entry => {
         let userIDBytes = new Uint8Array()
         try {
             userIDBytes = decodeBase58(entry.userID)
         } catch (_ignored) {}
 
-        profile.follows.push(new Follow({
-            user: new UserID({bytes: userIDBytes}),
-            display_name: entry.displayName,
+        profile.follows.push(new pb.Follow({
+            user: new pb.UserID({bytes: userIDBytes}),
+            displayName: entry.displayName,
         }))
     })
 
     for (let {url} of servers) {
         if (url === "") continue
-        profile.servers.push(new Server({url}))
+        profile.servers.push(new pb.Server({url}))
     }
 
     return item

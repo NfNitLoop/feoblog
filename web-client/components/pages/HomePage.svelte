@@ -22,15 +22,14 @@
 import { getContext } from "svelte";
 import type { Writable } from "svelte/store";
 
-import type { ItemListEntry } from "../../protos/feoblog";
 import type { AppState } from "../../ts/app";
-import { ItemFilter, ItemOffsetParams } from "../../ts/client"
+import { ItemFilter, ItemOffsetParams, protobuf as pb } from "../../ts/client"
 import ItemsScroll from "../ItemsScroll.svelte";
 import PageHeading from "../PageHeading.svelte";
 
 let appState: Writable<AppState> = getContext("appStateStore")
 
-async function * createItemLoader(opts: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
+async function * createItemLoader(opts: ItemOffsetParams): AsyncGenerator<pb.ItemListEntry> {
     yield* $appState.client.getHomepageItems(opts)
 }
 
