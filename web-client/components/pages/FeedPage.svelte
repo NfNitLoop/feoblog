@@ -37,20 +37,18 @@
 
 <script lang="ts">
 import type { AppState } from "../../ts/app";
-import type { ItemOffsetParams } from "../../ts/client"
+import { getInner, ItemOffsetParams } from "../../ts/client"
 import type { Writable } from "svelte/store";
 
 import { getContext } from "svelte";
 import { params, query } from "svelte-hash-router"
 
-import { FindMatchingString, SkipUsers, ExcludeItemTypes} from "../../ts/client"
+import { FindMatchingString, SkipUsers, ExcludeItemTypes, protobuf as pb} from "../../ts/client"
 import { UserID, ItemFilter } from "../../ts/client";
 
 import PageHeading from "../PageHeading.svelte"
-import UserIDView from "../UserIDView.svelte"
 import InputBox from "../InputBox.svelte";
 import ItemsScroll from "../ItemsScroll.svelte";
-import { ItemListEntry, ItemType, Signature } from "../../protos/feoblog";
 import { ConsoleLogger } from "../../ts/common";
 
 let appState: Writable<AppState> = getContext("appStateStore")
@@ -58,12 +56,12 @@ let search = ""
 
 const logger = new ConsoleLogger({prefix: "<FeedPage>"}) // .withDebug()
 
-
+    
 $: userID = UserID.tryFromString($params.userID)
 
 
-function createItemLoader(params: ItemOffsetParams): AsyncGenerator<ItemListEntry>|null {
-    if (!userID) return null
+function createItemLoader(params: ItemOffsetParams): AsyncGenerator<pb.ItemListEntry> {
+    if (!userID) throw new Error("this page requires a userID")
     let lazyItems = $appState.client.getUserFeedItems(userID, params)
 
     // async function * loggingLazyItems(): AsyncGenerator<ItemListEntry> {
@@ -80,7 +78,7 @@ $: filter = function() {
     let filters: ItemFilter[] = [
         // TODO: Filter out comments and/or posts?
         // TODO: Show profile updates. (Once we've got a profile delta viewer?)
-        new ExcludeItemTypes([ItemType.PROFILE])
+        new ExcludeItemTypes([pb.ItemType.PROFILE])
     ]
 
     // Search by string.
@@ -126,7 +124,7 @@ async function updateFollowedUsers(userID: UserID|null) {
     }
 
     if (!profile) return;
-    let pProfile = profile.item.profile
+    let pProfile = getInner(profile.item, "profile")
     if (!pProfile) {
         logger.error("Got a profile object that doesn't contain a profile")
         return
@@ -136,7 +134,7 @@ async function updateFollowedUsers(userID: UserID|null) {
 
     for (const follow of pProfile.follows) {
         try {
-            let uid = UserID.fromBytes(follow.user.bytes)
+            let uid = UserID.fromBytes(follow.user!.bytes)
             newFollows.push({
                 userID: uid,
                 displayName: await $appState.getPreferredName(uid) || uid.toString()

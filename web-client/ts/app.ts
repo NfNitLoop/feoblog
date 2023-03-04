@@ -1,5 +1,4 @@
-import type { Item, Profile } from "../protos/feoblog"
-import { Client, Signature, UserID } from "./client"
+import { Client, Signature, UserID, getInner} from "./client"
 import { Mutex } from "./common"
 
 let instance: AppState|null = null
@@ -272,7 +271,7 @@ class ProfileService
     private async getDisplayName(userID: UserID): Promise<string|null> {
         let response = await this.client.getProfile(userID)
         if (!response) return null
-        return response.item.profile.display_name.trim() || null
+        return getInner(response.item, "profile")?.displayName.trim() || null
     }
 
     private async getUserCache(userID: UserID|null): Promise<Map<string,string>> {
@@ -288,23 +287,23 @@ class ProfileService
             console.error(`NameService: Error fetching user profile ${userID}`, e)
             return new Map()
         }
-        if (result === null || !result.item.profile) {
+        if (result === null || !getInner(result.item, "profile")) {
             // Couldn't find a profile for this user.
             console.warn(`NameService: Couldn't find a profile for logged-in user: ${userID}`)
             return new Map()
         }
-        let profile = result.item.profile
+        let profile = getInner(result.item, "profile")!
 
         let map = new Map()
         for (let follow of profile.follows) {
-            if (follow.display_name) {
-                let id = UserID.fromBytes(follow.user.bytes)
-                map.set(id.toString(), follow.display_name)
+            if (follow.displayName) {
+                let id = UserID.fromBytes(follow.user!.bytes)
+                map.set(id.toString(), follow.displayName)
             }
         }
 
-        if (profile.display_name) {
-            map.set(userID.toString(), profile.display_name )
+        if (profile.displayName) {
+            map.set(userID.toString(), profile.displayName )
         }
 
         return map

@@ -1,22 +1,23 @@
 <!--
     The .header inside of an .item
 -->
+
 <div class="header">
     <ProfileImage {userID} />
     <div class="text">
         <UserIdView {userID} />
-        {#if showReplyTo && item.comment != null}
-            <a href={refToLink(item.comment.reply_to)}>
+        {#if showReplyTo && comment}
+            <a href={refToLink(comment.replyTo)}>
             replied to
             <UserIdView 
-                userID={UserID.fromBytes(item.comment.reply_to.user_id.bytes)}
+                userID={UserID.fromBytes(exists(comment.replyTo?.userId).bytes)}
                 shouldLink={false}
             />
             </a>
-        {:else if item.profile} 
+        {:else if profile} 
             <span>updated their profile</span>
         {/if}
-        <Timestamp utc_ms={item.timestamp_ms_utc} minute_offset={item.utc_offset_minutes} href={timestampLink} showRelative={!previewMode} />
+        <Timestamp utc_ms={Number(item.timestampMsUtc)} minute_offset={item.utcOffsetMinutes} href={timestampLink} showRelative={!previewMode} />
     </div>
     <OpenArrow bind:isOpen={arrowOpen} />
 </div>
@@ -61,9 +62,8 @@ export type ViewMode = "normal"|"markdown"|"data"
 import { getContext } from "svelte";
 import type { Writable } from "svelte/store";
 import { slide } from "svelte/transition"
-import type { Item, ReplyRef } from "../protos/feoblog";
 import type { AppState } from "../ts/app";
-import { Signature, UserID } from "../ts/client";
+import { Signature, UserID, protobuf as pb, getInner } from "../ts/client";
 
 import UserIdView from "./UserIDView.svelte"
 import Timestamp from "./Timestamp.svelte"
@@ -77,7 +77,7 @@ let appState: Writable<AppState> = getContext("appStateStore")
 // required:
 export let userID: UserID
 export let signature: string|undefined // could be invalid/missing during preview
-export let item: Item
+export let item: pb.Item
 export let previewMode = false
 
 // optional:
@@ -88,6 +88,15 @@ export let viewMode: ViewMode |undefined = undefined
 // Readable:
 export let arrowOpen = false
 
+// Bleh: https://github.com/bufbuild/protobuf-es/issues/337
+$: comment = getInner(item, "comment")
+$: profile = getInner(item, "profile")
+
+// can't use ! assertions (typescript code) in Svelte syntax. bleh.
+function exists<T>(arg: T|undefined): T {
+    return arg as T
+}
+
 
 const renderModes: [mode: ViewMode, name:string][]  = [
     ["normal", "Rendered"],
@@ -95,9 +104,9 @@ const renderModes: [mode: ViewMode, name:string][]  = [
     ["data", "Protobuf"],
 ]
 
-function refToLink(ref: ReplyRef): string {
-    let uid = UserID.fromBytes(ref.user_id.bytes)
-    let sig = Signature.fromBytes(ref.signature.bytes)
+function refToLink(ref?: pb.ReplyRef): string {
+    let uid = UserID.fromBytes(ref!.userId!.bytes)
+    let sig = Signature.fromBytes(ref!.signature!.bytes)
     return `#/u/${uid}/i/${sig}/`
 }
 

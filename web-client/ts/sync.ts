@@ -3,8 +3,11 @@
 import { bytesToHex, prefetch, readableSize, TaskTracker, validateServerURL } from "./common"
 
 // TODO: "Client" is a Node type and not importing this can result in unexpected class resolution. >.<
-import { AttachmentMeta, Client, ProfileResult, Signature, UserID } from "./client"
-import { Item, ItemListEntry, Profile } from "../protos/feoblog"
+import { AttachmentMeta, Client, ProfileResult, Signature, UserID, protobuf, getInner } from "./client"
+
+import Item = protobuf.Item
+import ItemListEntry = protobuf.ItemListEntry
+import Profile = protobuf.Profile
 
 export interface SyncUserArgs {
     tracker: TaskTracker
@@ -100,7 +103,7 @@ export async function syncUserProfile(args: SyncUserProfileArgs): Promise<boolea
 
 // Sort by (timestamp, signature) descending.
 export function entryByTimestampSigDesc(e1: ItemListEntry, e2: ItemListEntry): number {
-    let cmp = e2.timestamp_ms_utc - e1.timestamp_ms_utc
+    let cmp = Number(e2.timestampMsUtc - e1.timestampMsUtc)
     if (cmp != 0) return cmp
 
     let e1b = e1.signature?.bytes
@@ -128,7 +131,7 @@ export function entryByTimestampSigDesc(e1: ItemListEntry, e2: ItemListEntry): n
 }
 
 function resultByTimestampSigDesc(lhs: ProfileResult, rhs: ProfileResult) {
-    let cmp = rhs.item.timestamp_ms_utc - lhs.item.timestamp_ms_utc
+    let cmp = Number(rhs.item.timestampMsUtc - lhs.item.timestampMsUtc)
     if (cmp != 0) return cmp
 
     let lhBytes = lhs.signature.bytes
@@ -176,7 +179,10 @@ export async function syncMyFeedTask(tracker: TaskTracker, userID: UserID, opts:
             return output
         }
         myProfileItem = result.item
-        myProfile = result.item.profile
+        let itemType = myProfileItem.itemType
+        if (itemType.case == "profile") {
+            myProfile = itemType.value
+        }
         syncServers = serversFromProfile(myProfile, tracker)
     }
 
@@ -190,8 +196,8 @@ export async function syncMyFeedTask(tracker: TaskTracker, userID: UserID, opts:
         // Re-load current user's profile, which may have been updated as a result of the sync
         let result = await local.getProfile(userID)
         if (result) {
-            if (!myProfileItem || result.item.timestamp_ms_utc > myProfileItem.timestamp_ms_utc) {
-                myProfile = result.item.profile
+            if (!myProfileItem || result.item.timestampMsUtc > myProfileItem.timestampMsUtc) {
+                myProfile = getInner(result.item, "profile")
                 output.updatedUserProfile = true
             }
             if (!sourceServer) {
@@ -209,7 +215,7 @@ export async function syncMyFeedTask(tracker: TaskTracker, userID: UserID, opts:
         for (let follow of myProfile.follows) {
             // Sync items from each of my follows.
             try {
-                let uid = UserID.fromBytes(follow.user.bytes)
+                let uid = UserID.fromBytes(follow.user!.bytes)
                 let followedProfileResult = await local.getProfile(uid)
 
                 let followServers = syncServers
@@ -218,11 +224,11 @@ export async function syncMyFeedTask(tracker: TaskTracker, userID: UserID, opts:
                 } else {
                     // If the user has a profile, add its declared servers to potential sources:
                     if (followedProfileResult) {
-                        followServers = union(syncServers, serversFromProfile(followedProfileResult.item.profile))
+                        followServers = union(syncServers, serversFromProfile(getInner(followedProfileResult.item, "profile")))
                     }
                 }
 
-                await tracker.runSubtask(`Items for "${follow.display_name}"`, async (tracker) => {
+                await tracker.runSubtask(`Items for "${follow.displayName}"`, async (tracker) => {
                     tracker.log(`User ID: ${uid}`)
                     let result = await syncUserItems({tracker, local, userID: uid, opts, servers: followServers})
 
@@ -244,7 +250,7 @@ export async function syncMyFeedTask(tracker: TaskTracker, userID: UserID, opts:
 
             } catch (e) {
                 // Syncing one user's items shouldn't fail others:
-                tracker.error(e)
+                tracker.error(`${e}`)
             }
         }
     })
@@ -304,7 +310,7 @@ async function syncFeedAttachments({sourceServer, tracker, to, userID, profile}:
     if (myServers.size === 0) {
         tracker.warn("No servers specified for current user. Can't sync user's files.")   
     } else {
-        bytesCopied += await tracker.runSubtask(`User "${profile?.display_name}"`, async (tracker) => {
+        bytesCopied += await tracker.runSubtask(`User "${profile?.displayName}"`, async (tracker) => {
             tracker.log(`User ID: ${userID}`)
             return syncUserAttachments({tracker, fromServers: myServers, to, userID})
         })
@@ -314,7 +320,7 @@ async function syncFeedAttachments({sourceServer, tracker, to, userID, profile}:
 
     let follows = profile?.follows || []
     for (let follow of follows) {
-        let uid = UserID.fromBytes(follow.user.bytes)
+        let uid = UserID.fromBytes(follow.user!.bytes)
 
         let followServers = myServers
         if (!sourceServer) {
@@ -322,13 +328,13 @@ async function syncFeedAttachments({sourceServer, tracker, to, userID, profile}:
             if (result) {
                 // Check our own servers first, to lessen load on others.
                 // Also handles the case when our follows for some reason didn't specify a server.
-                followServers = union(myServers, serversFromProfile(result.item.profile))
+                followServers = union(myServers, serversFromProfile(getInner(result.item, "profile")))
             }
         }
 
 
         try {
-            bytesCopied += await tracker.runSubtask(`User "${follow.display_name}"`, (tracker) => {
+            bytesCopied += await tracker.runSubtask(`User "${follow.displayName}"`, (tracker) => {
                 tracker.log(`User ID: ${uid}`)
                 return syncUserAttachments({tracker, fromServers: followServers, to, userID: uid})
             })
@@ -553,7 +559,7 @@ async function sendAttachmentMulti({userID, signature, fileName, toServers, from
 function getAttachments(item: Item): AttachmentInfo[] {
     let infos: AttachmentInfo[] = []
 
-    let attachments = item?.post?.attachments?.file || []
+    let attachments = getInner(item, "post")?.attachments?.file || []
 
     for (let attachment of attachments) {
         infos.push({
@@ -567,7 +573,7 @@ function getAttachments(item: Item): AttachmentInfo[] {
 
 type AttachmentInfo = {
     name: string,
-    size: number,
+    size: bigint,
 }
 
 function union<T>(...sets: Set<T>[]): Set<T> {
@@ -627,13 +633,13 @@ async function loadItemEntries(client: Client, userID: UserID): Promise<Map<stri
 
 // Can throw:
 function entryInfoFrom(entry: ItemListEntry, userID: UserID): EntryInfo {
-    let sig = Signature.fromBytes(entry.signature.bytes)
+    let sig = Signature.fromBytes(entry.signature!.bytes)
 
     return {
         userID,
         signature: sig,
-        timestamp: entry.timestamp_ms_utc,
-        type: entryTypeFromID(entry.item_type)
+        timestamp: entry.timestampMsUtc,
+        type: entryTypeFromID(entry.itemType)
     }
 }
 
@@ -654,7 +660,7 @@ function entryTypeFromID(typeID: any): "comment"|"post"|"profile"|undefined {
 type EntryInfo = {
     userID: UserID,
     signature: Signature,
-    timestamp: number,
+    timestamp: bigint,
     type?: ItemEntryType,
 }
 
@@ -712,7 +718,7 @@ async function syncUserItem({userID, signature, to, from, tracker}: SyncUserItem
 
     let item
     try {
-        item = Item.deserialize(bytes)
+        item = Item.fromBinary(bytes)
     } catch (error) {
         tracker.warn(`Error deserializing item ${signature}. Won't be able to copy attachments if they exist.`)
         return result
@@ -811,7 +817,7 @@ async function * missingItems({ tracker, local, userID,  servers, opts}: SyncUse
         nextItems.sort(entryByTimestampSigDesc);
         let first = nextItems[0]
 
-        if (first.timestamp_ms_utc < oldestFetchDate) {
+        if (first.timestampMsUtc < oldestFetchDate) {
             break
         }
 
@@ -831,7 +837,7 @@ async function * missingItems({ tracker, local, userID,  servers, opts}: SyncUse
 
         let signature: Signature
         try {
-           signature = Signature.fromBytes(first.signature?.bytes)
+           signature = Signature.fromBytes(first.signature!.bytes)
         } catch (error) {
             tracker.warn(`Bad signature ${first.signature?.bytes} from server ${choice.client.url}`)
             continue
@@ -932,8 +938,8 @@ class ServerUserItems {
         // if not, something's off:
         if (cmp >= 0) {
             console.warn("Server", this.client.url, "returned items out of order. This may lead to unnecessary work during sync.")
-            console.debug("newer timestamp", previous.timestamp_ms_utc, "sig:", bytesToHex(previous.signature?.bytes))
-            console.debug("older timestamp", current.timestamp_ms_utc, "sig:", bytesToHex(current.signature?.bytes))
+            console.debug("newer timestamp", previous.timestampMsUtc, "sig:", bytesToHex(previous.signature!.bytes))
+            console.debug("older timestamp", current.timestampMsUtc, "sig:", bytesToHex(current.signature!.bytes))
         }
     }
 }
@@ -954,7 +960,7 @@ export async function publishMyPostsTask(args: PublishMyPostsArgs) {
     let result = await local.getProfile(userID)
     if (!result) throw `Current user does not have a local profile.`
 
-    let profile = result.item.profile
+    let profile = getInner(result.item, "profile")
     let servers: Set<string>
     if (serverURL) {
         servers = new Set([serverURL])

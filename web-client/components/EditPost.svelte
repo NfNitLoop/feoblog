@@ -59,13 +59,13 @@ type PostData = {
 <script lang="ts">
 import ExpandingTextarea from "./ExpandingTextarea.svelte"
 import TimestampEditor from "./TimestampEditor.svelte"
-import { Attachments, File, Item, Post } from "../protos/feoblog";
 import FileAttachments from "./FileAttachments.svelte"
 import {FileInfo, getMarkdownInfo} from "../ts/common"
 import { getContext, onMount } from "svelte";
 import type { AppState } from "../ts/app";
 import type { Writable } from "svelte/store";
 import type { UserID } from "../ts/client";
+import {protobuf as pb} from "../ts/client";
 import { DateTime } from "luxon";
 
 export let files: FileInfo[] = []
@@ -152,29 +152,30 @@ function saveDraft(userID: UserID|null, postData: PostData) {
 
 
 // Exported so that EditorWithPreview can preview, serialize, & send it for us.
-export let item: Item
+export let item: pb.Item
 $: item = function() {
-    let itm = new Item({
-        timestamp_ms_utc: timestampMsUTC,
-        utc_offset_minutes: offsetMinutes,
-        post: new Post({
-            title,
-            body: text,
-        })
+    let post = new pb.Post({
+        title,
+        body: text,
+    })
+    let itm = new pb.Item({
+        timestampMsUtc: BigInt(timestampMsUTC),
+        utcOffsetMinutes: offsetMinutes,
+        itemType: { case: "post", value: post }
     })
 
     if (files.length > 0) {
-        let attachments: File[] = []
+        let attachments: pb.File[] = []
         for (let info of files) {
-            let file = new File({
+            let file = new pb.File({
                 hash: info.hash.bytes,
-                size: info.size,
+                size: BigInt(info.size),
                 name: info.name,
             })
             attachments.push(file)
         }
 
-        itm.post.attachments = new Attachments({file: attachments})
+        post.attachments = new pb.Attachments({file: attachments})
     }
 
     return itm

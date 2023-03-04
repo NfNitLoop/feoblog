@@ -46,7 +46,7 @@
             Loading profile ...
         {:then profile}
                 {#if profile} 
-                    Add "{profile.profile?.display_name}"?
+                    Add "{getInner(profile, "profile")?.displayName}"?
                 {:else}
                     Could not load profile for that user ID. Add it anyway?
                 {/if}
@@ -66,9 +66,8 @@ import { getContext } from "svelte";
 import type { Writable } from "svelte/store"
 import { flip } from "svelte/animate"
 
-import type { Item } from "../../protos/feoblog"
 import type { AppState, SavedLogin } from "../../ts/app"
-import { UserID } from "../../ts/client"
+import { UserID, protobuf as pb, getInner } from "../../ts/client"
 import UserIDInput from "../UserIDInput.svelte"
 import Button from "../Button.svelte"
 import PageHeading from "../PageHeading.svelte";
@@ -82,7 +81,7 @@ let userID = ""
 let validUserID = false
 let hasFocus = false
 
-let profileLoad: null | Promise<Item|null> = null
+let profileLoad: null | Promise<pb.Item|null> = null
 
 $: if (userID && validUserID) { fetchProfile() }
 
@@ -102,7 +101,8 @@ async function addUserID() {
     // Log in via app state.
 
     let login: SavedLogin = {userID}
-    let displayName = (await profileLoad)?.profile?.display_name
+    let item = await profileLoad
+    let displayName = getInner(item, "profile")?.displayName
 
     appState.update((state) => {
         if (displayName) { login.displayName = displayName}

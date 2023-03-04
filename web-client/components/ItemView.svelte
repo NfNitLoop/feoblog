@@ -8,7 +8,7 @@
 export interface PageEvent {
     signature: string,
     userID: string,
-    item?: Item|null
+    item?: pb.Item|null
     element: HTMLElement|null
 }
 
@@ -18,9 +18,8 @@ export interface PageEvent {
 // View of a single item.
 import type { Writable } from "svelte/store"
 
-import { UserID} from "../ts/client"
+import { UserID, protobuf as pb, getInner } from "../ts/client"
 import { markdownToHtml, fixLinks, FileInfo, observable, scrollState, ConsoleLogger} from "../ts/common"
-import type { Item } from "../protos/feoblog"
 import type { AppState } from "../ts/app"
 import UserIdView from "./UserIDView.svelte"
 import CommentView from "./CommentView.svelte"
@@ -32,7 +31,7 @@ export let signature: string
 
 // Caller can provide a pre-fetched Item. 
 // DO NOT BIND. If you want to see the item loaded, use on:itemLoaded
-export let item: Item|null|undefined = undefined
+export let item: pb.Item|null|undefined = undefined
 
 // When rendering items above our current location in the page, loading images
 // can cause the block length to change, and cause the page to scroll.
@@ -40,7 +39,7 @@ export let item: Item|null|undefined = undefined
 export let shrinkImages = false
 
 // The item that we loaded:
-let loadedItem: Item|null|undefined = undefined
+let loadedItem: pb.Item|null|undefined = undefined
 
 
 let appState: Writable<AppState> = getContext("appStateStore")
@@ -81,7 +80,7 @@ let itemElement: HTMLElement|null = null
 const logger = new ConsoleLogger({prefix: `<ItemView> ${signature.substring(0,10)}`}) //.withDebug()
 
 $: getItem(userID, signature, item)
-async function getItem(userID: string, signature: string, initialItem: Item|null|undefined) {
+async function getItem(userID: string, signature: string, initialItem: pb.Item|null|undefined) {
     if (initialItem !== undefined) {
         loadedItem = initialItem
         return
@@ -98,17 +97,22 @@ async function getItem(userID: string, signature: string, initialItem: Item|null
     dispatcher("itemLoaded", loadedItem)
 }
 
+$: post = getInner(loadedItem, "post")
+$: profile = getInner(loadedItem, "profile")
+
 // If this is a Profile, which users does this profile follow?
 let validFollows: ValidFollow[] = []
 $: validFollows = function(){
-    if (!loadedItem?.profile?.follows) { return [] }
+    if (!loadedItem || loadedItem.itemType.case != "profile") return []
+    let profile = loadedItem.itemType.value
+    if (!profile.follows) { return [] }
     let valid: ValidFollow[] = []
-    for (let follow of loadedItem.profile.follows) {
+    for (let follow of profile.follows) {
         try {
-            let id = UserID.fromBytes(follow.user.bytes)
+            let id = UserID.fromBytes(follow.user!.bytes)
             valid.push({
                 userID: id,
-                displayName: follow.display_name.trim() || id.toString(),
+                displayName: follow.displayName.trim() || id.toString(),
             })
         } catch (e) {
             logger.warn(`Error parsing follow for ${userID}`, e)
@@ -223,7 +227,7 @@ function leftPage() {
     class="item"
     id={signature}
     class:clickable
-    class:comment={loadedItem?.comment}
+    class:comment={loadedItem?.itemType.case == "comment"}
     class:shrinkImages
     class:active
     on:click={onClick}
@@ -239,38 +243,38 @@ function leftPage() {
                 <br><code>/u/{userID}/i/{signature}/</code>
             </p>
         </div>
-    {:else if loadedItem.post}
+    {:else if post}
         <ItemHeader item={loadedItem} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
         <div class="body">
             {#if viewMode == "normal"}
-                {#if loadedItem.post.title}
-                    <h1 class="title">{ loadedItem.post.title }</h1>
+                {#if post.title}
+                    <h1 class="title">{ post.title }</h1>
                 {/if}
 
-                {@html markdownToHtml(loadedItem.post.body || "", {withPreview: previewFiles, relativeBase: `/u/${userID}/i/${signature}/`})}
+                {@html markdownToHtml(post.body || "", {withPreview: previewFiles, relativeBase: `/u/${userID}/i/${signature}/`})}
             {:else if viewMode == "markdown"}
                 <p>Markdown source:</p>
-                <code><pre>{loadedItem.post.body}</pre></code>
+                <code><pre>{post.body}</pre></code>
             {:else} 
                 <p>JSON representation of Protobuf Item:</p>
-                <code><pre>{JSON.stringify(loadedItem.toObject(), null, 4)}</pre></code>
+                <code><pre>{JSON.stringify(loadedItem, null, 4)}</pre></code>
             {/if}
 
         </div>
-    {:else if loadedItem.profile}
+    {:else if profile}
         <ItemHeader item={loadedItem} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
         <div class="body">
             <div class="userIDInfo">
                 id: <UserIdView userID={UserID.fromString(userID)} resolve={false} shouldLink={false} />
             </div>
             {#if viewMode == "normal"}
-                {@html markdownToHtml(loadedItem.profile.about, {relativeBase: `/u/${userID}/i/${signature}`})}
+                {@html markdownToHtml(profile.about, {relativeBase: `/u/${userID}/i/${signature}`})}
             {:else if viewMode == "markdown"}
                 <p>Markdown source:</p>
-                <code><pre>{loadedItem.profile.about}</pre></code>
+                <code><pre>{profile.about}</pre></code>
             {:else} 
                 <p>JSON representation of Protobuf Item:</p>
-                <code><pre>{JSON.stringify(loadedItem.toObject(), null, 4)}</pre></code>
+                <code><pre>{JSON.stringify(loadedItem, null, 4)}</pre></code>
             {/if}
 
             <h2>Follows</h2>
@@ -284,7 +288,7 @@ function leftPage() {
 
             <h2>Servers</h2>
             <ul>
-                {#each loadedItem.profile.servers as server (server)}
+                {#each profile.servers as server (server)}
                     <!-- NOT hyperlinking this for now, in case someone tries to inject a javascript: link. -->
                     <li><code>{server.url}</code></li>
                 {:else}
@@ -292,7 +296,7 @@ function leftPage() {
                 {/each}
             </ul>
         </div>
-    {:else if loadedItem.comment}
+    {:else if loadedItem.itemType.case == "comment"}
         <CommentView {showReplyTo} item={loadedItem} 
             userID={UserID.fromString(userID)}
             {signature}

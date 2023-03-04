@@ -2,10 +2,11 @@
 // use protoc_rust;
 
 fn main() {
-    // TODO: Specify a rebuild-if
+    let proto_file = "protobufs/feoblog.proto";
+    println!("cargo:rerun-if-changed={}", proto_file);
     protoc_rust::Codegen::new()
         .out_dir("src/protos")
-        .inputs(&["protobufs/feoblog.proto"])
+        .inputs(&[proto_file])
         .include("protobufs")
         .run()
         .expect("protoc");

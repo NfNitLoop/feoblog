@@ -21,10 +21,9 @@ import { DisplayItem, ExcludeItemTypes, ItemOffsetParams } from "../../ts/client
 import { getContext } from "svelte";
 import { params } from "svelte-hash-router"
 
-import { UserID } from "../../ts/client";
+import { UserID, protobuf as pb } from "../../ts/client";
 import PageHeading from "../PageHeading.svelte";
 import ItemsScroll from "../ItemsScroll.svelte";
-import { ItemListEntry, ItemType } from "../../protos/feoblog";
 import { ConsoleLogger } from "../../ts/common";
 
 let appState: Writable<AppState> = getContext("appStateStore")
@@ -38,7 +37,7 @@ const logger = new ConsoleLogger({prefix: "<UserPage>"})
 $: userID = UserID.tryFromString($params.userID)
 
 
-async function * createItemLoader(offset: ItemOffsetParams): AsyncGenerator<ItemListEntry> {
+async function * createItemLoader(offset: ItemOffsetParams): AsyncGenerator<pb.ItemListEntry> {
     if (!userID) { 
         logger.warn("Couldn't parse user ID, no items to load.")
         return
@@ -46,6 +45,6 @@ async function * createItemLoader(offset: ItemOffsetParams): AsyncGenerator<Item
     yield* $appState.client.getUserItems(userID, offset)
 }
 
-let itemFilter = new ExcludeItemTypes([ItemType.PROFILE])
+let itemFilter = new ExcludeItemTypes([pb.ItemType.PROFILE])
 
 </script>

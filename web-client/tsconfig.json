@@ -1,7 +1,7 @@
 {
     "extends": "@tsconfig/svelte/tsconfig.json",
     "compilerOptions": {
-        "target": "ES2019",
+        "target": "ES2020",
         "esModuleInterop": true,
         "moduleResolution": "node",
         "experimentalDecorators": true,
@@ -10,7 +10,7 @@
             "dom",
             "es2020",
             "webworker"
-        ]
+        ],
     },
     "exclude": [
         "build",

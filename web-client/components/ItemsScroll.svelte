@@ -54,10 +54,9 @@
 
 <script lang="ts">
 import type { PageEvent } from "./ItemView.svelte";
-import type { ItemListEntry } from "../protos/feoblog";
-import { DisplayItem, ItemOffsetParams, ItemFilter, LazyItemLoader } from "../ts/client";
+import { DisplayItem, ItemOffsetParams, ItemFilter, LazyItemLoader, protobuf as pb } from "../ts/client";
 
-import { ConsoleLogger, InfiniteScroll } from "../ts/common";
+import { ConsoleLogger, InfiniteScroll, Mutex } from "../ts/common";
 import ItemView from "./ItemView.svelte";
 import type { Writable } from "svelte/store";
 import type { AppState } from "../ts/app";
@@ -72,7 +71,7 @@ import { query } from "svelte-hash-router"
 const logger = new ConsoleLogger({prefix: "<ItemScroll>"})// .withDebug()
 logger.debug("Created logger. (fresh load)")
 
-export let createItemLoader: (offset: ItemOffsetParams) => AsyncGenerator<ItemListEntry>
+export let createItemLoader: (offset: ItemOffsetParams) => AsyncGenerator<pb.ItemListEntry>
 
 export let itemFilter: ItemFilter = ItemFilter.allowAll()
 
@@ -153,7 +152,7 @@ function itemEnteredScreen(event: CustomEvent<PageEvent>) {
 
     // logger.debug("Item entered page", event.detail.signature.substring(0, 10))
 
-    let ts = event.detail.item?.timestamp_ms_utc
+    let ts = event.detail.item?.timestampMsUtc
     if (ts && (!shrinkWatermark || ts > shrinkWatermark)) {
         shrinkWatermark = ts
         logger.debug("new shrinkWatermark", shrinkWatermark)
@@ -173,8 +172,8 @@ function getFirstVisible(events: PageEvent[]): PageEvent|null {
     let event = null
     for (const e of events) {
         if (!e.item) { continue }
-        let ts = e.item.timestamp_ms_utc
-        if (event == null || ts > event.item!.timestamp_ms_utc) {
+        let ts = e.item.timestampMsUtc
+        if (event == null || ts > event.item!.timestampMsUtc) {
             event = e
         }
     }
@@ -185,11 +184,11 @@ function getFirstVisible(events: PageEvent[]): PageEvent|null {
 $: saveScrollPosition(firstVisible)
 function saveScrollPosition(event: PageEvent|null) {
     if (!event) { return }
-    let ts = event.item?.timestamp_ms_utc
+    let ts = event.item?.timestampMsUtc
     if (!ts) { return }
 
     historyThrottle.setParam("ts", `${ts}`)
-    scrollPos = ts
+    scrollPos = Number(ts)
 }
 
 // Hmm, should this be auto-updating if we update it in saveScrollPosition?
@@ -223,10 +222,19 @@ function onFilterChange(..._changedFields: unknown[]) {
     loadMore(load.initial)
 }
 
-async function loadMore(count: number) {
-    logger.debug("loadMore()")
+let loadMutex = new Mutex()
 
-    if (!loader) { return }
+async function loadMore(count: number) {
+    loadMutex.runIfNone(() => _loadMore(count))
+}
+
+async function _loadMore(count: number) {
+    logger.debug("loadMore(", count, ")")
+
+    if (!loader) { 
+        logger.debug("no loader, ending loadMore()")
+        return
+    }
 
     let nextItems = await loader.getNext(count)
     logger.debug("Tried to load", count, "items and got", nextItems.length)
@@ -241,6 +249,8 @@ async function loadMore(count: number) {
         for (let item of nextItems) { await items.pushBottom(item) }
         if (loader.done) { noMoreBottom = true }
     }
+
+    logger.debug("loadMore() done")
 }
 
 /**
@@ -317,13 +327,13 @@ onDestroy(() => {
 // TODO: SHould be (timestamp, signature) for a full ordering. 
 // The top timestamp that's ever been visible.
 // Things before this have shrunken images to avoid scroll issues.
-let shrinkWatermark: number|undefined = undefined
+let shrinkWatermark: bigint|undefined = undefined
 
 function shrinkImages(entry: DisplayItem): boolean {
     // For the very first item, don't wait for an itemEnteredScreen event
     // If it doesn't happen from scrolling down, scrolling up will not get a shrinkImage=true, which will
     // cause scrolling issues.
-    let ts = entry.item.timestamp_ms_utc
+    let ts = entry.item.timestampMsUtc
     if (!shrinkWatermark) {
         logger.debug("Setting initial watermark", ts)
         shrinkWatermark = ts
@@ -434,9 +444,9 @@ function nearBottom() {
     if (loaderDirection != "down") {
         let myItems = $items
         let end = myItems.length - 1
-        let bottomTs = myItems[end]?.item?.timestamp_ms_utc
+        let bottomTs = myItems[end]?.item?.timestampMsUtc
         if (!bottomTs) { return }
-        reInitLoader({before: bottomTs})
+        reInitLoader({before: Number(bottomTs)})
     }
     
     if (loader?.done) {
