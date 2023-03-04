@@ -9,7 +9,7 @@
 
 mod upgraders;
 
-use std::{io::{Read, Write}, ops::DerefMut, path::Path, collections::HashMap};
+use std::{io::{Read, Write}, ops::DerefMut, path::Path, collections::HashMap, ffi::c_int};
 
 use crate::{backend::UsageByUserRow, protos::Item, util::AsHex};
 use actix_web::web::Bytes;
@@ -37,10 +37,31 @@ pub(crate) struct FactoryBuilder {
 
 impl FactoryBuilder {
     pub fn new(sqlite_file: String) -> Self {
+
+        #[cfg(feature = "sqlite_trace")]
+        unsafe {
+            rusqlite::trace::config_log(Some(trace_fn)).expect("config_log");
+        }
+
         Self {
             sqlite_file
         }
     }
+}
+
+#[cfg(feature = "sqlite_trace")]
+fn trace_fn(i: c_int, s: &str) {
+    println!("rusqlite::trace: {} {}", i, s);
+}
+
+#[cfg(feature = "sqlite_trace")]
+fn conn_trace(s: &str) {
+    println!("trace: {}", s);
+}
+
+#[cfg(feature = "sqlite_profile")]
+fn conn_profile(s: &str, dur: std::time::Duration) {
+    println!("profile: {:?}\n{}", dur, s);
 }
 
 impl backend::FactoryBuilder for FactoryBuilder {
@@ -190,6 +211,16 @@ impl backend::Factory for Factory
             conn: self.pool.get()?,
             pool: self.pool.clone(),
         };
+
+        #[cfg(any(feature = "sqlite_trace", feature="sqlite_profile"))]
+        let mut conn = conn;
+
+        #[cfg(feature = "sqlite_trace")]
+        conn.conn.trace(Some(conn_trace));
+
+        #[cfg(feature = "sqlite_profile")]
+        conn.conn.profile(Some(conn_profile));
+
         Ok(Box::new(conn))
     }
 
