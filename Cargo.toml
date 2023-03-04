@@ -104,4 +104,16 @@ path = "crates/sizedisplay"
 # Generate rust from .proto files.
 protoc-rust = "2"
 
+[features]
+
+# TODO: 
+# default = []
+default = ["sqlite_trace", "sqlite_profile"]
+
+# Enables sqlite tracing
+sqlite_trace = ["rusqlite/trace"]
+
+# enables sqlite profiling.
+sqlite_profile = ["rusqlite/trace"]
+
 
