@@ -33,7 +33,7 @@ sodiumoxide = "*"
 comrak = "*"
 
 # Allow embedding local files. 
-rust-embed = { version = "6", features = ["compression"] }
+rust-embed = { version = "6.4.2", features = ["compression"] }
 # ... and serving those files w/ the right mime types.
 mime_guess = "2"
 
@@ -78,6 +78,11 @@ askama_actix = { git = "https://github.com/djc/askama", branch = "main"}
 # These are not directly needed, but we need to bump up versions used by our 
 # dependencies to avoid security issues in older versions:
 smallvec = "0.6.14"
+
+### Dependency updates ###
+# Some dependencies need *their* dependencies versions bumped:
+# See: https://github.com/pyrossh/rust-embed/issues/206
+walkdir = "2.3.2"
 
 
 [dependencies.identicon]
