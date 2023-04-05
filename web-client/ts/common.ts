@@ -862,7 +862,14 @@ export class Mutex {
         try {
             while (this.queue.length > 0) {
                 let callback = this.queue.shift()!
-                await callback()
+                try {
+                    await callback()
+                } catch (_ignored) {
+                    // Presumably, whatever else is waiting on this Promise
+                    // will get the exception when they `await` it.
+                    // No need for duplicate throw here.
+                    // We have already waited for it to "complete".
+                }
             }
         } catch (e) {
             console.error("Exception in Mutex.runQueue()!?  Should be impossible.", e)
