@@ -1,12 +1,25 @@
 
 // use protoc_rust;
 
+const PROTO_FILE: &str = "protobufs/feoblog.proto";
+
+// Build will be re-run if any of these have changed:
+const INPUTS: [&str; 3] = [
+    PROTO_FILE,
+    
+    // Directories are checked recursively:
+    // see: https://github.com/rust-lang/cargo/commit/cee088b0db01076deb11c037fe8b64b238b005a2
+    "static/",
+    "web-client/build/",
+];
+
 fn main() {
-    let proto_file = "protobufs/feoblog.proto";
-    println!("cargo:rerun-if-changed={}", proto_file);
+    for pattern in INPUTS {
+        println!("cargo:rerun-if-changed={}", pattern);
+    }
     protoc_rust::Codegen::new()
         .out_dir("src/protos")
-        .inputs(&[proto_file])
+        .inputs(&[PROTO_FILE])
         .include("protobufs")
         .run()
         .expect("protoc");
