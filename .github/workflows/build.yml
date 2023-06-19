@@ -9,6 +9,10 @@ on:
   # Allow manual runs:
   workflow_dispatch:
 
+  # Reusable workflows!
+  # See: https://docs.github.com/en/actions/using-workflows/reusing-workflows
+  workflow_call:
+
   schedule:
     # Run once a month to alert me of bit-rot. 
     # See: https://docs.github.com/en/actions/reference/events-that-trigger-workflows#schedule
@@ -25,7 +29,7 @@ jobs:
     strategy:
       matrix:
         os:
-        - ubuntu-18.04
+        - ubuntu-latest
         - macos-latest
         - windows-latest
       # Don't fail fast, if we have a failure on a specific matrix type
@@ -37,9 +41,10 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - uses: arduino/setup-protoc@64c0c85d18e984422218383b81c52f8b077404d3
+    # v2, as of today (June 18, 2023)
+    - uses: arduino/setup-protoc@9b1ee5b22b0a3f1feb8c2ff99b32c89b3c3191e9
       with: 
-        version: '3.x'
+        version: '23.x'
         repo-token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Install NPM dependencies

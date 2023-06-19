@@ -11,53 +11,12 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        os:
-        - ubuntu-18.04
-        - macos-latest
-        - windows-latest
-      # Don't fail fast, if we have a failure on a specific matrix type
-      # we want to know which ones:
-      fail-fast: false
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-    - uses: actions/checkout@v2
-
-    - uses: arduino/setup-protoc@64c0c85d18e984422218383b81c52f8b077404d3
-      with: 
-        version: '3.x'
-        repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Install NPM dependencies
-      working-directory: ./web-client
-      run: npm install
-
-    - name: Build JavaScript Client
-      working-directory: ./web-client
-      run: npm run build
-    
-    - name: Run Rust Tests
-      run: cargo test
-
-    - name: Build Rust
-      run: cargo build --release
-
-    - name: Save result
-      uses: actions/upload-artifact@v2
-      with:
-        name: "FeoBlog-${{ matrix.os }}"
-        path: |
-          ./target/release/feoblog
-          ./target/release/feoblog.exe
-
   release:
     runs-on: ubuntu-latest
-    needs: build
     steps:
+      - name: Release Build
+        uses: ./.github/workflows/build.yml
+
       - name: Download build artifacts
         id: download
         uses: actions/download-artifact@v2
@@ -69,7 +28,7 @@ jobs:
         run: zip -9 release.zip feoblog
 
       - name: Create Linux artifact
-        working-directory: ${{ steps.download.outputs.download-path}}/FeoBlog-ubuntu-18.04
+        working-directory: ${{ steps.download.outputs.download-path}}/FeoBlog-ubuntu-latest
         run: zip -9 release.zip feoblog
 
       - name: Create Windows artifact
@@ -115,7 +74,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.release.outputs.upload_url }}
-          asset_path: ${{ steps.download.outputs.download-path}}/FeoBlog-ubuntu-18.04/release.zip
+          asset_path: ${{ steps.download.outputs.download-path}}/FeoBlog-ubuntu-latest/release.zip
           asset_name: feoblog-linux-${{ steps.tag-name.outputs.result }}.zip
           asset_content_type: application/zip
       
