@@ -14,6 +14,7 @@ export const MAX_ITEM_SIZE = 32 * 1024 // 32k
 
 // TODO: Deprecated. Use client.UserID.fromString() instead.
 // Parse a base58 userID to a Uint8Array or throws a string error message.
+/** @deprecated */
 export function parseUserID(userID: string): Uint8Array {
     if (userID.length == 0) {
         throw "UserID must not be empty."
@@ -351,7 +352,8 @@ function interceptLinkClick(event: Event, anchor: HTMLAnchorElement, params?: Fi
 // Applies `mapper` to up to `count` items before it begins yielding them.
 // Useful for prefetching things in parallel with promises.
 // `items` is assumed to be reasonably fast relative to `mapper`.
-export async function* prefetch<T, Out>(items: AsyncIterable<T>, count: Number, mapper: (t: T) => Promise<Out>): AsyncGenerator<Out> {
+// TODO: replace with better-iterators?
+export async function* prefetch<T, Out>(items: AsyncIterable<T>, count: number, mapper: (t: T) => Promise<Out>): AsyncGenerator<Out> {
     let outs: Promise<Out>[] = []
 
     // We assume items.next() is (generally, relatively) fast, so we always get it:
@@ -747,63 +749,103 @@ export function bytesToHex(bytes: Uint8Array): string {
     return out.join("")
 }
 
-// Wraps a (browser) File with some extra info.
-export class FileInfo {
-    readonly file: File
-    name: string
-    readonly objectURL: string
+// TODO: (#122) Don't trust the File object given to us by the browser. 
+// Make our own File/Blob object from its bytes.
+// I'm pretty sure Safari on iOS changed the bytes out from under me.  (see: #120)
 
-    private constructor(file: File, name: string, readonly hash: Hash) {
-        this.file = file
+interface FileInfoArgs {
+    name: string
+    hash: Hash
+    blob: Blob
+    mimeType?: string
+}
+
+/**
+ * An in-memory copy of a File object, w/ its hash.
+ */
+export class FileInfo {
+    readonly blob: Blob
+    name: string
+    readonly hash: Hash
+    readonly mimeType?: string
+
+    objectURL: string
+
+    private constructor({name, hash, blob, mimeType}: FileInfoArgs) {
+        this.blob = blob
         this.name = name
-        this.objectURL = URL.createObjectURL(file)
+        this.hash = hash
+        this.mimeType = mimeType,
+        this.objectURL = URL.createObjectURL(blob)
     }
 
     static async from(file: File): Promise<FileInfo> {
+        // #122: Immediately read all file bytes and metadata into our own objects.
+        // The browser's File object can not be trusted long-term. 
+        // 1) I think I caught it sending different bytes than I attached. (can't reproduce)
+        // 2) If a file's bytes change after attaching, you can't read it anymore. Unepxected exception.
+        // Better to get the exception at attach time than when we're done w/ a post and trying to upload it.
         
-        // TODO: Not supported in Safari?
-        let bytes = await file.arrayBuffer()
-        let ui8a = new Uint8Array(bytes)
-        let hash = Hash.ofBytes(ui8a)
-        return new FileInfo(file, file.name, hash)
+        let buf = await file.arrayBuffer()
+        let blob = new Blob([buf], {type: file.type})
+        return new FileInfo({
+            name: file.name,
+            blob,
+            hash: Hash.ofBuf(buf),
+            mimeType: file.type
+        })
     }
 
-    get type() { return this.file.type }
-    get size() { return this.file.size }
+    debug() {
+        console.debug({
+            file: this.name,
+            size: this.blob.size,
+            hash: this.hash.asHex
+        })
+        return this
+    }
+
+    get type() { return this.blob.type }
+    get size() { return this.blob.size }
 
     get readableSize(): string {
         return readableSize(this.size)
     }
 
-    private static supportedImagesTypes = [
+    private static supportedImagesTypes = new Set([
         "image/jpeg",
         "image/png",
         "image/gif",
-        "image/svg+xml",
-    ]
+
+        // ⚠️ Nope! SVG can include JavaScript. :(
+        // "image/svg+xml",
+    ])
 
     get isImage(): boolean {
-        for (let type of FileInfo.supportedImagesTypes) {
-            if (type === this.type) return true
+        return FileInfo.supportedImagesTypes.has(this.type)
+    }
+
+    /** Cleanup the objectURL reference, to free up memory. */
+    close() {
+        if (this.objectURL != "") {
+            URL.revokeObjectURL(this.objectURL)
+            this.objectURL = ""
         }
-        return false
     }
 }
 
 // A 64-byte SHA-512 hash
 export class Hash {
-    readonly bytes: Uint8Array
-    readonly asHex: string
-
-    private constructor(hashBytes: Uint8Array, asHex: string) {
-        this.bytes = hashBytes
-        this.asHex = asHex
-    }
+    private constructor(readonly bytes: Uint8Array, readonly asHex: string) {}
 
     static ofBytes(bytes: Uint8Array): Hash {
         let hashBytes = nacl.hash(bytes)
         let asHex = bytesToHex(hashBytes)
         return new Hash(hashBytes, asHex)
+    }
+
+    static ofBuf(buf: ArrayBuffer): Hash {
+        return Hash.ofBytes(new Uint8Array(buf))
     }
 }
 
