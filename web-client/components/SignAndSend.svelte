@@ -270,7 +270,7 @@ async function trackerSubmit(tracker: TaskTracker): Promise<void> {
         await tracker.runSubtask("Uploading attachments", async (tracker) => {
             for (let upload of uploads) {
                 await tracker.runSubtask(`Uploading "${upload.name}" (${upload.readableSize})`, async (tracker) => {
-                    await client.putAttachment(userID, sig, upload.name, upload.file)
+                    await client.putAttachment(userID, sig, upload.name, upload.blob)
                 })
             }
         })

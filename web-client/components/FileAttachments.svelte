@@ -28,16 +28,6 @@
 <input type="file" multiple bind:this={fileInput} on:change={onFileAttached}>
 <Button on:click={() => fileInput.click()} disabled={!buttonsEnabled}>Attach File</Button>
 
-<!--
-    Photos in Safari are nowadays HEIF which don't work well on the web. 
-    If we have an upload that only accepts JPEGs, though, Safari will do the conversion for us.
-    (But we don't want to ONLY allow JPEG uploads, so we've made it a separate button.)
--->
-{#if safariWorkaround}
-    <input type="file" multiple accept="image/jpeg" bind:this={jpegInput} on:change={onFileAttached}>
-    <Button on:click={() => jpegInput.click()} disabled={!buttonsEnabled}>Attach JPEG</Button>
-{/if}
-
 <svelte:window on:dragover={onDragOver} on:drop={onDrop}/>
 
 <script lang="ts">
@@ -50,22 +40,8 @@ export let files: FileInfo[] = []
 $: hasFiles = files.length  > 0
 
 let fileInput: HTMLInputElement
-let jpegInput: HTMLInputElement
 let buttonsEnabled = true
 let dispatcher = createEventDispatcher()
-
-// Offer an "Attach JPEG" option on Safari, which will auto-convert HEIF images
-// to JPEG which actually works on the web. 
-// Can't just use userAgent because Chrome (for example) contains Safari.
-// let safariWorkaround = navigator.vendor.toString().toLowerCase().search("apple") >= 0
-// Huh, it looks like this may no longer be necessary in newer versions of iOS,
-// as it will auto-convert HEIF->JPEG on a plain file <input>.
-let safariWorkaround = false
-// HOWEVER, in iOS 15 (currently in beta), drag-and-drop is supported on the phone. 
-// If you drop an .heif file from Photos onto the page, the onDrop() event will
-// receive the raw/unconverted .heif file.
-// I don't immediately know of a way to work around this for drag-n-drop, so the 
-// user will have to fall back to the "Attach File" button if they want JPEG.
 
 function onDragOver(e: DragEvent) {
     e.preventDefault()
@@ -153,7 +129,7 @@ export async function addFile(file: File) {
     if (existingNames.has(fi.name)) {
         let match = fi.name.match(/[.][^.]+$/) 
         let extension = match ? match[0] : ""
-        let base = fi.name.substr(0, fi.name.length - extension.length)
+        let base = fi.name.slice(0, fi.name.length - extension.length)
 
         // Start at 2, the "base" name is an implicit 1.
         let count = 2
@@ -171,7 +147,13 @@ export async function addFile(file: File) {
 }
 
 function removeFile(file: FileInfo) {
-    files = files.filter((f) => { return f !== file })
+    files = files.filter((f) => { 
+        const keep = (f !== file)
+        if (!keep) {
+            f.close()
+        }
+        return keep
+     })
 }
 
 

@@ -137,6 +137,14 @@ blockquote blockquote blockquote blockquote
 	margin-right: auto;
 }
 
+/* Fade in a border to show where the image ends, in case it's white-on-white */
+.item img { border: 1px dashed rgba(0,0,0,0); }
+.item img:hover {
+	border: 1px dashed black;
+    transition-delay: 0.5s;
+    transition-duration: 3s;
+}
+
 /* Always comes before the timestamp, so bottom margin doesn't make sense. */
 .item .title {
 	margin-bottom: 0px;

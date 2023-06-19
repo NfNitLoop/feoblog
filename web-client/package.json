@@ -7,9 +7,10 @@
   "license": "ISC",
   "scripts": {
     "build": "npm run svelte-check && npm run build-only",
+    "watch": "npm run svelte-check && npm run build-watch",
     "svelte-check": "svelte-check --threshold error",
     "build-only": "node esbuilder.mjs",
-    "watch": "npm run build -- --watch"
+    "build-watch": "node esbuilder.mjs -- --watch"
   },
   "browser": {
     "stream": "stream-browserify"
