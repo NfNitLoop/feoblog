@@ -114,7 +114,7 @@ function toggleSettings() {
     settingsHidden = !settingsHidden
 }
 
-$: getNav($appState)
+$: setNav($appState)
 $: hasNav = navItems.length > 0
 $: navHidden = !settingsHidden
 
@@ -147,280 +147,130 @@ function onScroll(event: UIEvent) {
 
 $: logger.log("forceShow", forceShow)
 
+/**
+ * Updates navItems and breadcrumbs
+ */
+function setNav(app: AppState) {
+    const currentUser = app.loggedInUser
+    const loggedIn = currentUser !== null
 
-// TODO: Move this up to IndexPage along side the Router config?
-// TODO: Can I use the Navigator class here for URLs?
-let navTree = new NavNode({
-    pattern: "/home",
-    title: window.location.hostname,
-    children: [
-        {
-            requireCurrentUser: true,
-            title: "My Feed",
-            pattern: "/u/:uid/feed",
-            linkAway: true,
-        },
-        {
-            requireLoggedIn: true,
-            title: "Log Out",
-            pattern: "/login",
-            linkAway: true,
-        },
-        {
-            requireLoggedIn: false,
-            title: "Log In",
-            pattern: "/login",
-            linkAway: true,
-        },
-        
-        { 
-            pattern: "/login",
-            title: "Log In/Out",
-            placeholder: true,
-            children: [
-                {title: "Home", pattern: "/home", linkAway: true},
-                {title: "Identities", pattern: "/login" },
-                {title: "Create ID", pattern: "/login/create-id" },
-                {title: "Security", pattern: "/login/security", requireLoggedIn: true},
-            ]
-        },
-        {
-            requireCurrentUser: true,
-            title: "My Posts",
-            pattern: "/u/:uid/(*)",
-            userIdParam: "uid",
-            placeholder: true,
-            children: [
-                {title: "Home", pattern: "/home", linkAway: true},
-                { pattern: "/u/:uid/", title: "Posts" },
-                { pattern: "/u/:uid/profile", title: "Profile" },
-                { pattern: "/u/:uid/feed", title: "Feed" },
-                { pattern: "/u/:uid/post", title: "New Post"},
-                // TODO: Just move into the profile view:
-                { pattern: "/u/:uid/profile/edit", title: "Edit Profile"},
-                { pattern: "/u/:uid/sync", title: "Sync"},
-            ]
-        },
-        {
-            requireCurrentUser: false,
-            title: "User Posts",
-            pattern: "/u/:uid/(*)",
-            userIdParam: "uid",
-            placeholder: true,
-            children: [
-                {title: "Home", pattern: "/home", linkAway: true},
-                { pattern: "/u/:uid/", title: "Posts" },
-                { pattern: "/u/:uid/profile", title: "Profile" },
-                { pattern: "/u/:uid/feed", title: "Feed" },
-            ]
-        },
-    ]
-})
+    // Relative path of this page inside our #/ navigation, minus ?query=strings.
+    let pagePath = window.location.hash.substring(1).replace(/\?.*/, "")
 
+    const navs: NavItem[] = []
 
+    const onHome = new UrlPattern("/home").match(pagePath)
+    // Always present:
+    navs.push({
+        text: "Home",
+        href: "#/home",
+        isActive: onHome
+    })
 
-function getNav(app: AppState) {
-    let url = window.location.hash.substring(1).replace(/\?.*/, "")
-    let node = navTree.getDisplayNode(app, url)
-    if (!node) {
-        navItems = [{text: "Couln't determine navigation", href: "#/"} ]
-        return
+    let uid: string|undefined = currentUser?.asBase58
+
+    // If we're viewing a different user's page, repurpose logged-in nav to their nav:
+    const userRoot = new UrlPattern("/u/:uid(/*)").match(pagePath)
+    if (userRoot) { uid = userRoot.uid }
+    const isMe = loggedIn && uid == currentUser.asBase58
+    const my = isMe ? "My " : ""
+
+    // Display User Nav.
+    // We always display the logged-in user's nav, unless they're looking at some other user:
+    if (loggedIn || userRoot) {
+        navs.push({
+            text: `${my}Feed`,
+            href: `#/u/${uid}/feed`,
+            isActive: pagePath == `/u/${uid}/feed`
+        })
+
+        navs.push({
+            text: `${my}Posts`,
+            href: `#/u/${uid}/`,
+            isActive: new UrlPattern("/u/:uid/").match(pagePath),
+        })
+
+        navs.push({
+            text: `${my}Profile`,
+            href: `#/u/${uid}/profile`,
+            isActive: new UrlPattern("/u/:uid/profile").match(pagePath),
+        })
+
+        // TODO: Inline "New Post" and "Edit Profile" into the Post/Profile page.
+        if (isMe) {
+            navs.push({
+                text: `New Post`,
+                href: `#/u/${uid}/post`,
+                isActive: new UrlPattern("/u/:uid/post").match(pagePath),
+            }) 
+
+            navs.push({
+                text: `Edit Profile`,
+                href: `#/u/${uid}/profile/edit`,
+                isActive: new UrlPattern("/u/:uid/profile/edit").match(pagePath),
+            }) 
+
+            navs.push({
+                text: `Sync`,
+                href: `#/u/${uid}/sync`,
+                isActive: new UrlPattern("/u/:uid/sync").match(pagePath),
+            }) 
+
+        }
     }
-    navItems = node.getNavItems(app, url)
-    breadcrumbs = node.getBreadcrumbs(url)
+
+    const onLogin = new UrlPattern("/login(/*)").match(pagePath)
+    navs.push({
+        text: loggedIn ? "Log Out" : "Log In",
+        href: "#/login",
+        isActive: new UrlPattern("/login").match(pagePath)
+    })
+
+    // TODO: Fold these into the "Login" page so they don't need to be separate nav:
+    // For now, only show them when:
+    if (onLogin && loggedIn) {
+        navs.push({
+            text: "Create ID",
+            href: "#/login/create-id",
+            isActive: pagePath == "/login/create-id",
+        })
+        navs.push({
+            text: "Security",
+            href: "#/login/security",
+            isActive: pagePath == "/login/security",
+        })
+    }
+
+    navItems = navs
+    if (onHome) {
+        breadcrumbs = [{
+            text: window.location.hostname,
+            href: "#/home",
+        }]
+    } else if (uid) {
+        try {
+            breadcrumbs = [{
+                userID: UserID.fromString(uid)
+            }]
+        } catch (e) {
+            breadcrumbs = [{
+                text: `Invalid user ID: ${uid}`
+            }]
+        }
+    } else if (onLogin) {
+        breadcrumbs = [{
+            text: "Log In"
+        }]
+    } else {
+        breadcrumbs = [{
+            text: `Unknown Page: ${window.location.hash.slice(1)}`
+        }]
+    }
 }
 
 </script>
 
 <script lang="ts" context="module">
-
-// TODO: Ugh, this class was not designed. It was evolved. It seems overly complicated for generating such a small
-// navigation.  I'd like to rewrite the whole thing when I've got time. If you are reading this, I apologise.
-//
-// A way to declare our nav hierarchy and let the URL patterns figure it out:
-// Note: the path key ":uid" is special.
-class NavNode {
-    readonly urlPattern: UrlPattern
-    readonly title: string
-    private parent?: NavNode
-    readonly children: NavNode[]
-    private userIDcrumb?: string
-    private placeholder: boolean
-    private requireCurrentUser: boolean | undefined;
-    private requireLoggedIn: boolean | undefined;
-    private linkAway: boolean | undefined;
-
-    constructor(params: NavNodeParams) {
-        this.urlPattern = new UrlPattern(params.pattern)
-        this.title = params.title
-        this.children = params.children?.map((c) => new NavNode(c)) ?? []
-        this.children.forEach((c) => c.parent = this)
-        this.userIDcrumb = params.userIdParam
-        this.placeholder = params.placeholder ?? false
-        this.requireCurrentUser = params.requireCurrentUser
-        this.requireLoggedIn = params.requireLoggedIn
-        this.linkAway = params.linkAway
-    }
-
-    // If this is chosen as the main navNode, what nav items should we show?
-    getNavItems(app: AppState, url: string): NavItem[] {
-        let currentUser = app.loggedInUser
-        let loggedIn = !!currentUser
-
-        let items: NavItem[] = []
-
-        let params = this.compileParams(url)
-        let uid = params.uid
-        
-        
-
-        for (let child of this.children) {
-            if (child.placeholder) { continue }
-            if (child.requireLoggedIn !== undefined) {
-                if (child.requireLoggedIn != loggedIn) continue
-            }
-
-            let childParams = {...params}
-            if (child.requireCurrentUser !== undefined) {
-                if (uid) {
-                    let isCurrentUser = uid == currentUser?.asBase58
-                    if (child.requireCurrentUser != isCurrentUser) { continue }
-                } else {
-                    // parent hasn't specified uid, use currentUser.
-                    if (!currentUser) { continue } // there is none!
-                    childParams.uid = currentUser.asBase58
-                }
-            }
-            let childUrl = child.getUrl(url, childParams)
-            items.push({
-                text: child.title,
-                href: '#' + childUrl,
-                isActive: child.matches(app, url),
-            })
-        }
-
-        return items
-    }
-
-    getBreadcrumbs(url: string): Breadcrumb[] {
-        let trail = []
-        for (let node: NavNode|undefined = this; node; node = node.parent) {
-            trail.push(node)
-        }
-
-        let crumbs = trail.reverse().map((n) => n.getBreadCrumb(url))
-        if (crumbs.length > 1 && "text" in crumbs[0]) {
-            crumbs = crumbs.slice(1)
-        }
-
-        return crumbs
-    }
-
-    private getBreadCrumb(url: string): Breadcrumb {
-        if (this.userIDcrumb) {
-            let params = this.compileParams(url)
-            let userID = params[this.userIDcrumb]
-            if (!userID) { throw new Error(`no such userIDCrumb in path: ${this.userIDcrumb}`)}
-            return {
-                userID: UserID.fromString(userID)
-            }
-        } 
-        return {
-            text: this.title,
-            href: '#' + this.getUrl(url)
-        }
-
-    }
-
-    // Get URL path params from all of my parents, and this.
-    private compileParams(url: string): Partial<Record<string,string>> {
-        let baseParams = {}
-        if (this.parent) {
-            baseParams = this.parent.compileParams(url)
-        }
-
-        let match = this.urlPattern.match(url)
-        if (!match) {
-            return baseParams
-        }
-        return {...baseParams, ...match}
-    }
-
-    private getUrl(currentUrl: string, defaultParams?: Partial<Record<string,string>>): string {
-        let params = { ...this.compileParams(currentUrl), ...defaultParams}
-
-        return this.urlPattern.stringify(params)
-    }
-
-    /** Get the node from which to show nav & breadcrumbs */
-    getDisplayNode(app: AppState, url: string): NavNode | null {
-        // Depth-first search:
-        let node: NavNode|null = null
-
-        // ... unless this node is excluded for some reason:
-        
-        if (this.linkAway) { return null }
-
-        let currentUserID = app.loggedInUser?.asBase58
-        if (this.requireLoggedIn !== undefined) {
-            let loggedIn = !!currentUserID
-            if (this.requireLoggedIn != loggedIn) { return null }
-        }
-
-        if (this.requireCurrentUser !== undefined) {
-            let pathArgs = this.compileParams(url)
-            let uid = pathArgs.uid
-            let isCurrentUser = uid && (uid == currentUserID)
-            if (this.requireCurrentUser != isCurrentUser) { return null }
-        }
-
-        for (let child of this.children) {
-            node = child.getDisplayNode(app, url)
-            if (node != null) { break }
-        }
-
-        if (node == null && this.matches(app, url)) {
-            if (this.children.length == 0 && this.parent) {
-                // Go up one level to show sibling nav:
-                node = this.parent
-            } else {
-                node = this
-            }
-        }
-
-        return node
-    }
-
-    private matches(app: AppState, url: string): boolean {
-        return !!this.urlPattern.match(url)
-    }
-
-}
-
-interface NavNodeParams {
-    pattern: string,
-    title: string,
-
-    /** Instead of displaying the page title, use this parameter name to pull & display the user profile by ID. */
-    userIdParam?: string,
-
-    /** This item is just a placeholder for breadcrumb nav and shouldn't show up as a child nav item. */
-    placeholder?: boolean,
-
-    children?: NavNodeParams[]
-
-    // true: Only show this link if the user ID matches the "current" (logged-in) user ID.
-    // false: Only show this when the uid is NOT the current user.
-    requireCurrentUser?: boolean
-
-    // true = Only show this if the user is "logged in"
-    // false = Only show this if the user is not logged-in.
-    requireLoggedIn?: boolean
-
-    // This link should not be counted as a nav node, we only display it to link away to a different section.
-    linkAway?: boolean
-}
-
 
 class ScrollDelta {
     delta = 0
@@ -456,9 +306,8 @@ class ScrollDelta {
     }
 }
 
+// TODO: Refactor. There's only ever one.
 export interface Breadcrumbs {
-    // The first item can be a user icon, if this is set:
-
     crumbs: Breadcrumb[]
 }
 
