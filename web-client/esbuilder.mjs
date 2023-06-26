@@ -3,8 +3,7 @@ import sveltePlugin from "esbuild-svelte";
 import sveltePreprocess from "svelte-preprocess";
 import copy from 'esbuild-copy-plugin';
 import inlineWorkerPlugin from 'esbuild-plugin-inline-worker';
-
-import { execSync } from "child_process";
+import fs from "node:fs";
 
 async function main() {
 
@@ -18,7 +17,7 @@ async function main() {
 
 
 async function doEsBuild(opts = {}) {
-    let result = await esbuild.build({
+    let args = {
         entryPoints: ['index.js'],
         bundle: true,
         outfile: 'build/index.js',
@@ -42,10 +41,25 @@ async function doEsBuild(opts = {}) {
         format: "esm",
         minify: true,
         sourcemap: true,
+        metafile: true,
         
-        watch: opts.watch,
         logLevel: opts.watch ? "debug" : "info",
-      }).catch(() => process.exit(1))    
+      }
+
+    if (opts.watch) {
+        const ctx = await esbuild.context(args)
+        await ctx.watch()
+        console.log("watching:")
+    } else {
+        const result = await esbuild.build(args)
+        const json = JSON.stringify(result.metafile)
+        fs.writeFileSync("esbuild.meta.json", json)
+
+        // console.log(
+        //     await esbuild.analyzeMetafile(result.metafile, {verbose: true})
+        // )
+    }
+
 }
 
 await main()
