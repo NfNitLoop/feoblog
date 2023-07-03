@@ -24,7 +24,7 @@
     {:else}
         <EditorWithPreview 
             mode="profile"
-            initialItem={loaded.profile.item}
+            item={loaded.profile.item}
         />
     {/if}
 {:catch e} 

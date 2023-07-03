@@ -1,5 +1,5 @@
 <div class="buttonPosition {$$props.class}">
-    <div class="button" class:disabled class:confirmationMode on:mouseup={clicked} on:mouseleave={onMouseLeave}>
+    <div class="button" class:disabled on:mouseup={clicked}>
         <slot/>
     </div>
 </div>
@@ -18,10 +18,6 @@ export let disabled = false
 // If it starts with #, then it's an internal link and we navigate there.
 // Otherwise, we open up a new window (tab) to the new external URL.
 export let href = ""
-
-// This button requires confirmation, and is currently asking for confirmation
-// TODO: Get rid of confirmation. I think I've stopped using it everywhere. also get rid of buttonPositon container.
-let confirmationMode = false
 
 let dispatcher = createEventDispatcher()
 
@@ -42,13 +38,9 @@ function clicked(event: MouseEvent) {
         return
     }
 
-    confirmationMode = false
     dispatcher("click")
 }
 
-function onMouseLeave() {
-    confirmationMode = false
-}
 
 </script>
 
@@ -81,26 +73,10 @@ function onMouseLeave() {
     box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-.button.confirmationMode {
-    animation-name: buttonConfirm;
-    animation-duration: 150ms;
-    animation-iteration-count: 5;
-    animation-fill-mode: forwards;
-    animation-direction: alternate;
-    animation-timing-function: ease-in-out;
-}
-
 
 /* Required so that we can use position: absolute on the confirmation box. */
 .buttonPosition {
     position: relative;
-}
-
-@keyframes swoopUp {
-    from {
-        bottom: 0%;
-        opacity: 0;
-    }
 }
 
 @keyframes buttonConfirm {

@@ -277,7 +277,14 @@ async function trackerSubmit(tracker: TaskTracker): Promise<void> {
     }
 
     // Save this before onSendSuccess(), because it could change values:
-    let navigateDestination = `#/u/${userID}/i/${sig}/`
+    const isProfileUpdate = item.itemType.case == "profile"
+    let navigateDestination = 
+        isProfileUpdate ? `#/u/${userID}/profile`
+        : `#/u/${userID}/i/${sig}/`
+
+    if (isProfileUpdate) {
+        $appState.userProfileChanged()
+    }
 
     await tracker.runSubtask("executing onSendSuccess()", async (tracker) => {
         // Mostly here to catch and report an exception in the handler:
@@ -290,7 +297,11 @@ async function trackerSubmit(tracker: TaskTracker): Promise<void> {
     }
 
     if (navigateWhenDone) {
-        window.location.hash = navigateDestination
+        if (window.location.hash == navigateDestination) {
+            window.location.reload()
+        } else {
+            window.location.hash = navigateDestination
+        }
     }
 }
 

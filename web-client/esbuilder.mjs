@@ -27,7 +27,14 @@ async function doEsBuild(opts = {}) {
                 // Note: as of v4, this plugin does NOT check types!
                 // That's handled by `npm run svelte-check` now.
                 // See: https://github.com/sveltejs/svelte-preprocess/blob/main/docs/preprocessing.md#typescript---limitations
-                preprocess: sveltePreprocess(),                
+                preprocess: sveltePreprocess(),
+                filterWarnings(warning) {
+                    // TODO: I should fix these, but for now they're hiding real errors. :(
+                    if (warning.code == "a11y-click-events-have-key-events") {
+                        return false
+                    }
+                    return true
+                },   
             }),
             copy({ from: "index.html", to: "index.html" }),
             copy({ from: "style.css", to: "style.css" }),

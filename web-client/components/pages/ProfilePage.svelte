@@ -1,33 +1,41 @@
 <!-- 
-    Page to edit the logged-in user's profile.
-    Loads their existing profile first.
+    View a user's profile.
+
+    If the user == the logged-in user, allow editing, too.
 -->
 
 <PageHeading />
 
-{#await loadedProfile}
+{#if error || !userID}
+    <div class="item"><div class="body error"><p>{error}</p></div></div>
+{:else if loading}
     <div class="item"><div class="body">Loading...</div></div>
-{:then loaded} 
-    {#if loaded.error}
-        <div class="item"><div class="body error">{loaded.error}</div></div>
-    {:else if !userID}
-        <div class="error">userID is required</div>
-    {:else}
-        {#if !loaded.profile}
-            <div class="item"><div class="body error"><p>This user has no profile</p></div></div>
-        {:else}
-        <ItemView 
-            item={loaded.profile.item}
-            userID={userID.toString()}
-            signature={loaded.profile.signature.toString()}
-        />
-        {/if}
+{:else if !profile && !ownProfile}
+    <ItemBox>
+        <p>No profile for user <UserIDView {userID} shouldLink={false}/>
+    </ItemBox>
+{:else}
+    {#if ownProfile}
+        <TabBar {tabs} bind:activeTab/>
     {/if}
-{:catch e} 
-    <div class="item"><div class="body error">
-        Error loading Profile. (See console)
-    </div></div>
-{/await}
+    {#if activeTab == "Current"}
+        {#if profile}
+            <ItemView 
+                item={profile.item}
+                userID={userID.toString()}
+                signature={profile.signature.toString()}
+            />
+        {:else}
+            <div class="item"><div class="body">
+                <p>No profile found. Use the "Edit" tab above to create one!</p>
+            </div></div>
+        {/if}
+    {:else if mutableProfile}
+        <EditorWithPreview bind:item={mutableProfile} reuse mode="profile" {activeTab}/>
+    {/if}
+
+{/if}
+
 
 
 <script lang="ts">
@@ -37,39 +45,64 @@ import type { AppState } from "../../ts/app";
 import { getContext } from "svelte";
 import { params } from "svelte-hash-router"
 
-import { ProfileResult, UserID } from "../../ts/client";
 import ItemView from "../ItemView.svelte";
 import PageHeading from "../PageHeading.svelte";
+import TabBar from "../TabBar.svelte";
+import EditorWithPreview from "../EditorWithPreview.svelte";
+import ItemBox from "../ItemBox.svelte";
+import UserIDView from "../UserIDView.svelte"
+import { protobuf as pb, ProfileResult, UserID } from "feoblog-client"
+import { ConsoleLogger } from "../../ts/common";
+
+const logger = new ConsoleLogger({prefix: "<ProfilePage>"})
+logger.debug("loaded")
+
 
 let appState: Writable<AppState> = getContext("appStateStore")
 
 $: userID = UserID.tryFromString($params.userID)
+$: loadProfile(userID)
+$: loggedInUser = $appState.loggedInUser
+
+// user is viewing their own profile
+$: ownProfile = userID != null && loggedInUser?.asBase58 == userID.asBase58
+
+let profile: ProfileResult|null = null
+let mutableProfile: pb.Item | null = null
+
+let error: string|null = null
+let missingProfile = false
+let loading = true
+
+type TabType = "Current" | "Edit" | "Preview"
+let tabs: TabType[] = ["Current", "Edit", "Preview"]
+let activeTab: TabType = "Current"
 
 
-let loadedProfile: Promise<LoadedProfile>
-$: loadedProfile = loadProfile(userID)
+async function loadProfile(userID: UserID|null): Promise<void> {
+    logger.log("loadProfile()")
+    profile = null
+    missingProfile = false
+    error = null
+    loading = false
 
-type LoadedProfile = {
-    profile?: ProfileResult
-    error?: string
-}
-
-async function loadProfile(userID: UserID|null): Promise<LoadedProfile> {
-    if (!userID) return {
-        error: "UserID is required"
+    if (!userID) {
+        error = `UserID is required`
+        return
     }
 
-    // Note: non-exhaustive search
-    let result = await $appState.client.getProfile(userID)
-
-    if (result) {
-        return {
-            profile: result
-        }
+    loading = true
+    try {
+        // Note: always load from server, not the appState cache.
+        // User may want to see changes in the profile.
+        profile = await $appState.client.getProfile(userID)
+        missingProfile = profile == null
+        mutableProfile = profile ? profile.item.clone() : new pb.Item()
+    } finally {
+        loading = false
     }
-
-    return {}
 }
+
 
 
 </script>

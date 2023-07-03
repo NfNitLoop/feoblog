@@ -1,13 +1,11 @@
 <!-- a tab bar that sits atop an item. -->
-<div class="tabBar" transition:slide|local>
+<div class="tabBar">
     {#each tabs as tabName, idx (tabName)}
         <span class="tab" class:inactive={idx != activeIdx} on:click={() => setActiveIndex(idx)}>{tabName}</span>
     {/each}
 </div>
 
 <script lang="ts">
-import { slide } from "svelte/transition";
-
 
 export let tabs: string[] = []
 

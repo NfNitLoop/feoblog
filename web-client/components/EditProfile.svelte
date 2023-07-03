@@ -40,7 +40,7 @@ import type { AppState } from "../ts/app";
 import type { Writable } from "svelte/store";
 import { UserID as ClientUserID, protobuf as pb, getInner } from "../ts/client";
 import { parseUserID, validateServerURL } from "../ts/common";
-import { getContext, tick } from "svelte";
+import { getContext, onMount, tick } from "svelte";
 import InputBox from "./InputBox.svelte";
 import { DateTime } from "luxon";
 import { decodeBase58 } from "../ts/fbBase58";
@@ -49,8 +49,6 @@ let appState: Writable<AppState> = getContext("appStateStore")
 // Exported so that EditorWithPreview can preview, serialize, & send it for us.
 export let item: pb.Item
 
-// Possibly imported, so we can start editing an existing profile:
-export let initialItem: pb.Item|undefined
 
 export let validationErrors: string[] = []
 $: validationErrors = function(): string[] {
@@ -164,26 +162,24 @@ $: {
     }
 }
 
-// This is the inverse of $: itemProto above. Given an Item, load data from it.
+// This is the inverse of `$: item = ...` below. Given an Item, load data from it.
 function loadFromProto(item: pb.Item) {
-    let profile = getInner(item, "profile")!
-    displayName = profile.displayName
-    profileContent = profile.about
+    let profile = getInner(item, "profile")
+    displayName = profile?.displayName ?? ""
+    profileContent = profile?.about ?? ""
 
     let _follows = new Array<FollowEntry>()
-    profile.follows.forEach((follow) => {
+    profile?.follows.forEach((follow) => {
         let f = new FollowEntry(ClientUserID.fromBytes(follow.user!.bytes).toString(), follow.displayName)
         _follows.push(f)
     })
 
     follows = _follows
 
-    servers = profile.servers.map((s) => { return {url: s.url} })
+    servers = profile?.servers.map((s) => { return {url: s.url} }) ?? []
 }
 
-if (initialItem) {
-    loadFromProto(initialItem)
-}
+loadFromProto(item)
 
 
 $: item = function(): pb.Item {
@@ -220,7 +216,5 @@ $: item = function(): pb.Item {
 
     return item
 }()
-
-
 
 </script>

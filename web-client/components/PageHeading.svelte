@@ -196,18 +196,12 @@ function setNav(app: AppState) {
             isActive: new UrlPattern("/u/:uid/profile").match(pagePath),
         })
 
-        // TODO: Inline "New Post" and "Edit Profile" into the Post/Profile page.
+        // TODO: Inline "New Post" into the Post/Profile page.
         if (isMe) {
             navs.push({
                 text: `New Post`,
                 href: `#/u/${uid}/post`,
                 isActive: new UrlPattern("/u/:uid/post").match(pagePath),
-            }) 
-
-            navs.push({
-                text: `Edit Profile`,
-                href: `#/u/${uid}/profile/edit`,
-                isActive: new UrlPattern("/u/:uid/profile/edit").match(pagePath),
             }) 
 
             navs.push({
