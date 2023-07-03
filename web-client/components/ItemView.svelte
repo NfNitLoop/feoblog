@@ -25,6 +25,7 @@ import UserIdView from "./UserIDView.svelte"
 import CommentView from "./CommentView.svelte"
 import ItemHeader from "./ItemHeader.svelte"
 import { createEventDispatcher, getContext, tick } from "svelte";
+import UserIdChip from "./UserIDChip.svelte";
 
 export let userID: string
 export let signature: string
@@ -223,6 +224,7 @@ function leftPage() {
         </div>
     </div>
 {:else}<!-- item && !loadError-->
+<!-- svelte-ignore a11y-click-events-have-key-events -->
 <div
     class="item"
     id={signature}
@@ -264,37 +266,50 @@ function leftPage() {
     {:else if profile}
         <ItemHeader item={loadedItem} userID={UserID.fromString(userID)} {signature} {previewMode} bind:viewMode />
         <div class="body">
+            {#if profile.displayName} 
+                <h1>{profile.displayName}</h1>
+            {/if}
             <div class="userIDInfo">
                 id: <UserIdView userID={UserID.fromString(userID)} resolve={false} shouldLink={false} />
             </div>
-            {#if viewMode == "normal"}
-                {@html markdownToHtml(profile.about, {relativeBase: `/u/${userID}/i/${signature}`})}
-            {:else if viewMode == "markdown"}
+            {#if viewMode == "markdown"}
                 <p>Markdown source:</p>
                 <code><pre>{profile.about}</pre></code>
-            {:else} 
+            {:else if viewMode == "data"} 
                 <p>JSON representation of Protobuf Item:</p>
                 <code><pre>{JSON.stringify(loadedItem, null, 4)}</pre></code>
+            {:else}
+                {@html markdownToHtml(profile.about, {relativeBase: `/u/${userID}/i/${signature}`})}
+
+                {#if validFollows.length > 0}
+                    <h2>Follows</h2>
+                    <user-follows>
+                    {#each validFollows as follow}
+                        <UserIdChip 
+                            userID={follow.userID}
+                            displayName={follow.displayName}
+                            shouldLink={!previewMode}
+                        />
+                    {:else}
+                        <div>(None)</div>
+                    {/each}
+                    </user-follows>
+                {/if}
+    
+                {#if profile.servers.length > 0}
+                    <h2>Servers</h2>
+                    <ul>
+                        {#each profile.servers as server (server)}
+                            <!-- NOT hyperlinking this for now, in case someone tries to inject a javascript: link. -->
+                            <li><code>{server.url}</code></li>
+                        {:else}
+                            <li>(None)</li>
+                        {/each}
+                    </ul>
+                {/if}
             {/if}
 
-            <h2>Follows</h2>
-            <ul>
-            {#each validFollows as follow}
-                <li><UserIdView userID={follow.userID} displayName={follow.displayName} resolve={false}/></li>
-            {:else}
-                <li>(None)</li>    
-            {/each}
-            </ul>
 
-            <h2>Servers</h2>
-            <ul>
-                {#each profile.servers as server (server)}
-                    <!-- NOT hyperlinking this for now, in case someone tries to inject a javascript: link. -->
-                    <li><code>{server.url}</code></li>
-                {:else}
-                    <li>(None)</li>
-                {/each}
-            </ul>
         </div>
     {:else if loadedItem.itemType.case == "comment"}
         <CommentView {showReplyTo} item={loadedItem} 
@@ -321,6 +336,10 @@ function leftPage() {
     color: #888;
 }
 
+h1:has(+ .userIDInfo) {
+    margin-bottom: 0;
+}
+
 .shrinkImages .body :global(img) {
     height: 5px;
 }
@@ -328,6 +347,11 @@ function leftPage() {
 
 .item.active {
     box-shadow: 0px 5px 20px rgb(0 0 0 / 80%);
+}
+
+user-follows {
+    display: flex;
+    flex-wrap: wrap;
 }
 
 </style>

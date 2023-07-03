@@ -5,7 +5,11 @@
 <div class="header">
     <ProfileImage {userID} />
     <div class="text">
-        <UserIdView {userID} />
+        {#if profile}
+            <UserIdView {userID} displayName={profile.displayName} resolve={false} shouldLink={!previewMode}/>
+        {:else}
+            <UserIdView {userID} shouldLink={!previewMode} />
+        {/if}
         {#if showReplyTo && comment}
             <a href={refToLink(comment.replyTo)}>
             replied to

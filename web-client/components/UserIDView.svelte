@@ -56,4 +56,8 @@ async function fetchDisplayName() {
     font-family: Consolas, monospace;
     font-weight: normal;
 }
+
+.userID {
+    font-weight: bold;
+}
 </style>
