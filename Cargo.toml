@@ -8,6 +8,7 @@ members = [
 
 [workspace.dependencies]
 
+console_error_panic_hook = "0.1.7"
 leptos = "0.5"
 leptos_meta = "0.5"
 leptos_actix = "0.5"
@@ -16,6 +17,8 @@ wasm-bindgen = "=0.2.89"
 
 
 [[workspace.metadata.leptos]]
+name = "feoblog"
+
 site-root = "target/site"
 site-pkg-dir = "pkg"
 style-file = "leptos/styles/main.scss"
@@ -29,7 +32,7 @@ env = "DEV"
 
 bin-package = "feoblog"
 bin-features = ["ssr"]
-bin-default-features = true
+bin-default-features = false
 # bin-cargo-args = [
 #     "--",
 #     "serve",
@@ -38,6 +41,16 @@ bin-default-features = true
 # bin-cargo-args = "-- serve --help"
 
 lib-package = "feoblog_leptos"
-lib-features = ["hydrate"]
+# lib-features = ["hydrate"]
 lib-default-features = false
 lib-profile-release = "wasm-release"
+
+
+# Defines a size-optimized profile for the WASM bundle in release mode
+[profile.wasm-release]
+inherits = "release"
+opt-level = 'z'
+lto = true
+codegen-units = 1
+panic = "abort"
+

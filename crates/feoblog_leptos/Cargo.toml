@@ -5,7 +5,9 @@ edition = "2021"
 
 
 [dependencies]
+console_error_panic_hook.workspace = true
 leptos.workspace = true
+leptos.features = [ "hydrate" ]
 leptos_meta.workspace = true
 leptos_actix.workspace = true
 leptos_router.workspace = true
