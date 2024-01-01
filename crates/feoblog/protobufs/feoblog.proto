@@ -1,0 +1,281 @@
+syntax = "proto3";
+
+// Each FeoBlog user's "blog" is really a collection of "Items" of different
+// types. It's important to keep in mind that different servers may cache
+// different subsets of items.
+//
+// Servers may (and probably should) impose a size limit for Item records.
+// Servers should accept items up to 32KiB (from users who have permission to
+// post to the server).
+//
+// Clients upload items to servers by PUTing to:
+// /u/{userID}/i/{itemID}/proto3
+// The body of the PUT is the binary proto3 representation of the Item.
+// The userID is a base58-encoded NaCl public key.
+// The {itemID} is a bas58-encoded detached NaCl signature of the proto3 bytes.
+// The server must then verify the signature before storing and serving the
+// proto3 bytes and must reject invalid signatures.
+//
+message Item {
+
+    // REQUIRED
+    // The timestamp is used to give order to a user's collection of Items.
+    // This timestamp represents the number of milliseconds since
+    // 1970-01-01 00:00:00.000Z (ignoring leap seconds).
+    //
+    // This is somewhat useful for displaying blog posts in order. But it's
+    // especially important for ordering things like updates to a user's
+    // profile.
+    // 
+    // As a result, servers should not accept timestamps in the future (except
+    // for maybe a small allowance due to clock drift.)
+    //
+    // Servers must validate that this value is specified.
+    //
+    // Due to protobuf3 default values, this means the value
+    // can not be exactly 0.
+    // Update: With new versionf of proto3, we can now unambiguously specify 0.
+    // TODO: Implement that.
+    int64 timestamp_ms_utc = 1;
+
+    // Optionally specify the user's timezone offset when they created this
+    // Item. This is useful when displaying more meaningful dates on things
+    // like Posts.
+    //
+    // For example, Pacific Daylight Time has an offset of "-0700", or -420
+    // minutes.
+    // Servers should reject offsets of more than +/- 24 hours. 
+    // 
+    // Defaults to 0 (UTC).
+    sint32 utc_offset_minutes = 2;
+
+    oneof item_type {
+        Post post = 3;
+        Profile profile = 4;
+        Comment comment = 5;
+    }
+}
+
+// Servers should render posts at at least two URLs:
+// 1. /u/{userID}/[?before={timestamp_ms_utc}]
+//    should render (some number of) the user's most recent posts before
+//    timestamp_ms_utc. These may be truncated.
+// 2. /u/{userID}/i/{itemID}/
+//    should render a single user post, in full.
+//    
+message Post {
+    // An optional plaintext title for the post.
+    // Titles should be <= 256 bytes. Servers may reject longer ones.
+    string title = 1;
+
+    // The body of the post, formatted in CommonMark markdown.
+    // Servers should suppress unsafe raw HTML blocks in the body. They may do
+    // so by rejecting the Item at the time of upload, or by choosing to render
+    // the Item without the offending HTML parts.
+    //
+    // The allowed size of the body is effectively limited by the allowed
+    // size of the enclosing Item.
+    string body = 2;
+
+    // File attachments that will be visible at ./files/*
+    Attachments attachments = 5;
+}
+
+
+// A user profile, where a user can provide information about themselves.
+//
+// A server should render a human-readable version of the user profile at
+// /u/{userID}/profile.
+// This should always be the newest version of the Profile available on the
+// server.
+// If a server serves a user profile, it must allow uploads of newer signed
+// Item entries to replace it.
+message Profile {
+
+    // A name to display instead of your userID.
+    string display_name = 1;
+
+    // An "about me" section, formatted in Commonmark markdown.
+    // Servers should suppress unsafe raw HTML blocks in the body.
+    string about = 2;
+
+    // A list of servers where the user expects their content to be hosted.
+    // The first server is considered the "primary" server, but others may be listed
+    // as backups.
+    // This allows users to move servers by updating their preferred server list.
+    repeated Server servers = 3;
+
+
+    // A list of users who this user "follows".
+    // This allows the server to know what additional users it should cache data for, so that it can present this
+    // (Profile) user's feed of new content.
+    //
+    // The order of the list is unimportant.
+    repeated Follow follows = 4;
+
+    // Users may collect their follows into groups to make sorting/filtering/syncing them easier.
+    repeated FollowGroup follow_groups = 5;
+
+    // TODO:
+    // irrevocably_purge_this_user
+    // Though, maybe that should just be its own type so that you can't specify a Profile with it.
+
+}
+
+// A Comment is a text-only response to some other Item.
+message Comment {
+    // Information about the Item we're replying to.
+    ReplyRef reply_to = 1;
+    
+    // CommonMark markdown text. 
+    // Inline images will NOT be rendered.
+    string text = 2;
+}
+
+// Information about an Item that we're replying to.
+message ReplyRef {
+    // REQUIRED: the user_id that posted the item.
+    UserID user_id = 1;
+    // REQUIRED: the signature of the item.
+    Signature signature = 2;
+
+    // Suggested: The type of the item we're replying to.
+    // This is useful in case clients want to only show certain types of comments. 
+    // Ex: show comments in reply to posts, but not comments replying to other comments.
+    ItemType item_type = 3;
+}
+
+// Information about where a user's posts may be found.
+// This lets content creators' clients know where to send posts when they're uploaded.
+// This also lets consumers' clients know where they can find the creator's content.
+message Server {
+
+    // A URL to a FeoBlog server.
+    // Ex:
+    // "https://feo.example.com"
+    // "https://feo.example.com/"
+    // "https://feo.example.com:8080"
+    // "https://feo.example.com:8080/"
+    //
+    // Note 1: Subpaths are currently not supported. Ex: "https://feo.example.com/some/subpath/"
+    // 
+    // Note 2: While the signature authentication allows serving/sending signed protobuf Items
+    // securely without HTTPS, since the main client is currently implemented as in-browser JavaScript,
+    // it is recommended that servers use only HTTPS to avoid JavaScript injection in the client.
+    // So, you should probably prefer https for the REST endpoints too.
+    // Plus, HTTP/2 requires HTTPS, and you'll get better performance for fetching many small Items w/ HTTP/2.
+    string url = 1;
+}
+
+message Follow {
+    // REQUIRED
+    UserID user = 1;
+
+    // Set a display name for a user within the context of your feed.
+    //
+    // Users may change their display names in their profiles. But, unlike Twitter, FeoBlog does not have
+    // a globally-unique human-readable ID to fall back on to identify someone, so it can be difficult to
+    // know who's who if people keep changing their names. 
+    // Here you can set a stable name so you always know who's who.
+    string display_name = 2;
+
+    // The (0-indexed) group index that this follow should be grouped under.
+    optional int32 follow_group = 3;
+
+    // Possible future features:
+    // * quota -- determine how much disk space a particular user may use.
+    //   (i.e.: how much of their content to cache on their behalf)
+}
+
+message FollowGroup {
+    // A display name for this group. ex: "News", or "Friends".
+    // Names should probably be unique for users' own sanity but at the moment that is not enforced by the protocol.
+    string name = 1;
+
+    // Future possibilities:
+    // quota settings by group?
+    // Additional filter options (ex: don't display comments from this group)
+}
+
+message UserID {
+    // A user's public NaCL key/ID. Must be 32 bytes:
+    bytes bytes = 1;
+}
+
+message Signature {
+    // A NaCL signature. Must be 64 bytes:
+    bytes bytes = 1;
+}
+
+// A list of items available on a server.
+// Exmaples:
+// GET /u/{userID}/items[?before=timestamp_ms_utc] to list a single user's items.
+// GET /u/{userID]/feed/items[?before=...] to list items in a user's feed.
+//
+// The list is sorted appropriately according to the request.
+// ex: ?after=... will be sorted in ascending chronological order. ?before=..., in descending.
+message ItemList {
+   
+    repeated ItemListEntry items = 1;
+
+    // If true, the server explicitly states there are no items after this list.
+    // (i.e.: the client can stop querying)
+    bool no_more_items = 2;
+}
+
+// The unique ID of an item is its (user_id,signature)
+// This type encapsulates that, plus some additional metadata which 
+message ItemListEntry {
+    // user_id may be unspecified if it can be inferred from context.
+    // (ex: in an ItemList which lists posts for a specific userID)
+    UserID user_id = 1;
+
+    // REQUIRED.
+    Signature signature = 2;
+
+    // REQUIRED
+    // The timestamp coantained within Item.timestamp_ms_utc.
+    // This is used for ordering Items, and to fetch more ItemIDs in the event
+    // that this list is truncated/incomplete.   
+    int64 timestamp_ms_utc = 3;
+
+    // Specify the type of this item.
+    // This allows clients to skip fetching item types they're not interested in
+    // for a particular view. (ex: profile updates and/or comments, etc.)
+    ItemType item_type = 4;
+}
+
+// This is redundant with the Item.item_type oneof. But it allows us to 
+// specify the type of an item in ItemLists.
+enum ItemType {
+    // Default value. Either the server didn't specify the type, or
+    // it was a type that the client can't deserialize.
+    UNKNOWN = 0;
+
+    POST = 1;
+    PROFILE = 2;
+    COMMENT = 3;
+}
+
+// File attachments.
+// Certain item types may allow file attachments.
+message Attachments {
+    repeated File file = 1;
+}
+
+// Metadata about a file attachment.
+// All fields are REQUIRED.
+message File {
+    // A  64-byte sha-512 hash of the contents of the file.
+    bytes hash = 1;
+    
+    // The size of the file in bytes.
+    // Some servers may reject files based on their size, or the user's quota.
+    // Note: The size may not be 0.
+    uint64 size = 2;
+
+    // The name of the file.
+    // The file name may not contain path separators / or \.  
+    // Note: The server will use the file extension to determine the mime type with which to serve the file.
+    string name = 3;
+}

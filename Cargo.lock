@@ -1259,6 +1259,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "feoblog_leptos"
+version = "0.1.0"
+dependencies = [
+ "leptos",
+ "leptos_actix",
+ "leptos_meta",
+ "leptos_router",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "flate2"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"

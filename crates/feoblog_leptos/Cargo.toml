@@ -1,0 +1,19 @@
+[package]
+name = "feoblog_leptos"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+leptos.workspace = true
+leptos_meta.workspace = true
+leptos_actix.workspace = true
+leptos_router.workspace = true
+wasm-bindgen.workspace = true
+
+# For WASM builds:
+[lib]
+crate-type = [
+    "cdylib",
+    "rlib"
+]

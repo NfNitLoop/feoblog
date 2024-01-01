@@ -1,0 +1,4 @@
+/node_modules/
+/web_modules/
+/build/
+/esbuild.meta.json
