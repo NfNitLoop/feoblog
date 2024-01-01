@@ -4,7 +4,8 @@
 const PROTO_FILE: &str = "protobufs/feoblog.proto";
 
 // Build will be re-run if any of these have changed:
-const INPUTS: [&str; 3] = [
+const INPUTS: [&str; 4] = [
+    "build.rs",
     PROTO_FILE,
     
     // Directories are checked recursively:
@@ -17,10 +18,15 @@ fn main() {
     for pattern in INPUTS {
         println!("cargo:rerun-if-changed={}", pattern);
     }
+
     protoc_rust::Codegen::new()
         .out_dir("src/protos")
         .inputs(&[PROTO_FILE])
         .include("protobufs")
+        .customize(protoc_rust::Customize {
+            serde_derive: Some(true),
+            .. Default::default()
+        })
         .run()
         .expect("protoc");
 
