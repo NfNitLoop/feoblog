@@ -22,6 +22,8 @@ use actix_web::dev::{Service, ServiceRequest, ServiceResponse};
 use actix_web::{App, HttpServer, Responder};
 use askama_actix::Template;
 use anyhow::{Context, format_err};
+use leptos::{LeptosOptions, leptos_config::Env};
+use leptos_actix::{LeptosRoutes, generate_route_list};
 use log::debug;
 use logging_timer::timer;
 use rust_embed::RustEmbed;
@@ -52,6 +54,7 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), anyhow::Error> {
 
     let ServeCommand{open, backend_options, mut binds} = command;
 
+    // TODO: This feels like it could all be simplified with an Arc?
     let factory_box = FactoryBox{
         factory: backend_options.factory_builder()?.factory()?
     };
@@ -66,6 +69,7 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), anyhow::Error> {
             .wrap(actix_web::middleware::Logger::default())
             .app_data(data)
             .configure(routes)
+            .configure(leptos_routes)
         ;
 
         app = app.default_service(route().to(|| html::file_not_found("")));
@@ -107,6 +111,7 @@ pub(crate) fn serve(command: ServeCommand) -> Result<(), anyhow::Error> {
 }
 
 // Work around https://github.com/actix/actix-web/issues/1913
+// TODO: Investigate whether Axum has this issue. Maybe switch to Axum.
 fn open_socket(bind: &str) -> Result<TcpListener, anyhow::Error> {
     use socket2::{Domain, Protocol, Socket, Type};
     use std::net::SocketAddr;
@@ -192,6 +197,35 @@ fn routes(cfg: &mut web::ServiceConfig) {
 
     ;
     statics(cfg);
+}
+
+fn leptos_routes(cfg: &mut web::ServiceConfig) {
+
+    // Does this even get used for anything?
+    let options = LeptosOptions {
+        // These are used by the leptos_routes middleware to generate paths to the files:
+        // Must match the values from our root Config.toml.
+        site_pkg_dir: "pkg".into(),
+        output_name: "feoblog".into(),
+
+        // TODO: Dev or prod mode:  (dev for now)
+        env: Env::default(),
+
+        // I think these are unused?
+        not_found_path: "/404".into(),
+        reload_external_port: None,
+        reload_port: 3001,
+        reload_ws_protocol: leptos::leptos_config::ReloadWSProtocol::WS,
+        site_addr: "127.0.0.1:3000".parse().expect("valid socket addr"),
+        site_root: "whatever-site-root".into(),
+    };
+
+    cfg.route("/pkg/{path:.*}", get().to(PkgFiles::http_get));
+
+    let paths = generate_route_list(leptos_app::App);
+    cfg.leptos_routes(options.clone(), paths, leptos_app::App);
+    cfg.app_data(Data::new(options));
+
 }
 
 /// Trait implemented for RustEmbed types, which knows
@@ -372,6 +406,10 @@ where S: Service<ServiceRequest, Response=ServiceResponse>
 #[derive(RustEmbed, Debug)]
 #[folder = "static/"]
 struct StaticFiles;
+
+#[derive(RustEmbed, Debug)]
+#[folder = "../../target/site/pkg"]
+struct PkgFiles;
 
 
 fn statics(cfg: &mut web::ServiceConfig) {

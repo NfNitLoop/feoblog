@@ -1241,6 +1241,7 @@ dependencies = [
  "identicon",
  "leptos",
  "leptos_actix",
+ "leptos_app",
  "leptos_meta",
  "leptos_router",
  "log",
@@ -1915,6 +1916,7 @@ name = "leptos_app"
 version = "0.1.0"
 dependencies = [
  "leptos",
+ "leptos_meta",
  "leptos_router",
 ]
 

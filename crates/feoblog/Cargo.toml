@@ -11,6 +11,10 @@ keywords = ["social", "network", "distributed"]
 name = "feoblog"
 
 [dependencies]
+
+leptos_app.path = "../leptos_app"
+
+
 # Web:
 actix-web = "4"
 actix-web-codegen = "*"
@@ -121,8 +125,7 @@ path = "../sizedisplay"
 protoc-rust = "2"
 
 [features]
-csr = ["leptos/csr", "leptos_meta/csr", "leptos_router/csr"]
-hydrate = ["leptos/hydrate", "leptos_meta/hydrate", "leptos_router/hydrate"]
+default = [ "ssr" ]
 ssr = [
   # "dep:leptos_actix",
   "leptos/ssr",

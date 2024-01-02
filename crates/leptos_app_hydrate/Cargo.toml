@@ -12,6 +12,9 @@ leptos_router.workspace = true
 wasm-bindgen.workspace = true
 
 leptos_app.path = "../leptos_app"
+leptos_app.features = [
+    "hydrate"
+]
 
 # For WASM builds:
 [lib]

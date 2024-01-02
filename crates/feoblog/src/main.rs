@@ -5,8 +5,9 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{backend::{Factory, PruneOpts, ServerUser, UsageByUserRow, UserID, sqlite}, util::AsHex};
-use anyhow::{Error, bail};
+use crate::{backend::{Factory, PruneOpts, ServerUser, UsageByUserRow, UserID, sqlite, Backend}, util::AsHex};
+use anyhow::{Error, bail, Context};
+use futures::executor::block_on;
 use sizedisplay::SizeDisplay;
 use structopt::StructOpt;
 use tablestream::{Stream, Column, col};
@@ -19,9 +20,13 @@ mod util;
 
 
 fn main() -> Result<(), Error> {
+
+    if let Some(shortcut) = get_leptos_shortcut()? {
+        return shortcut();
+    }
+
     let command = Command::from_args();
     use Command::*;
-
     match command {
         Serve(command) => server::serve(command)?,
         User(command) => command.main()?,
@@ -29,6 +34,30 @@ fn main() -> Result<(), Error> {
     };
 
     Ok(())
+}
+
+// `cargo leptos watch` really wants to pass args via the environment.
+// Short-circuit that case to run the server:
+fn get_leptos_shortcut() -> Result<Option<impl FnOnce() -> anyhow::Result<()>>, Error> {
+
+    // Leptos libraries will complain about this being missing if you call get_configuration() without it:
+    if std::env::var("LEPTOS_OUTPUT_NAME").is_err() {
+        // No leptos vars set. 
+        return Ok(None);
+    }
+
+    let leptos_conf = block_on(leptos::get_configuration(None))
+        .context("calling leptos::get_configuration()")?;
+
+    let command = ServeCommand::from(leptos_conf.leptos_options);
+    let shortcut = move || {
+        println!("Running in Leptos Watch mode...");
+        server::serve(command)?;
+        return Ok(());
+    };
+
+    // Run this instead of parsing args:
+    Ok(Some(shortcut))
 }
 
 #[derive(StructOpt, Debug)]
@@ -63,6 +92,20 @@ struct ServeCommand {
     /// If unspecified, will try to bind to some port on localhost.
     #[structopt(long="bind")]
     binds: Vec<String>
+}
+
+impl From<leptos::LeptosOptions> for ServeCommand {
+    fn from(opts: leptos::LeptosOptions) -> Self {
+        ServeCommand {
+            backend_options: BackendOptions {
+                sqlite_file: "feoblog.sqlite3".into(),
+            },
+            binds: vec![
+                opts.site_addr.to_string(),
+            ],
+            open: false,
+        }
+    }
 }
 
 #[derive(StructOpt, Debug, Clone)]

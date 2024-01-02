@@ -7,10 +7,19 @@ edition = "2021"
 [dependencies]
 leptos.workspace = true
 leptos_router.workspace = true
+leptos_meta.workspace = true
 
 # For WASM builds:
 [lib]
 crate-type = [
     "cdylib",
     "rlib"
+]
+
+[features]
+ssr = []
+csr = []
+hydrate = [
+    "leptos_router/hydrate",
+    "leptos_meta/hydrate",
 ]
