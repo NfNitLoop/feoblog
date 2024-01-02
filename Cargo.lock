@@ -1269,18 +1269,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "feoblog_leptos"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "leptos",
- "leptos_actix",
- "leptos_meta",
- "leptos_router",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "flate2"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1920,6 +1908,25 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "leptos_app"
+version = "0.1.0"
+dependencies = [
+ "leptos",
+ "leptos_router",
+]
+
+[[package]]
+name = "leptos_app_hydrate"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "leptos",
+ "leptos_app",
+ "leptos_router",
+ "wasm-bindgen",
 ]
 
 [[package]]

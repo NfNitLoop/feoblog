@@ -2,7 +2,8 @@
 resolver = "2"
 members = [
     "crates/feoblog",
-    "crates/feoblog_leptos",
+    "crates/leptos_app",
+    "crates/leptos_app_hydrate",
     "crates/sizedisplay",
 ]
 
@@ -24,7 +25,7 @@ site-pkg-dir = "pkg"
 style-file = "leptos/styles/main.scss"
 assets-dir = "leptos/assets"
 
-# TODO: Respect these when running?
+# TODO: Respect these when running for `cargo leptos watch`.
 site-addr = "127.0.0.1:3000"
 reload-port = 3001
 browserquery = "defaults"
@@ -33,15 +34,8 @@ env = "DEV"
 bin-package = "feoblog"
 bin-features = ["ssr"]
 bin-default-features = false
-# bin-cargo-args = [
-#     "--",
-#     "serve",
-#     "--help",
-# ]
-# bin-cargo-args = "-- serve --help"
 
-lib-package = "feoblog_leptos"
-# lib-features = ["hydrate"]
+lib-package = "leptos_app_hydrate"
 lib-default-features = false
 lib-profile-release = "wasm-release"
 

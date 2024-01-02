@@ -1,5 +1,5 @@
 [package]
-name = "feoblog_leptos"
+name = "leptos_app_hydrate"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,10 +8,10 @@ edition = "2021"
 console_error_panic_hook.workspace = true
 leptos.workspace = true
 leptos.features = [ "hydrate" ]
-leptos_meta.workspace = true
-leptos_actix.workspace = true
 leptos_router.workspace = true
 wasm-bindgen.workspace = true
+
+leptos_app.path = "../leptos_app"
 
 # For WASM builds:
 [lib]
