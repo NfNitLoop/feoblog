@@ -1,0 +1,21 @@
+[package]
+name = "feo_client"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["with-serde"]
+
+# Enables serde for protobuf types.
+with-serde = [ "protobufs/with-serde"]
+
+[dependencies]
+
+protobufs.path = "../protobufs"
+
+reqwest = "*"
+thiserror = "*"
+
+[dev-dependencies]
+tokio.version = "*"
+tokio.features = ["rt", "macros"]

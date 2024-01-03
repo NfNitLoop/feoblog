@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [
+members = [ "crates/feo_client",
     "crates/feoblog",
     "crates/leptos_app",
     "crates/leptos_app_hydrate", "crates/protobufs",

@@ -3,12 +3,23 @@ name = "protobufs"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["with-serde"]
+with-serde = [
+    "dep:serde",
+    "serde/derive",
+    "protobuf/with-serde"
+]
+
 
 [dependencies]
 # Required fix for soft_unstable rustfmt::skip (as of Rust 1.52).
 # See: https://github.com/stepancheg/rust-protobuf/issues/551
 protobuf = "^2.22.1"
+
+[dependencies.serde]
+version = "*"
+optional = true
 
 
 [build-dependencies]

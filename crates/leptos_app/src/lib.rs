@@ -1,3 +1,4 @@
+use feo_client::{Client, ClientArgs, protobuf_types::ItemList};
 use leptos::{*, html::Input};
 use leptos_meta::*;
 use leptos_router::*;
@@ -49,6 +50,39 @@ pub fn Greeter() -> impl IntoView {
 
 #[component]
 pub fn Home() -> impl IntoView {
+
+
+    async fn fetcher(_: ()) -> Result<ItemList, ServerFnError> {
+        let client = Client::new(ClientArgs{
+            base_url: "https://blog.nfnitloop.com".into(),
+        });
+        let items = client.get_homepage(Default::default()).await?;
+        Ok(items)
+    }
+
+    let rsc = create_blocking_resource(|| (), fetcher);
+    let items = move || {
+        rsc.get().map(|items| {
+            let output = format!("{items:#?}");
+            view! {
+                <round-box>
+                    <pre>{output}</pre>
+                </round-box>
+            }
+        })
+    };
+
+    view! {
+        <Examples/>
+
+        <Suspense fallback=move || view! { <p>"Loading ..."</p> }>
+            {items}
+        </Suspense>
+    }
+}
+
+#[component]
+fn Examples() -> impl IntoView {
     view! {
         <article>
             <article-head>
