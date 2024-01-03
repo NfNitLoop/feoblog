@@ -2,8 +2,7 @@ use std::borrow::Cow;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
 
-mod feoblog;
-pub use feoblog::*;
+pub use protobufs::feoblog::*;
 
 /// Since proto3 does not allow specifying required fields, we must do that
 /// in our own validation here.
@@ -27,6 +26,7 @@ impl ProtoValid for Item {
         // In proto3 we can't distinguish between 0 and not-present.
         // So, you can't express exactly the UTC start date, but you can
         // be 1ms on either side which seems good enough. :p
+        // TODO: Newer versions of proto3 allow for this distinction!
         if self.timestamp_ms_utc == 0 {
             return Some(
                 "Timestamp is required".into()

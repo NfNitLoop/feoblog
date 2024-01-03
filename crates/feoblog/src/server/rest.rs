@@ -6,7 +6,7 @@ use actix_web::{HttpRequest, HttpResponse, web::{Data, Path, Payload, Query}, Ht
 use anyhow::{Context, format_err};
 use futures::StreamExt;
 use logging_timer::timer;
-use protobuf::Message;
+use protobufs::protobuf::{Message, RepeatedField};
 
 use crate::{backend::{ItemDisplayRow, ItemRow, Signature, Timestamp, UserID}, protos::{Item, ItemList, ItemListEntry, ItemType, Item_oneof_item_type, ProtoValid}, server::{MAX_ITEM_SIZE, PLAINTEXT}};
 
@@ -39,7 +39,7 @@ pub(crate) async fn homepage_item_list(
 
     let mut list = ItemList::new();
     list.no_more_items = !paginator.has_more;
-    list.items = protobuf::RepeatedField::from(paginator.into_items());
+    list.items = RepeatedField::from(paginator.into_items());
     Ok(
         proto_ok().body(list.write_to_bytes()?)
     )
@@ -74,7 +74,7 @@ pub(crate) async fn feed_item_list(
 
     let mut list = ItemList::new();
     list.no_more_items = !paginator.has_more;
-    list.items = protobuf::RepeatedField::from(paginator.into_items());
+    list.items = RepeatedField::from(paginator.into_items());
     Ok(
         proto_ok()
         .body(list.write_to_bytes()?)
@@ -109,7 +109,7 @@ pub(crate) async fn user_item_list(
 
     let mut list = ItemList::new();
     list.no_more_items = !paginator.has_more;
-    list.items = protobuf::RepeatedField::from(paginator.into_items());
+    list.items = RepeatedField::from(paginator.into_items());
     Ok(
         proto_ok()
         .body(list.write_to_bytes()?)
@@ -144,7 +144,7 @@ pub(crate) async fn item_reply_list(
 
     let mut list = ItemList::new();
     list.no_more_items = !paginator.has_more;
-    list.items = protobuf::RepeatedField::from(paginator.into_items());
+    list.items = RepeatedField::from(paginator.into_items());
     Ok(
         proto_ok()
         .body(list.write_to_bytes()?)
@@ -346,12 +346,12 @@ fn item_to_entry(item: &Item, user_id: &UserID, signature: &Signature) -> ItemLi
     let mut entry = ItemListEntry::new();
     entry.set_timestamp_ms_utc(item.timestamp_ms_utc);
     entry.set_signature({
-        let mut sig = crate::protos::Signature::new();
+        let mut sig = protobufs::feoblog::Signature::new();
         sig.set_bytes(signature.bytes().into());
         sig
     });
     entry.set_user_id({
-        let mut uid = crate::protos::UserID::new();
+        let mut uid = protobufs::feoblog::UserID::new();
         uid.set_bytes(user_id.bytes().into());
         uid
     });

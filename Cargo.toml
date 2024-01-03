@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "crates/feoblog",
     "crates/leptos_app",
-    "crates/leptos_app_hydrate",
+    "crates/leptos_app_hydrate", "crates/protobufs",
     "crates/sizedisplay",
 ]
 

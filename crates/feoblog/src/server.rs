@@ -32,7 +32,7 @@ use serde::Deserialize;
 use actix_web::http::StatusCode;
 use async_trait::async_trait;
 
-use protobuf::Message;
+use protobufs::protobuf::Message;
 
 use crate::{ServeCommand, backend::{ItemDisplayRow, TimeSpan}, protos::{ItemList, ItemListEntry, ItemType, Item_oneof_item_type}};
 use crate::backend::{self, UserID, Signature, ItemRow, Timestamp};

@@ -13,6 +13,7 @@ name = "feoblog"
 [dependencies]
 
 leptos_app.path = "../leptos_app"
+protobufs.path = "../protobufs"
 
 
 # Web:
@@ -50,9 +51,6 @@ mime_guess = "2"
 # objects with actix-web
 async-trait = "*"
 
-# Required fix for soft_unstable rustfmt::skip (as of Rust 1.52).
-# See: https://github.com/stepancheg/rust-protobuf/issues/551
-protobuf = "^2.22.1"
 time = "0.2.23"
 
 # Used to deserialize strings in URL paths.
@@ -119,10 +117,6 @@ features = [
 
 [dependencies.sizedisplay]
 path = "../sizedisplay"
-
-[build-dependencies]
-# Generate rust from .proto files.
-protoc-rust = "2"
 
 [features]
 default = [ "ssr" ]

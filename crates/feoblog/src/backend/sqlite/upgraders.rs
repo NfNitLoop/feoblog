@@ -1,10 +1,10 @@
 //! Types that know how to upgrade the SQLite database.
 
 use anyhow::{Error, bail};
-use protobuf::Message;
+use protobufs::{protobuf::Message, feoblog::Item};
 use rusqlite::params;
 
-use crate::{backend::{ItemRow, RowCallback, Signature, UserID}, protos::Item};
+use crate::backend::{ItemRow, RowCallback, Signature, UserID};
 
 use super::{AttachmentRow, CURRENT_VERSION, Connection, ReplyRow, get_attachment_rows, save_attachment_rows, save_reply_rows};
 

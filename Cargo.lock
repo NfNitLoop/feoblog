@@ -1248,8 +1248,7 @@ dependencies = [
  "logging_timer",
  "mime_guess",
  "multihash",
- "protobuf",
- "protoc-rust",
+ "protobufs",
  "r2d2",
  "r2d2_sqlite",
  "rusqlite",
@@ -2919,6 +2918,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "protobufs"
+version = "0.1.0"
+dependencies = [
+ "protobuf",
+ "protoc-rust",
+]
+
+[[package]]
 name = "protoc"
 version = "2.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4364,12 +4371,13 @@ dependencies = [
 
 [[package]]
 name = "which"
-version = "4.0.2"
+version = "4.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87c14ef7e1b8b8ecfc75d5eca37949410046e66f15d185c01d70824f1f8111ef"
+checksum = "2441c784c52b289a054b7201fc93253e288f094e2f4be9058343127c4226a269"
 dependencies = [
+ "either",
  "libc",
- "thiserror",
+ "once_cell",
 ]
 
 [[package]]

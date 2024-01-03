@@ -6,7 +6,7 @@
 use actix_web::{HttpRequest, HttpResponse, Responder, http::StatusCode, web::{Data, Path, Query}, error::ErrorInternalServerError};
 use askama_actix::Template;
 use askama_actix as askama;
-use protobuf::Message;
+use protobufs::protobuf::Message;
 
 use crate::{backend::{ItemDisplayRow, ItemRow, Signature, UserID}, markdown::ToHTML, protos::Item, server::{IndexPageItem, Nav, non_standard::identicon_url, pagination::Paginator}};
 use super::{AppData, Error, ProfileFollow, pagination::Pagination};
@@ -250,7 +250,7 @@ pub(crate) async fn show_item(
         item
     }.get_profile().display_name.clone();
     
-    use crate::protos::Item_oneof_item_type as ItemType;
+    use protobufs::feoblog::Item_oneof_item_type as ItemType;
     match item.item_type {
         None => Err(ErrorInternalServerError("No known item type provided."))?,
         Some(ItemType::profile(_)) => {
@@ -291,7 +291,7 @@ pub(crate) async fn show_item(
     }
 }
 
-fn get_post_meta(req: &HttpRequest, user_id: &UserID, post: &crate::protos::Post) -> OGPMeta {
+fn get_post_meta(req: &HttpRequest, user_id: &UserID, post: &protobufs::feoblog::Post) -> OGPMeta {
 
     let info = req.connection_info();
     let scheme = info.scheme();
@@ -353,7 +353,7 @@ fn display_by_default(item: &Item) -> bool {
         Some(t) => t,
     };
 
-    use crate::protos::Item_oneof_item_type as ItemType;
+    use protobufs::feoblog::Item_oneof_item_type as ItemType;
     match item_type {
         ItemType::post(_) => true,
         ItemType::profile(_) => false,
@@ -405,7 +405,7 @@ pub(crate) async fn show_profile(
     let text = std::mem::take(&mut item.mut_profile().about);
 
     let follows = std::mem::take(&mut item.get_profile()).follows.to_vec();
-    let follows = follows.into_iter().map(|mut follow: crate::protos::Follow | -> Result<ProfileFollow, Error>{
+    let follows = follows.into_iter().map(|mut follow: protobufs::feoblog::Follow | -> Result<ProfileFollow, Error>{
         let mut user = std::mem::take(follow.mut_user());
         let user_id = UserID::from_vec(std::mem::take(&mut user.bytes))?;
         let display_name = follow.display_name;

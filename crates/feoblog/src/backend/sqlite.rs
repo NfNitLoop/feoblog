@@ -11,11 +11,12 @@ mod upgraders;
 
 use std::{io::{Read, Write}, ops::DerefMut, path::Path, collections::HashMap};
 
-use crate::{backend::UsageByUserRow, protos::Item, util::AsHex};
+use crate::{backend::UsageByUserRow, util::AsHex};
 use actix_web::web::Bytes;
 use backend::{FileMeta, RowCallback, SHA512};
 use futures::Stream;
 use log::{debug, warn};
+use protobufs::feoblog::Item;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{DatabaseName, NO_PARAMS, OpenFlags, named_params};
 use sodiumoxide::randombytes::randombytes;
