@@ -63,6 +63,11 @@ $box-radius: 20px;
 	border-radius: $box-radius;
 	box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.2);
 	word-wrap: break-word;
+
+    // Simulate "active" until we re-implement it.
+    &:hover {
+        box-shadow: 0px 5px 20px rgb(0 0 0 / 80%);
+    }
 }
 
 @mixin boxPadding($pad: 1rem) {
@@ -122,18 +127,26 @@ img.profileImage {
 }
 
 svg.openArrow {
-        height: 1.5em;
-        transition: transform .2s;
-        user-select: none;
-        cursor: pointer;
-        z-index: 0;
-        // .right { /* The default */ }
+    height: 1.5em;
+    transition: transform .2s;
+    user-select: none;
+    cursor: pointer;
+    z-index: 0;
+    // .right { /* The default */ }
 
-        &.left {
-            transform: rotate(180deg);
-        }
-        .down {
-            transform: rotate(90deg);
-        }
+    &.left {
+        transform: rotate(180deg);
+    }
+    .down {
+        transform: rotate(90deg);
+    }
+
+    & path {
+        filter: drop-shadow(0px 5px 10px rgb(0,0,0,.2));
+    }
+
+    &:not(:hover) path {
+        stroke: #00000080;
+    }
 }
 
