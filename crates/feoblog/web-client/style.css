@@ -129,7 +129,7 @@ blockquote blockquote blockquote blockquote
 }
 
 
-.item > img {
+.item > img, .item .body img{
 	display: block;
 	max-width: 100%;
 	border-radius: 5px;
@@ -138,8 +138,8 @@ blockquote blockquote blockquote blockquote
 }
 
 /* Fade in a border to show where the image ends, in case it's white-on-white */
-.item > img { border: 1px dashed rgba(0,0,0,0); }
-.item > img:hover {
+.item > img, .item .body img { border: 1px dashed rgba(0,0,0,0); }
+.item > img:hover, .item .body img:hover {
 	border: 1px dashed black;
     transition-delay: 0.5s;
     transition-duration: 3s;
