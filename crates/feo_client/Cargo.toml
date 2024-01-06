@@ -3,18 +3,25 @@ name = "feo_client"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-default = ["with-serde"]
-
-# Enables serde for protobuf types.
-with-serde = [ "protobufs/with-serde"]
 
 [dependencies]
 
 protobufs.path = "../protobufs"
+protobufs.features = ["with-serde"]
 
+anyhow = "*"
 reqwest = "*"
 thiserror = "*"
+
+# No support for WASM. Deprecated Sep. 2022. 
+# sodiumoxide = "*"
+
+dryoc = "*"
+
+bs58 = { version = "*", features = ["check"] }
+serde = { version = "*", features = [ "derive" ] }
+serde_with = { version = "*", features = ["macros"] }
+
 
 [dev-dependencies]
 tokio.version = "*"

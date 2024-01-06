@@ -2,6 +2,7 @@
 
 pub(crate) mod sqlite;
 
+pub use feo_client::{UserID, Signature};
 use protobufs::feoblog::Item;
 use core::str::FromStr;
 use std::{fmt::Display, io::{Read, Seek, SeekFrom}, marker::PhantomData};
@@ -11,7 +12,7 @@ use bs58;
 use futures::Stream;
 use serde::{Deserialize, de::{self, Visitor}};
 use sizedisplay::SizeDisplay;
-use sodiumoxide::crypto::{hash::sha512, sign};
+use sodiumoxide::crypto::hash::sha512;
 
 /// This trait knows how to build a Factory, which in turn can open Backend connections.
 ///
@@ -175,152 +176,6 @@ pub struct FileMeta {
 /// A callback function used for callback iteration through large database resultsets.
 /// Each row T will be sent to the callback. The callback should return Ok(true) to continue iteration.
 pub type RowCallback<'a, T> = &'a mut dyn FnMut(T) -> Result<bool, Error>; 
-
-/// A UserID is a nacl public key. (32 bytes)
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct UserID {
-    pub_key: sign::PublicKey,
-}
-
-// Expect a 32-byte nacl public key:
-const USER_ID_BYTES: usize = 32;
-
-impl UserID {
-    pub fn to_base58(&self) -> String {
-        bs58::encode(self.bytes()).into_string()
-    }
-
-    pub fn from_base58(value: &str) -> Result<Self, Error> {
-        let bytes = bs58::decode(value).into_vec()?;
-        Self::from_vec(bytes)
-    }
-
-    pub fn from_vec(bytes: Vec<u8>) -> Result<Self, Error> {
-        if bytes.len() != USER_ID_BYTES {
-            bail!("Expected {} bytes but found {}", USER_ID_BYTES, bytes.len());
-        }
-
-        let pub_key = sign::PublicKey::from_slice(&bytes).ok_or_else(
-            || format_err!("Error creating nacl::PuublicKey")
-        )?;
-
-        Ok( UserID{ pub_key } )
-    }
-
-    pub fn bytes(&self) -> &[u8] {
-        self.pub_key.as_ref()
-    }
-}
-
-/// Allows easy destructuring from URLs.
-impl FromStr for UserID {
-    type Err = anyhow::Error;
-    fn from_str(value: &str) -> Result<Self, Self::Err> { 
-        UserID::from_base58(value)
-    }
-}
-
-impl Display for UserID {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_base58())
-    }
-}
-
-/// Bytes representing a detached NaCl signature. (64 bytes)
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Signature {
-    signature: sign::Signature,
-}
-
-const SIGNATURE_BYTES: usize = 64;
-
-impl Signature {
-    pub fn from_vec(bytes: Vec<u8>) -> Result<Self, Error> {
-        if bytes.len() != SIGNATURE_BYTES {
-            bail!("Signature expected {} bytes but found {}", SIGNATURE_BYTES, bytes.len());
-        }
-
-        let signature = sign::Signature::from_slice(&bytes).ok_or_else(
-            || format_err!("Failure creating nacl::Signature")
-        )?;
-        
-        Ok( Signature{ signature } )
-    }
-
-    pub fn from_base58(value: &str) -> Result<Self, Error> {
-        let bytes = bs58::decode(value).into_vec()?;
-        Self::from_vec(bytes)
-    }
-
-    pub fn to_base58(&self) -> String {
-        bs58::encode(self.bytes()).into_string()
-    }
-
-    pub fn bytes(&self) -> &[u8] {
-        self.signature.as_ref()
-    }
-
-    /// True if this signature is valid for the given user on the given bytes.
-    pub fn is_valid(&self, user: &UserID, bytes: &[u8]) -> bool {
-        let pubkey = sign::PublicKey::from_slice(user.bytes()).expect("pubkey");
-        sign::verify_detached(&self.signature, bytes, &pubkey)
-    }
-
-}
-
-/// Allows easy destructuring from URLs. (in Warp)
-impl FromStr for Signature {
-    type Err = anyhow::Error;
-    fn from_str(value: &str) -> Result<Self, Self::Err> { 
-        Signature::from_base58(value)
-    }
-}
-
-impl <'de> Deserialize<'de> for Signature {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: serde::Deserializer<'de> 
-    {
-        deserializer.deserialize_str(FromStrVisitor::<Self>::new())
-    }
-}
-
-impl <'de> Deserialize<'de> for UserID {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where D: serde::Deserializer<'de> 
-    {
-        deserializer.deserialize_str(FromStrVisitor::<Self>::new())
-    }
-}
-
-struct FromStrVisitor<T: FromStr> {
-    _t: PhantomData<T>
-}
-
-impl <T: FromStr> FromStrVisitor<T> {
-    fn new() -> Self {
-        FromStrVisitor { _t: PhantomData }
-    }
-}
-
-impl <'de, T: FromStr<Err=Error>> Visitor<'de> for FromStrVisitor<T> 
-{
-    type Value = T;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            formatter,
-            "a &str that can be converted to a {}",
-            std::any::type_name::<T>()
-        )
-    }
-
-    fn visit_str<E>(self, v: &str)
-    -> Result<Self::Value, E>
-    where E: de::Error
-    {
-        T::from_str(v).map_err(|e| de::Error::custom(format!("{}", e)))
-    }
-}
 
 /// Data that should be stored along with an Item
 /// 
